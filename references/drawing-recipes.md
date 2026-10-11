@@ -124,6 +124,15 @@ wire, left of a vertical one).
 
 Typical fixes: lengthen a `gap` or stub, change a recipe direction, move or
 reorient an anchor, split a crowded block into rows, reverse a chain's order.
+
+A rail-placement rejection keeps its net/anchor prefix and adds `diagnostic=`
+JSON for the first failing `body` or `Value` envelope. It identifies actual
+foreign-wire segments, obstacle references/pins/annotation or reserved-region
+indices, earlier rail requests and page edges. These are construction locators
+and conservative envelope checks, not native object UUIDs, ink measurements or
+electrical-short findings. Use them with O8; they neither move a rail nor waive
+the original rejection. A coordinate alone does not establish a pin owner.
+
 Two pins 7.62 mm apart cannot both hang a shunt down: fold one branch up or make
 the lower pin's run shorter than the upper one's. Never replace a failed wire
 with a label unless the plan declares that boundary.

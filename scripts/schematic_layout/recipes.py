@@ -12,6 +12,7 @@ audits the drawing against them; a deviation needs a recorded reason.
 """
 
 import copy
+import json
 import math
 
 from .component_role import is_connector
@@ -43,6 +44,33 @@ def pt(p):
 def add(p, d, n=1):
     """Point ``n`` grid steps from ``p`` along unit direction ``d``."""
     return pt((p[0] + d[0] * n * G, p[1] + d[1] * n * G))
+
+
+def _box_coordinates(box):
+    return [box.x_min, box.y_min, box.x_max, box.y_max]
+
+
+def _rail_collision_diagnostic(box, net, symbol, end, request_index, field,
+                               segments, obstacles, obstacle_sources, page):
+    """Explain an already rejected envelope; never choose placement or acceptance."""
+    reasons = []
+    for index, (wire_net, a, b) in enumerate(segments):
+        if wire_net != net and segment_hits_box(a, b, box):
+            reasons.append({"kind": "foreign_wire", "segment_index": index,
+                            "net": wire_net, "endpoints": [a, b]})
+    for index, obstacle in enumerate(obstacles):
+        if box.overlaps(obstacle):
+            source = (obstacle_sources[index] if index < len(obstacle_sources) else None)
+            locator = dict(source) if isinstance(source, dict) else {"kind": "unknown", "index": index}
+            reasons.append({"kind": "obstacle_overlap", "object": locator,
+                            "box": _box_coordinates(obstacle)})
+    if not box.inside(page):
+        edges = [name for name, outside in (
+            ("left", box.x_min < page.x_min), ("right", box.x_max > page.x_max),
+            ("top", box.y_min < page.y_min), ("bottom", box.y_max > page.y_max)) if outside]
+        reasons.append({"kind": "outside_page", "page": _box_coordinates(page), "edges": edges})
+    return {"request_index": request_index, "net": net, "symbol": symbol,
+            "anchor": end, "field": field, "box": _box_coordinates(box), "reasons": reasons}
 
 
 def label_geometry(kind, text, at, outward, font):
@@ -692,10 +720,18 @@ class Sheet:
                 if segment_hits_box(a, b, box.expanded(-0.05)):
                     raise ValueError(f"{n} wire {a}-{b} crosses the body of {ref}")
         obstacles = [b.expanded(0.2) for b in bodies.values()] + list(reserved)
+        # Provenance parallels the original boxes. Do not replace their identity:
+        # the global-label terminal check below relies on id(pin_obstacle).
+        obstacle_sources = ([{"kind": "component_body", "reference": ref} for ref in bodies]
+                            + [{"kind": "reserved_region", "index": i} for i in range(len(reserved))])
         label_pin_obstacles = [(p, wire_box(p.point, p.inner, 0.25))
                                for s in scene.symbols for p in s.pins]
         obstacles += [box for _, box in label_pin_obstacles]
+        obstacle_sources += [{"kind": "physical_pin", "pin_id": p.id, "net": self.nets.get(p.id),
+                              "endpoints": [p.point, p.inner]} for p, _ in label_pin_obstacles]
         obstacles += [t.box() for kind, t in scene.labels if kind == "text"]
+        obstacle_sources += [{"kind": "annotation_text", "index": i, "field": "text", "anchor": [t.x, t.y]}
+                             for i, (kind, t) in enumerate(scene.labels) if kind == "text"]
         wires = {n: [] for n, _, _ in segments}
         for n, a, b in segments:
             wires[n].append((a, b))
@@ -717,15 +753,21 @@ class Sheet:
                  for q in set(dots) | {q for q, _ in self.pins.values()}]
         # Power symbols: body plus Value field.
         powers = []
-        for net, symbol, end in self.powers + self.flags:
+        for request_index, (net, symbol, end) in enumerate(self.powers + self.flags):
             lib, body, down = self._power_shape(symbol)
             b = Box(body.x_min + end[0], body.y_min + end[1], body.x_max + end[0], body.y_max + end[1])
             value_at = pt((end[0], b.y_max + 0.9 if down else b.y_min - 0.9))
             vbox = TextField(flag_value(symbol, net), *value_at, 0, 1.0).box()
-            for box in (b, vbox):
+            for field, box in (("body", b), ("Value", vbox)):
                 if foreign(box, net) or any(box.overlaps(o) for o in obstacles) or not box.inside(page):
-                    raise ValueError(f"{net} rail symbol at {end} collides; change the recipe direction or length")
+                    diagnostic = _rail_collision_diagnostic(box, net, symbol, end, request_index, field,
+                                                            segments, obstacles, obstacle_sources, page)
+                    raise ValueError(f"{net} rail symbol at {end} collides; change the recipe direction or length"
+                                     + "; diagnostic=" + json.dumps(diagnostic, sort_keys=True))
             obstacles += [b.expanded(0.2), vbox.expanded(0.2)]
+            obstacle_sources += [{"kind": "earlier_rail", "request_index": request_index,
+                                  "net": net, "symbol": symbol, "anchor": end, "field": field}
+                                 for field in ("body", "Value")]
             powers.append((net, symbol, end, lib, value_at))
         labels = []
         for l in self.labels:
