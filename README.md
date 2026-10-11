@@ -5,60 +5,21 @@
 Autonomous-Schematic-Generation（简称 **ASG**）是一套面向 Codex、Claude 等 Agent 的 Skill。
 从已确认的需求出发，建立板级电气意图，按纲要 O1–O8 用引脚几何画法（recipes）新建、新增或重画
 KiCad 原理图，并用一键门禁（`verify_schematic.py`）完成原生 ERC、逐脚网表、层次、符号、可读性和几何检查。
-ASG 只做出图自检；严格的电气审查交给 `schematic-review`。原有的原理图/PCB/Gerber/PDF 分析器
-作为可选工具保留，见 [analysis-toolkit.md](references/analysis-toolkit.md)。
+ASG 只做出图自检；严格的电气审查交给 `schematic-review`。
 
-绘图流程现在包含可执行后端：**可复用电路模块 → 真实引脚编译 → 自动布局 → 字段摆放 →
-避障布线 → KiCad 原生文件 → ERC / 逐脚网表 / 几何 / 渲染验证**。
-Agent 确定电路和功能角色；后端按真实符号/字段尺寸分配位置、拼页、布线和检查。
+流程与规则见 [SKILL.md](SKILL.md)。主要工具：
 
-## 多页电路改版与交付检查
+- `verify_schematic.py`：一键出图门禁（ERC、网表对意图、层次、符号完整性、可读性、几何，可选参考合同与改版合同）。
+- `build_circuit.py` / `generate_schematic.py`：Circuit IR 编译、自动布局和原生生成，见 [circuit-ir.md](references/circuit-ir.md)、[schematic-generation.md](references/schematic-generation.md)。
+- `verify_design_change.py`、`audit_project.py`、`verify_reference_contract.py`：改版合同、多页工程交付核对、器件与外围合同，见 [project-verification.md](references/project-verification.md)。
+- `patch_schematic_values.py`：保持连线与图面的 Value 修改，见 [value-patch.md](references/value-patch.md)。
 
-本次增加了从完整板卡改图中提炼的两项可执行检查，以及分立电路展开、
-跨页符号一致性、System_block 首页和 CopperPilot 参考候选的工作流程。
+上游借鉴（schematic-trace-solver、kicad-mcp-pro、SKiDL、circuit-synth）的源码路径、commit、许可证和未采用部分见
+[融合说明](references/upstream-integration.md)；历次改造与发布验证记录在 [docs/](docs/)。
 
-- **电气改版合同**：`verify_design_change.py` 以事先声明的器件增删、属性变化和
-  完整引脚网络变化核对前后原生 XML；未声明的开短路、NC 遗漏和 DNP 漂移不能通过。
-- **工程交付核对**：`audit_project.py` 递归检查实际层次实例、页面数、可移植路径、
-  物理位号/单元、缓存符号一致性和完整 PDF 页数，并报告与基线的差异。
-- **符号内部引脚检查**：`audit_symbol_integrity.py` 检查引脚内端与实际图形线条的衔接，
-  计入线宽、圆弧、单元和旋转，双向核对原生 XML 的物理引脚覆盖；生成时自动执行。
-- **资料与外围约束**：`verify_reference_contract.py` 核对源文件哈希、确切 MPN/封装、
-  全引脚名称/类型、必需器件及其装配状态、外围连接和声明的功能阶段。
-  生成命令可用 `--reference-contract` 接入；约束未通过时不能获得自动检查通过状态。
-- **具体电路展开**：明确成品模块、普通 IC 与未实现功能的边界，记录参考设计条件、
-  计算、外围、默认装配及未解决项，避免用接口或方框代替缺失电路。
-- **参考服务接入**：优先验证官方接口；必要时使用 CopperPilot 界面提交和读取候选，
-  再独立核查 BOM、引脚表、图面与真实 KiCad 连接。此仓库不包含 CopperPilot 客户端。
-
-用法及格式见[工程验证工具](references/project-verification.md)、
-[符号与外围约束](references/symbol-and-peripheral-contracts.md)、
-[电气改版流程](references/electrical-redesign.md)、
-[CopperPilot 参考流程](references/copperpilot-reference-workflow.md)。
-这些工具不等于任意多页自动绘图或生产准出；既有几何引擎的未覆盖对象仍须明确报告。
-
-## 本次融合
-
-从 [schematic-trace-solver](https://github.com/tscircuit/schematic-trace-solver)
-借鉴分阶段求解、Manhattan MST 配对和坏图回归；从
-[kicad-mcp-pro](https://github.com/oaslananka/kicad-mcp-pro) 改编几何与字段摆放，
-加入 [SKiDL](https://devbisme.github.io/skidl/#generating-a-schematic) 的模块、接口、稳定标签思路，
-以及 [circuit-synth](https://github.com/circuit-synth/circuit-synth) 的层次 JSON 和属性表示，
-形成 Circuit IR v2、导入适配器和自动布局。详细源码路径、commit、许可证、
-实测边界及未采用部分见 [融合说明](references/upstream-integration.md)。
-
-- **真实引脚驱动**：器件身份/网络与几何分开，检查所有引脚分配、旋转和镜像。
-- **模块复用**：参数化实例、显式端口绑定、局部网络隔离、按真实库解析重名引脚。
-- **自动布局**：功能模板、字段空间预算、多块单页拼排、有限扩距重试；支持已覆盖的多单元符号。
-- **改版保护**：电气差异报告与锁定模块再生成，拒绝器件/文字/导线/UUID 漂移。
-- **已有工程重排流程**：先保存原层次、器件身份和网表基线，再逐页验证、回写复验；
-  多页操作目前使用项目专用 writer，详见[已有工程重排](references/existing-project-redraw.md)。
-- **正交避障**：器件体、可见字段、其他网络及预留区都是障碍；失败保留诊断。
-- **字段摆放**：Reference/Value 保持水平，避让本体、引脚、已放字段和页边界。
-- **独立几何门禁**：检出堆叠、穿芯、文字相交、标题栏侵入、悬空锚点等；
-  无法覆盖的对象保留 INSUFFICIENT。
-- **原生验证**：ERC、完整 `reference.pin` 网络集合、器件身份、PDF，以及文件哈希。
-- **回归测试**：坏图反例、原生旋转/镜像、标签拓扑、无标签直连和未分段 T。
+当前生成后端支持多功能块自动排入单页、已覆盖的多单元符号、可见局部布线及显式远端标签。
+原生多页层次、图形总线、任意隐藏/堆叠引脚、复杂跨网图和已有工程原位增量编辑尚未实现，
+多页工程由工程脚本组装根图并通过相应门禁。
 
 ## 运行一个样例
 
@@ -68,161 +29,39 @@ python3 scripts/build_circuit.py \
   tests/fixtures/generation/dual_filter.presentation.json \
   --output-dir output/dual-filter-run-01
 
+python3 scripts/verify_schematic.py board.kicad_sch --intent electrical-intent.json --out runs/verify-01
+
 python3 -m unittest discover -s tests -v
 ```
 
-输出原生工程、输入快照、布局/布线记录、ERC、XML 网表、PDF和验证报告。
 `AUTOMATED_PASS` 仅表示自动检查通过；原生图面目检和数据手册审查仍须完成。
-输入与自动布局见 [Circuit IR v2](references/circuit-ir.md)；低层定位后端和几何覆盖见
-[生成说明](references/schematic-generation.md)。此前问题的逐项闭环见
-[改造清单](references/improvement-ledger.md)。
-
-扩展后的回归结果、验证范围及复现命令见[发布验证记录](references/release-validation.md)。
-独立电源/PHY 样例仍保留外部供电与主控连接相关 ERC 待处理项。
-
-## 绘图范围与标准
-
-按实际拓扑选择布局：Buck 使用连续功率路径和控制带；LDO、集成电感模块、
-晶振、去耦、MCU/接口页分别组织。LM5013 是 Buck 范例，不能作为所有电路
-的通用结构。连接器引脚来自接口定义，不能按视觉位置随意指定。
-
-当前生成后端支持多功能块自动排入单页、已覆盖的多单元符号、可见局部布线及
-显式远端标签。逻辑层次和标量总线有结构化记录；原生多页层次、图形总线、
-任意隐藏/堆叠引脚、复杂跨网图和已有工程原位增量编辑尚未实现。
-已支持同一符号、同一网络的同位置端点（含已覆盖的隐藏被动副本），
-并在原生网表中保留每个物理引脚；其他情况应使用项目专用 writer 并通过相应门禁。
-完整标准见
-[schematic-drawing-standards.md](references/schematic-drawing-standards.md)。
-
-原有分析能力保持：网络、BOM、信号/电源、器件风险、PCB/Gerber、跨域一致性、
-温升、生命周期等。分析器的 KiCad 5–10 输入支持与新生成器的原生验证范围
-分开描述；新后端本次在 **KiCad 10.0.4** 上执行验证。
 
 ## 安装
 
-### Codex
-
-显示名称为 **Autonomous-Schematic-Generation (ASG)**；skill 标识和安装目录名使用
-符合命名规范的小写形式 `autonomous-schematic-generation`。
-
-将本仓库内容放入 Codex skills 目录：
+将本仓库放入 Agent 的 skills 目录，例如：
 
 ```bash
 git clone https://github.com/wenqiiizwq-creator/Autonomous-Schematic-Generation.git \
   ~/.codex/skills/autonomous-schematic-generation
 ```
 
-或直接复制 `SKILL.md`、`agents/`、`references/`、`scripts/`、`examples/`、`tests/` 到
-`~/.codex/skills/autonomous-schematic-generation/`。
-
-已有旧版 `kicad` 安装时，将旧目录迁移至上述新目录并更新内容，避免保留两份可被扫描的安装。
-如果本机配置指定了旧的 `SKILL.md` 路径，也需更新对应路径。
-
-### 其他 Agent（Claude / GLM 等）
-
-按对应平台的 skill 安装方式注册即可；仓库结构遵循通用 skill 布局：
 `SKILL.md` 为入口，frontmatter 中的 `name` 为 `autonomous-schematic-generation`。
+已有旧版 `kicad` 安装时，迁移到新目录，避免保留两份可被扫描的安装。
 
-### 依赖
-
-- KiCad CLI 和符号库；新生成后端实测 KiCad 10.0.4，其他版本需跑原生回归
-- 新生成脚本仅用 Python 3.10+ 标准库；PDF 目检渲染使用 `pdftoppm`；分析脚本沿用原依赖
-- 工程完整 PDF 页数核对使用 Poppler `pdfinfo`；未安装时明确返回检查不足
-- 网络（可选）：生命周期审计 / 分销商查询需对应 API Key
-
----
-
-## 使用示例
-
-在 Codex 中显式调用：`$autonomous-schematic-generation`。自然语言中可称其为 **ASG**，
-例如“使用 ASG 绘制并验证这份原理图”。
-
-### 画图 / 重画
-
-```text
-- 用 TPS54560 加一路 5V/5A 电源，按 LM5013 风格排版
-- 新画一页子图：MPM3650GQW-Z 3.3V→1.15V 1.2A，注意后级低纹波
-- 把这张原理图重画成可读布局，电气连接不能变
-```
-
-### 出图验证
-
-```bash
-python3 scripts/verify_schematic.py board.kicad_sch --intent electrical-intent.json --out runs/verify-01
-```
-
-严格的电路审查（投板前评审、需求符合性）请使用 `schematic-review`。
-
-### 可选分析器
-
-```bash
-python3 scripts/analyze_schematic.py your.kicad_sch --analysis-dir analysis/
-python3 scripts/analyze_pcb.py your.kicad_pcb --analysis-dir analysis/
-python3 scripts/cross_analysis.py analysis/
-python3 scripts/summarize_findings.py analysis/ --json
-```
-
----
-
-## 目录结构
-
-```text
-.
-├── SKILL.md                        # Skill 入口：从需求到验证的出图流程
-├── agents/
-│   └── openai.yaml                 # Agent 接口描述
-├── references/
-│   ├── requirements-to-intent.md        # 需求 → 功能追溯 → 板级电气意图
-│   ├── drawing-recipes.md               # 纲要 O1–O8 与引脚几何画法 API
-│   ├── schematic-drawing-standards.md   # 按拓扑选型的绘图规范（绘图必读）
-│   ├── analysis-toolkit.md              # 可选分析器说明（原 SKILL.md 后半部分）
-│   ├── circuit-ir.md                    # 结构化电路、模块与自动布局
-│   ├── reference-driven-board-design.md # 数据手册外围合同与工程师图面学习
-│   ├── existing-project-redraw.md       # 已有多页工程重排、差异检查与回写
-│   ├── schematic-analysis.md            # 原理图深审方法论
-│   ├── pcb-layout-analysis.md           # PCB 布局分析
-│   ├── report-generation.md             # 评审报告模板
-│   └── ...                              # 文件格式 / Gerber / PDF 抽取等
-├── examples/                       # 可复现的器件级绘图与外围检查样例
-├── tests/                          # 几何、原生网表、改版与错误变异回归
-└── scripts/
-    ├── build_circuit.py            # Circuit IR 编译、布局和原生生成
-    ├── generate_schematic.py       # 显式位置和局部线组的生成入口
-    ├── verify_schematic.py         # 一键出图门禁：ERC/网表对意图/层次/符号/可读性/几何
-    ├── check_schematic_geometry.py # 序列化图纸的独立几何检查
-    ├── audit_project.py            # 原生多页层次、缓存一致性和完整PDF页数
-    ├── verify_design_change.py     # 按独立改版合同验证前后原生XML
-    ├── analyze_schematic.py        # 原理图分析器
-    ├── analyze_pcb.py              # PCB 分析器
-    ├── analyze_gerbers.py          # Gerber 分析器
-    ├── cross_analysis.py           # 原理图 ↔ PCB 一致性
-    ├── diff_analysis.py            # 版本差异分析
-    ├── what_if.py                  # 参数扫描 / 反解
-    ├── summarize_findings.py       # 结论汇总
-    ├── lifecycle_audit.py          # 器件生命周期
-    ├── export_issues.py            # 问题导出
-    ├── fab_release_gate.py         # 投板门禁
-    └── ...                         # 详见 scripts/README.md
-```
-
----
+依赖：KiCad CLI 和符号库（实测 KiCad 10.0.x，其他版本需跑原生回归）；Python 3.10+ 标准库；
+PDF 目检渲染用 `pdftoppm`，完整 PDF 页数核对用 Poppler `pdfinfo`（未安装时明确返回检查不足）。
 
 ## 设计约定
 
 - **数据手册是唯一真值**：值来自手册典型应用 / 设计公式，图纸只决定怎么摆；
-- **工具行为是约束而非风格**：KiCad/EasyEDA 的坐标精确连接规则要机械遵守；
+- **工具行为是约束而非风格**：KiCad 的坐标精确连接规则要机械遵守；
 - **可读性是交付标准**：连得对但像器件堆叠的图不算完成；
 - **证据可追溯**：意图追溯到需求和手册页码，验证结果绑定文件哈希；严格审查交 `schematic-review`。
 
----
-
 ## 免责声明
 
-本仓库为 EDA 自动化辅助工具，分析脚本与自动绘图结果应以 KiCad 官方输出、
-器件数据手册以及有资质工程师的人工复核为准。作者不对直接用于生产投板
-造成的损失承担责任。
-
----
+本仓库为 EDA 自动化辅助工具，自动绘图结果应以 KiCad 官方输出、器件数据手册以及有资质工程师的人工复核为准。
+作者不对直接用于生产投板造成的损失承担责任。
 
 ## License
 

@@ -273,7 +273,7 @@ Never blindly trust a PDF schematic. Always cross-reference against datasheets.
 1. **Get the current datasheet** for every IC — don't rely on the PDF's embedded info
 2. **Compare pin connections** — verify every pin in the PDF matches the datasheet's pin table
 3. **Check the "Typical Application" circuit** in the datasheet — compare against the PDF
-4. **Verify component values** against datasheet recommendations (use `schematic-analysis.md` methodology)
+4. **Verify component values** against datasheet recommendations (main workflow step 2; strict review belongs to `schematic-review`)
 5. **Check for errata** — look for errata documents or app notes that supersede the reference design
 6. **Verify footprints** — the PDF's component packages may not match what's currently available
 

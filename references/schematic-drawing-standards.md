@@ -111,7 +111,7 @@ installed KiCad version. On **10.0.4** these are connected as expected. Therefor
 
 `scripts/verify_schematic.py <root> --intent <intent> --out <fresh dir>` runs
 items 1–3 plus symbol integrity and the readability gate in one pass and
-writes `summary.json`; items 4–6 stay manual.
+writes `summary.json`; items 4–5 stay manual.
 
 1. Native ERC: no unresolved errors/warnings. Keep the full report, exclusions,
    ignored-check metadata, command result and exact KiCad version. An explained
@@ -123,19 +123,15 @@ writes `summary.json`; items 4–6 stay manual.
    field/label collisions (including same-owner), wire/text and pin/text overlap,
    page/title intrusion, electrical grid, wire/label/NC/junction attachment and
    cross-net contact. Report unsupported objects as coverage gaps.
-4. Optional analyzer ([analysis-toolkit.md](analysis-toolkit.md)): if used,
-   reconcile its findings and heuristics with datasheet truth, including
-   regulator Vref/formulas. Analyzer counts alone are not proof; the full
-   electrical review belongs to `schematic-review`.
-5. Native PDF/PNG: inspect the full page and crowded regions. Confirm text
+4. Native PDF/PNG: inspect the full page and crowded regions. Confirm text
    direction, legibility, pin names/numbers, association, local paths and page
    composition. Geometry uses approximate text boxes and conservative arcs.
-6. Electrical evidence: pinout/package, ratings, values and required networks
+5. Electrical evidence: pinout/package, ratings, values and required networks
    meet the design intent and datasheet. A geometry fixture is not a qualified
    electrical design.
 
 `AUTOMATED_PASS` only covers automated gates; visual and datasheet reviews
-remain pending. Do not report completion from ERC alone, analyzer JSON alone,
+remain pending. Do not report completion from ERC alone,
 API success or a solver's `solved` flag.
 
 ## 6. Repair, rerun and handoff

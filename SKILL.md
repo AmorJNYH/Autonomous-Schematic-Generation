@@ -128,16 +128,11 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
 - 新设计要求 ERC 零违规。重画工程时保留基线和最终两份原始 ERC，逐条确认没有新增违规，并披露继承的问题。
 - `geometry` 为 INSUFFICIENT 时（例如根页含层次图框），说明该页超出检查器覆盖范围，必须在渲染图上核对。
 - 失败时修改相应页面脚本，在新的运行目录重新生成并验证。不得为了降低计数而加 PWR_FLAG、加排除项或改引脚类型。
-- 唯一受控例外：只由连接器引入的电源或地（板上没有电源输出脚驱动），在板级意图中逐网声明
-  `"external_supply": [{"net", "pin": "连接器位号.脚号", "reason"}]`，页面脚本用 `Sheet.power_flag()` 在该网上放一个
-  PWR_FLAG。`external_supply` 门禁核对：每个 PWR_FLAG 都在已声明的网上、每个声明网恰好一个、声明的连接器脚在该网上、
-  该网没有板上 power_out 驱动。未声明的网不得放 PWR_FLAG。连接器须是 `Connector` / `Connector_*` 库，或
-  自定义器件的 `fields.ComponentRole="connector"`；原生器件必须存在且与意图身份、角色一致，声明脚及完整库引脚表必须都是
-  passive。自定义连接器的机械角色仍需原厂资料/手册独审；角色字段只声明结构，不能证明器件真实性。门禁按缓存的原生
-  power/power_out 标记识别所有 namespace 的旗标，缓存缺失或继承无法解析记 INSUFFICIENT。
-- `symbol_integrity` 报告的 `unnamed_pins` 列出"同一符号里其他脚有名字、某脚名字为空或 `~`"的脚（例如 KiCad 运放符号
-  LM358、AD8494 的输出脚按库惯例不写名字）。它只作诊断、不影响门禁；这些脚导出网表时没有引脚功能名，
-  核心器件要在参考合同里按数据手册名字逐脚绑定，并在交给 schematic-review 的说明中列出。
+- 唯一受控例外：只由连接器引入、板上没有电源输出脚驱动的电源或地，在意图中逐网声明 `external_supply`，
+  用 `Sheet.power_flag()` 每网放一个 PWR_FLAG，由 `external_supply` 门禁核对；声明格式与核对内容见
+  [requirements-to-intent.md](references/requirements-to-intent.md) 第 5 节“连接器角色与外部供电”。
+- `symbol_integrity` 的 `unnamed_pins` 只作诊断（KiCad 运放等符号的输出脚按库惯例不写名字）；核心器件在参考合同里
+  按数据手册名字逐脚绑定，并在交接说明中列出这些脚。
 
 ### 7. 渲染目检
 
@@ -170,9 +165,6 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
 | 计算预检的条件与门槛 | 全面的最坏情况分析与 FAIL/待核判定 |
 | 层次、符号完整性、几何、可读性；渲染目检 | 冻结/放行结论、P0–P3 分级、修改建议 |
 
-需要快速看懂一张已有原理图或 PDF 参考设计时，可以用 [analysis-toolkit.md](references/analysis-toolkit.md)
-中的分析器。它们只是辅助，不构成审查结论。
-
 ## 硬性规则
 
 - 意图独立于几何：位号、值、MPN、引脚编号、装配状态和网络归属不因摆放改变；不为布图方便改符号的引脚映射。
@@ -198,7 +190,5 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
 | 对照工程师模板 | [engineer-template-comparison.md](references/engineer-template-comparison.md) |
 | 交付证据与新鲜度 | [execution-evidence.md](references/execution-evidence.md) |
 | Circuit IR、低层生成器 | [circuit-ir.md](references/circuit-ir.md)、[schematic-generation.md](references/schematic-generation.md) |
-| 发布验证、上游来源、改造记录 | [release-validation.md](references/release-validation.md)、[upstream-integration.md](references/upstream-integration.md)、[improvement-ledger.md](references/improvement-ledger.md) |
-| 可选分析器（原理图/PCB/Gerber/PDF 等） | [analysis-toolkit.md](references/analysis-toolkit.md) |
 
 运行不需要上游完整仓库、新的 MCP 服务、Bun 或网络连接。

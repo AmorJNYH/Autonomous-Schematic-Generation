@@ -84,7 +84,7 @@ Node TypeScript stripping 执行上游 MST 函数；不是从 README 推断结�
 进一步实现了 Circuit IR v2、自动功能块放置、字段空间预算、单页拼排、
 有界重排、多单元视图、属性/装配回读、稳定身份和受保护的再生成。
 格式及命令见 [circuit-ir.md](circuit-ir.md)，逐项闭环见
-[improvement-ledger.md](improvement-ledger.md)。原生多页/图形总线、隐藏/叠加
+[improvement-ledger.md](../docs/improvement-ledger.md)。原生多页/图形总线、隐藏/叠加
 引脚、任意复杂跨网图和手工工程原位增量编辑仍需专用 writer。
 
 `tests/probe_structured_upstream.py` 读取真实 SKiDL Circuit/Node/Part/Net 并
