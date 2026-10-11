@@ -52,6 +52,21 @@ def compare_netlist(xml_path, intent, layout=None):
     for actual in actual_sets:
         if actual not in expected_sets and not (len(actual) == 1 and actual <= nc):
             errors.append({"kind": "unexpected_net_partition", "pins": sorted(actual)})
+    if layout is None:
+        # Board level: a drawn (non-automatic) net name must be the intent name
+        # of the same pin partition, e.g. two swapped single-use name labels.
+        by_pins = {frozenset(n["pins"]): n["name"] for n in intent["nets"]}
+        for name, pins in nets:
+            leaf = name.rsplit("/", 1)[-1]
+            if (pins in by_pins and not leaf.startswith(("Net-(", "unconnected-("))
+                    and leaf != by_pins[pins]):
+                errors.append(
+                    {
+                        "kind": "net_name_mismatch",
+                        "expected": by_pins[pins],
+                        "actual": [name],
+                    }
+                )
     for n in intent["nets"]:
         policy = (layout or {}).get("nets", {}).get(n["name"], {})
         if (policy.get("mode") in ("labels", "power") or policy.get("label")
