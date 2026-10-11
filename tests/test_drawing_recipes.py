@@ -257,8 +257,11 @@ class RecipeRefinementTests(unittest.TestCase):
             s = draw()
             s.name('LED_A')     # R3 -> D3 is too short for this name
             return s
-        with self.assertRaisesRegex(ValueError, 'LED_A'):
+        with self.assertRaisesRegex(ValueError, 'LED_A') as caught:
             sheet().build('recipe_board')
+        # The error states how long a run the name needs and how long the net's runs are.
+        self.assertRegex(str(caught.exception),
+                         r'at least \d+\.\d\d mm .* longest LED_A run is \d+\.\d\d mm')
         _, report = sheet().build('recipe_board', draft=True)
         self.assertIn('name LED_A', report['draft_failures'])
 

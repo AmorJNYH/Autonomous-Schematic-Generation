@@ -774,7 +774,15 @@ class Sheet:
                     break
             else:
                 if not draft:
-                    raise ValueError(f"No clear spot for the {net} name; give it a longer straight wire")
+                    text = label_geometry("local", net, (0, 0), RIGHT, spec["font"])[2]
+                    need = (text.x_max - text.x_min) + 2 * G
+                    longest = max(abs(b[0] - a[0]) + abs(b[1] - a[1]) for a, b in wires[net])
+                    hint = ("lengthen one straight run" if longest < need
+                            else "the long runs are blocked by nearby parts or text; widen the gap around one")
+                    raise ValueError(
+                        f"No clear spot for the {net} name: it needs a straight run of at least {need:.2f} mm "
+                        f"(text plus two grid steps, O7); the longest {net} run is {longest:.2f} mm and "
+                        f"{len(candidates)} positions were blocked; {hint}")
                 failures.append(f"name {net}")
         # Emit wires, junctions, NC markers, rails and labels.
         for n, a, b in segments:
