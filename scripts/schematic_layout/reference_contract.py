@@ -12,9 +12,23 @@ import xml.etree.ElementTree as ET
 from .design_change import read_native, UnqualifiedPinlessObjects
 
 
-def _keys(obj, required, optional=()):
-    if not isinstance(obj, dict) or set(obj) - set(required) - set(optional) or set(required) - set(obj):
-        raise ValueError(f"Expected fields {sorted(required)}, optional {sorted(optional)}")
+def _field_path(context, key):
+    # JSON pointer tokens keep identifiers containing '/' or '~' unambiguous.
+    # Non-JSON keys are invalid schema fields; never print an arbitrary object.
+    token = key if isinstance(key, str) else f"<{type(key).__name__} key>"
+    return context + "/" + token.replace("~", "~0").replace("/", "~1")
+
+
+def _keys(obj, required, optional=(), *, context):
+    expected = f"Expected fields {sorted(required)}, optional {sorted(optional)}"
+    if not isinstance(obj, dict):
+        raise ValueError(f"{context}: Expected object; {expected}")
+    missing = set(required) - set(obj)
+    extra = set(obj) - set(required) - set(optional)
+    if missing or extra:
+        missing_paths = sorted(_field_path(context, key) for key in missing)
+        extra_paths = sorted(_field_path(context, key) for key in extra)
+        raise ValueError(f"{context}: {expected}; missing {missing_paths}; extra {extra_paths}")
 
 
 def _text(s, context="text"):
@@ -24,11 +38,11 @@ def _text(s, context="text"):
 
 
 def verify_reference(netlist, contract, base, *, source_root=None, source_roles=None, project=None):
-    _keys(contract, {"schema_version", "scope", "sources", "pin_maps", "checks", "features"})
+    _keys(contract, {"schema_version", "scope", "sources", "pin_maps", "checks", "features"}, context="contract")
     if contract["schema_version"] != 1:
         raise ValueError("Unsupported reference contract version")
     scope = contract["scope"]
-    _keys(scope, {"core_refs", "feature_ids"})
+    _keys(scope, {"core_refs", "feature_ids"}, context="contract/scope")
     for values in scope.values():
         if not isinstance(values, list) or not values or any(not isinstance(x, str) or not x for x in values) or len(set(values)) != len(values):
             raise ValueError("Scope must declare nonempty unique core_refs and feature_ids")
@@ -60,7 +74,7 @@ def verify_reference(netlist, contract, base, *, source_root=None, source_roles=
     base = Path(base).resolve()
     for sid, s in contract["sources"].items():
         _text(sid, "sources ID")
-        _keys(s, {"path", "sha256", "url", "document", "revision"})
+        _keys(s, {"path", "sha256", "url", "document", "revision"}, context=_field_path("contract/sources", sid))
         for key, v in s.items():
             _text(v, f"source {sid}.{key}")
         if not re.fullmatch(r"[0-9a-f]{64}", s["sha256"]):
@@ -83,8 +97,9 @@ def verify_reference(netlist, contract, base, *, source_root=None, source_roles=
 
     pin_results = {}
     for ref, spec in contract["pin_maps"].items():
-        _keys(spec, {"identity", "source", "locator", "pins"})
-        _keys(spec["identity"], {"value", "mpn", "footprint", "lib_id"})
+        pin_map_context = _field_path("contract/pin_maps", ref)
+        _keys(spec, {"identity", "source", "locator", "pins"}, context=pin_map_context)
+        _keys(spec["identity"], {"value", "mpn", "footprint", "lib_id"}, context=pin_map_context + "/identity")
         for key, v in spec["identity"].items():
             if key == "footprint" and v == "":
                 continue  # Explicitly unassigned at schematic stage; still compared exactly below.
@@ -121,7 +136,7 @@ def verify_reference(netlist, contract, base, *, source_root=None, source_roles=
                 failures.append({"library_pins_missing_from_contract": sorted(unmapped)})
         for number, expected in spec["pins"].items():
             _text(number, f"{ref}.physical pin")
-            _keys(expected, {"names", "types"})
+            _keys(expected, {"names", "types"}, context=_field_path(pin_map_context + "/pins", number))
             for field, aliases in expected.items():
                 if not isinstance(aliases, list) or not aliases or any(not isinstance(x, str) for x in aliases) or len(set(aliases)) != len(aliases):
                     raise ValueError(f"{ref} physical pin {number} {field}: explicit nonempty unique alias list required")
@@ -148,18 +163,19 @@ def verify_reference(netlist, contract, base, *, source_root=None, source_roles=
         gaps.append({"kind": "core_scope_mismatch", "missing": sorted(set(scope["core_refs"]) - pin_results.keys()),
                      "undeclared": sorted(pin_results.keys() - set(scope["core_refs"]))})
 
-    for c in contract["checks"]:
+    for check_index, c in enumerate(contract["checks"]):
+        check_context = f"contract/checks/{check_index}"
         common = {"id", "kind", "source", "locator"}
         if not isinstance(c, dict) or c.get("kind") not in {"component", "same_net", "distinct_nets"}:
-            raise ValueError("Unknown peripheral check kind")
-        _keys(c, common | ({"ref", "expected"} if c["kind"] == "component" else {"pins"}))
+            raise ValueError(f"{check_context}/kind: Unknown peripheral check kind")
+        _keys(c, common | ({"ref", "expected"} if c["kind"] == "component" else {"pins"}), context=check_context)
         cid = _text(c["id"], "check.id")
         if cid in checks:
             raise ValueError("Duplicate check ID")
         basis = evidence(c, f"check {cid}")
         failures = []
         if c["kind"] == "component":
-            _keys(c["expected"], {"value", "footprint", "lib_id", "dnp"})
+            _keys(c["expected"], {"value", "footprint", "lib_id", "dnp"}, context=check_context + "/expected")
             if type(c["expected"]["dnp"]) is not bool or any(not isinstance(c["expected"][k], str) for k in ("value", "footprint", "lib_id")):
                 raise ValueError("Invalid component expectation")
             comp = native["components"].get(c["ref"])
@@ -182,16 +198,17 @@ def verify_reference(netlist, contract, base, *, source_root=None, source_roles=
                        "source": c["source"], "locator": c["locator"], "failures": failures}
 
     features = {}
-    for f in contract["features"]:
-        _keys(f, {"id", "boundary", "source", "locator", "stages"})
+    for feature_index, f in enumerate(contract["features"]):
+        feature_context = f"contract/features/{feature_index}"
+        _keys(f, {"id", "boundary", "source", "locator", "stages"}, context=feature_context)
         fid = _text(f["id"], "feature.id")
         _text(f["boundary"], f"feature {fid}.boundary")
         if fid in features or not isinstance(f["stages"], list) or not f["stages"]:
             raise ValueError("Duplicate feature or empty stages")
         basis = evidence(f, f"feature {fid}")
         stage_ids, stage_results = set(), []
-        for stage in f["stages"]:
-            _keys(stage, {"id", "role", "refs", "checks"})
+        for stage_index, stage in enumerate(f["stages"]):
+            _keys(stage, {"id", "role", "refs", "checks"}, context=f"{feature_context}/stages/{stage_index}")
             sid = _text(stage["id"], f"feature {fid}.stage.id")
             _text(stage["role"], f"feature {fid}.stage {sid}.role")
             if sid in stage_ids or any(not isinstance(stage[k], list) or not stage[k] or any(not isinstance(x, str) or not x for x in stage[k]) or len(set(stage[k])) != len(stage[k]) for k in ("refs", "checks")):

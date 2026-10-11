@@ -197,6 +197,42 @@ A supported allowed corner outside the required window fails the guarantee;
 missing conditions remain OPEN. This is a peripheral-contract obligation, not
 proof that every physical unit fails or that an arithmetic tool is defective.
 
+For each numerical source, retain the actual page/table, parameter row,
+MIN/TYP/MAX column, value/unit, test conditions and footnotes. Independently
+compare those conditions with the design's supply, temperature, load and other
+applicable operating ranges. A parameter name containing "Max" does not make
+a number in its TYP column a guaranteed MAX limit. Use the existing calculation
+basis `TYPICAL` for a typical value, never `GUARANTEED` merely because the
+nominal arithmetic passes; retain its conditions and explicit closure.
+
+Interpret the physical acceptance goal before using a load-capacitance value.
+For an analog amplifier or control loop, a typical capacitive-load stability
+value does not guarantee absence of sustained oscillation. Bound total CL,
+including pin/board parasitics, connected loads and measurement probes, then
+check the applicable supply-voltage, temperature and load corners. Being below
+the TYP number alone cannot close stability. Where source guarantees are
+insufficient, retain targeted measurement closure that confirms **no sustained
+self-oscillation** under the required conditions. Oscillator startup and
+continued normal oscillation are separate physical goals for an actual
+oscillator design; do not impose them on an amplifier stability check.
+
+Derive calculation summaries from the actual unique calculation IDs and their
+preflight result rows. List each ID, actual status, source/condition bounds and
+OPEN closure; disclose duplicate IDs, missing results and unmatched rows.
+Compute counts from that reconciled set, not a manually stated calculation
+count. Arithmetic-check completion does not establish a guaranteed design.
+
+For a series limiter, isolation element or feedback support branch, bind the
+fitted part/value and **each** terminal to its intended physical endpoints with
+`component` and `same_net` checks. Declare `distinct_nets` for the nodes that
+must remain separated by that element in the direct native netlist. Preserve
+a short/bypass mutation: correct same-net endpoint checks can still PASS when
+both terminals have been merged, whereas the required distinct-net check must
+FAIL. Select the distinct nodes from the real topology, rather than requiring
+all feedback pins to be mutually distinct. These checks prove declared direct
+net partitions only; current flow, component behavior, feedback stability and
+alternative fitted paths still need independent engineering evidence.
+
 Build the state table from each real supply source, assembly, switch and
 independently powered counterpart. Trace persistent sources into each unpowered
 pin, including non-failsafe inputs, injection and backfeed paths, with applicable
