@@ -195,9 +195,16 @@ class Sheet:
         for ref, pair in two.items():
             if ref not in roles:
                 on_rails = sum(n in self.rails for n in pair)
-                role = ("series", "shunt", "decoupling")[on_rails]
-                roles[ref] = {"role": role, "why": ("between two signal nets", "one pin on a rail",
-                                                    "both pins on rails")[on_rails]}
+                # A resistor can separate two declared supply domains. Return
+                # recognition remains the existing power-glyph direction
+                # heuristic; this suggestion establishes no voltage or safety.
+                if (on_rails == 2 and len(set(pair)) == 2 and not set(pair) & returns
+                        and self.components[ref]["lib_id"].startswith("Device:R")):
+                    roles[ref] = {"role": "series", "why": "between distinct declared non-return rails"}
+                else:
+                    role = ("series", "shunt", "decoupling")[on_rails]
+                    roles[ref] = {"role": role, "why": ("between two signal nets", "one pin on a rail",
+                                                        "both pins on rails")[on_rails]}
         names = select_local_names(self.intent, self.external, self.rails)
         nets = {}
         for n in sorted(x["name"] for x in self.intent["nets"]):

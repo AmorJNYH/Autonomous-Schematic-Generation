@@ -20,6 +20,38 @@ its segment at retained branches and label anchors. A visually redundant end
 can share a segment with a real pin connection. Re-export native XML/ERC after
 the final cleanup, artwork, label or field mutation; old PASS results expire.
 
+## Generator paths and reproducible handoff
+
+Author generators with an explicit **artifact-root** for inputs and a separate
+**output-root** for a fresh run. Resolve project-relative inputs against the
+artifact-root, not the caller's working directory or a former scratch tree.
+Locate the ASG runtime separately; record the actual skill revision and any
+external dependencies. Document the invocation and required input paths with
+their hashes beside the delivered script. Keeping a script does not establish
+that its paths resolve inside the packaged delivery.
+
+Provide a read-only `--check-inputs` mode or equivalent explicit dependency
+check. It must resolve and inspect required inputs and bound hashes, report
+missing files, undeclared external dependencies and input/output path aliases,
+then exit **before** creating directories, appending logs, writing candidates
+or calling `Sheet.build()`. Declared external sources/runtime paths need their
+own recorded identity; silently borrowing an old worktree is not a dependency
+contract. Do not execute or import arbitrary generator code merely to discover
+its dependencies, and do not call a static string scan a complete path check.
+
+After packaging, relocate a copy under the workflow's temporary directory and
+perform that read-only check from a different working directory. Confirm the
+declared inputs still resolve and retain their hashes, and that the check did
+not change files. A successful check establishes input-path resolution only;
+it does not prove generation, native validation or electrical correctness.
+Snapshot freshness and generator reproducibility are separate obligations.
+
+When a build budget is exhausted, retain the actual failed scripts, iteration
+log and missing native outputs as evidence. A path defect remains an explicit
+handoff gap. Correct it only in a separately authorized version; neither an
+input check nor a path repair creates the absent original functional schematic
+or permits another build against an exhausted budget.
+
 ## Readability evidence
 
 Apply [human-readable-routing.md](human-readable-routing.md). Record the

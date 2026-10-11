@@ -222,6 +222,25 @@ OPEN closure; disclose duplicate IDs, missing results and unmatched rows.
 Compute counts from that reconciled set, not a manually stated calculation
 count. Arithmetic-check completion does not establish a guaranteed design.
 
+Independently derive each expression's physical dimensions and unit scale from
+its declared inputs before comparing it with an acceptance boundary. Record
+the resulting physical quantity, output dimensions, unit conversions and the
+meaning of the acceptance metric. Addition/subtraction needs compatible
+quantities with explicit scale conversion; multiplication/division combines
+dimensions. Numeric constants must not hide an undeclared component parameter
+or voltage threshold. Matching `output_unit` and `acceptance.unit` strings in
+the arithmetic preflight does not validate the expression's dimensions.
+
+For example, resistance times capacitance (`ohm * F`) gives a time constant in
+seconds. It cannot be relabelled `s/V` and directly compared with an input
+transition-rate limit. A threshold-interval metric such as delta-time divided
+by delta-voltage needs the actual voltage thresholds and an applicable response
+model or measured waveform; missing inputs remain OPEN/INSUFFICIENT. Likewise,
+dimension compatibility alone does not prove the model or its worst case.
+Unknown units, model definitions or unsupported derivations retain an explicit
+coverage gap. This is an ASG engineering-review obligation, not an extension
+of the shared calculation schema/runtime or a claim that SR checks dimensions.
+
 For a series limiter, isolation element or feedback support branch, bind the
 fitted part/value and **each** terminal to its intended physical endpoints with
 `component` and `same_net` checks. Declare `distinct_nets` for the nodes that
