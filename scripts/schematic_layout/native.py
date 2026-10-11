@@ -55,15 +55,19 @@ def compare_netlist(xml_path, intent, layout=None):
     if layout is None:
         # Board level: a drawn (non-automatic) net name must be the intent name
         # of the same pin partition, e.g. two swapped single-use name labels.
+        # Intent names may themselves contain "/" (ESP0/STAT, /Debugger/BOOT);
+        # native local names carry the sheet path as a prefix.
         by_pins = {frozenset(n["pins"]): n["name"] for n in intent["nets"]}
         for name, pins in nets:
             leaf = name.rsplit("/", 1)[-1]
-            if (pins in by_pins and not leaf.startswith(("Net-(", "unconnected-("))
-                    and leaf != by_pins[pins]):
+            expected = by_pins.get(pins)
+            if (expected is not None and not leaf.startswith(("Net-(", "unconnected-("))
+                    and name.lstrip("/") != expected.lstrip("/")
+                    and not name.endswith("/" + expected.lstrip("/"))):
                 errors.append(
                     {
                         "kind": "net_name_mismatch",
-                        "expected": by_pins[pins],
+                        "expected": expected,
                         "actual": [name],
                     }
                 )

@@ -45,6 +45,15 @@ class BoardNetNameTest(unittest.TestCase):
         r = self.check([("/03_control/BTN_F", ["R1.1", "R2.1"]), ("Net-(R1-Pad2)", ["R1.2", "R2.2"])])
         self.assertEqual(r["status"], "PASS", r["errors"])
 
+    def test_intent_names_with_slashes_match_native_paths(self):
+        intent = {**INTENT, "nets": [{"name": "ESP0/STAT", "pins": ["R1.1", "R2.1"]},
+                                     {"name": "/Debugger/BOOT", "pins": ["R1.2", "R2.2"]}]}
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "netlist.xml"
+            p.write_text(xml([("ESP0/STAT", ["R1.1", "R2.1"]), ("/Debugger/BOOT", ["R1.2", "R2.2"])]))
+            r = compare_netlist(p, intent)
+        self.assertEqual(r["status"], "PASS", r["errors"])
+
     def test_swapped_name_labels_fail_although_partitions_match(self):
         r = self.check([("/03_control/CLK", ["R1.1", "R2.1"]), ("/03_control/BTN_F", ["R1.2", "R2.2"])])
         self.assertEqual(r["status"], "FAIL")
