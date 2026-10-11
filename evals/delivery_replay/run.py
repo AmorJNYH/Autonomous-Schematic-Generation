@@ -3,6 +3,35 @@ import sys,argparse,time
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from bench_common import *
+# Exact outputs of the audited historical helpers; relative to suite/base roots.
+# Parent directory names never determine whether an XML is native evidence.
+REBUILT_NATIVE_OUTPUTS={
+ 1:'replay-01to04/round01/native/netlist.xml',
+ 2:'replay-01to04/round02/verify/netlist.xml',
+ 3:'replay-01to04/round03/rebuilt-verification/netlist.xml',
+ 4:'replay-01to04/round04/native/netlist.xml',
+ 5:'replay-05/native/netlist.xml',6:'replay-06/native/netlist.xml',
+ 7:'replay-07/native/netlist.xml',8:'replay-08/native/netlist.xml',
+ 9:'replay-09/native/netlist.xml',10:'replay-10/verify/netlist.xml'}
+FROZEN_NATIVE_OUTPUTS={
+ 1:'round-01/asg-delivery/native-final/netlist.xml',
+ 2:'round-02/asg-delivery/verification-final/netlist.xml',
+ 3:'round-03/asg-delivery/verification/netlist.xml',
+ 4:'round-04/asg-delivery/verify-04/netlist.xml',
+ 5:'round-05/asg-delivery/verify-final/netlist.xml',
+ 6:'round-06/asg-delivery/native/netlist.xml',
+ 7:'round-07/asg-delivery/native/03/netlist.xml',
+ 8:'round-08/asg-delivery/verify-04/netlist.xml',
+ 9:'round-09/asg-delivery/native-v4/netlist.xml',
+ 10:'round-10/asg-delivery/native-frozen/netlist.xml'}
+
+def locate_native_output(root,round_number,outputs):
+ """Accept only the fixed helper/frozen output, never copied CAD or test fixtures."""
+ relative=outputs.get(round_number)
+ if relative is None:return None
+ candidate=Path(root)/relative
+ return candidate if candidate.is_file() else None
+
 def main():
  a=argparse.ArgumentParser();a.add_argument('--cache',required=True,type=Path);a.add_argument('--out',required=True,type=Path);v=a.parse_args();v.out.resolve().relative_to(Path('/tmp/codex-work').resolve());v.out.mkdir(parents=True,exist_ok=False);t=time.monotonic();runs=[];rounds={}
  for h in get(v.cache/'prepared.json')['helpers']:
@@ -17,16 +46,11 @@ def main():
   if h['id']=='replay-01to04':rounds.update(report.get('rounds',{}))
   else:rounds[h['id'][-2:]]=report
  # Independently compare rebuilt exported XML with frozen native XML, not the public answer.
- frozen=['native-final/netlist.xml','verification-final/netlist.xml','verification/netlist.xml','verify-04/netlist.xml','verify-final/netlist.xml','native/netlist.xml','native/netlist.xml','verify-04/netlist.xml','native-frozen/netlist.xml','native-frozen/netlist.xml']
  base=Path('/Users/skyfend/Documents/ChatGPT/Auto-Development/ASG提升计划/2026-10-08-10轮')
  for n in range(1,11):
-  key=f'{n:02}';r=rounds.setdefault(key,{});o=v.out/('replay-01to04/round'+key if n<=4 else 'replay-'+key)
-  preferred=o/('rebuilt-verification/netlist.xml' if n==3 else 'native/netlist.xml' if n in [4,5,6,7,8] else 'verify/netlist.xml')
-  if n==1:preferred=o/'asg/native/netlist.xml'
-  opts=list(o.glob('**/netlist.xml')) if o.exists() else [];new=preferred if preferred.exists() else next((p for p in opts if 'runtime-asg' not in p.parts and 'delivery' not in p.parts and 'control' not in str(p)),None)
-  old=base/('round-'+key)/'asg-delivery'/frozen[n-1]
-  if not old.exists():
-   alternatives=list((base/('round-'+key)/'asg-delivery').glob('**/netlist.xml'));old=next((p for p in alternatives if any(k in str(p) for k in ['native-final','native-frozen','verification-final','verification','native','verify-final'])),None)
+  key=f'{n:02}';r=rounds.setdefault(key,{})
+  new=locate_native_output(v.out,n,REBUILT_NATIVE_OUTPUTS)
+  old=locate_native_output(base,n,FROZEN_NATIVE_OUTPUTS)
   equality=None
   if old and new and Path(old).exists():
    before=native(old);after=native(new);equality={'component_identity_equal':before['components']==after['components'],'physical_partition_equal':before['partitions']==after['partitions'],'frozen_xml':str(old),'frozen_sha256':sha(old),'rebuilt_xml':str(new),'rebuilt_sha256':sha(new)}
