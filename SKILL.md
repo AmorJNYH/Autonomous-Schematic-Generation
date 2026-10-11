@@ -64,7 +64,8 @@ ASG 不负责以下事项：
 
 - 每个核心器件绑定确切 MPN/封装的物理引脚表、典型应用、必需外围和装配状态，记录实际阅读的手册页码。
   见 [symbol-and-peripheral-contracts.md](references/symbol-and-peripheral-contracts.md)。
-- 数值计算按 [calculation-preflight.md](references/calculation-preflight.md) 写明保证条件。
+- 数值计算按 [calculation-preflight.md](references/calculation-preflight.md) 写明保证条件；上电/热插拔、关断/掉电、
+  全温角点和引脚应力四类按 [requirements-to-intent.md](references/requirements-to-intent.md) 第 4 节清单逐项核。
 - 原理图阶段 `footprint` 可以留空；散热和机械需求写进交接文档。
 - **资料规则**：新下载的器件数据手册存入工程，同时复制到
   `~/Documents/知识库/HardwareWiki/raw/Datasheet/<分类>/<子类>/`，文件名为 `Vendor - PartNumber.pdf`
@@ -132,8 +133,9 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
 - 唯一受控例外：只由连接器引入、板上没有电源输出脚驱动的电源或地，在意图中逐网声明 `external_supply`，
   用 `Sheet.power_flag()` 每网放一个 PWR_FLAG，由 `external_supply` 门禁核对；声明格式与核对内容见
   [requirements-to-intent.md](references/requirements-to-intent.md) 第 5 节“连接器角色与外部供电”。
-- `symbol_integrity` 的 `unnamed_pins` 只作诊断（KiCad 运放等符号的输出脚按库惯例不写名字）；核心器件在参考合同里
-  按数据手册名字逐脚绑定，并在交接说明中列出这些脚。
+- `symbol_integrity` 的 `unnamed_pins` 只作诊断（KiCad 运放、单门逻辑等符号的输入/输出脚按库惯例不写名字）。
+  列出的每个器件（不限核心器件）都要在参考合同里按数据手册名字逐脚绑定，并在交接说明中列出这些脚；
+  否则 schematic-review 的严格解析会因缺脚名失败。
 
 ### 7. 渲染目检
 
