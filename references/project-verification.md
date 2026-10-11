@@ -87,7 +87,8 @@ retain every remaining baseline pin and all declared new pins exactly once.
 Unknown, duplicate, missing and invented pins fail. `#` references are virtual
 and excluded consistently; physical NC singleton nets remain significant. Local
 net names may change without changing partitions; use `named_nets` for important
-names. Expected partitions must come from independent intent, not the candidate.
+names. `verify_schematic.py` still requires drawn names to match the intent, so
+update the intent names in the same revision. Expected partitions must come from independent intent, not the candidate.
 
 Native exported pins are not independent datasheet evidence. This tool does not
 check package mapping, unexported hidden pins, assembled DNP operation or analog

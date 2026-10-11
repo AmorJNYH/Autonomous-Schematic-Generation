@@ -78,7 +78,7 @@ Keep separate results for these checks; no single PASS covers the others.
 | --- | --- |
 | Electrical connectivity | Root native XML has exactly the same physical pin partitions and NC treatment; no missing pins, shorts or splits. |
 | Identity and scope | Component properties, unit/UUID context and hierarchy match; protected sheet files are unchanged; library changes are accounted for. |
-| Network names | Cross-page names and endpoints remain stable. Preserve local names when they are an interface; if local names legitimately change, record old/new names and the exact pin set and assess downstream dependencies. |
+| Network names | Cross-page names and endpoints remain stable. Preserve local names when they are an interface; if local names legitimately change, update the intent names first, record old/new names and the exact pin set and assess downstream dependencies; `verify_schematic.py` fails a drawn name that differs from the intent. |
 | Native ERC delta | Retain both raw reports. Compare violation type/severity and affected references/pins/messages, accounting for changed coordinates. Investigate each added violation; never rely only on total counts. |
 | Geometry and grid | Check serialized bodies, wires, pin legs, fields, labels, anchors, the actual drawing frame and titleblock. Validate connection tips on the native grid, normally 1.27 mm. |
 | Render review | Inspect every changed full page and crowded clock/divider/isolation/configuration region through native PDF output. Record each page's review and remaining defects. |

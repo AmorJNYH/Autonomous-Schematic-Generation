@@ -1,6 +1,7 @@
 """Drawing recipes, local-name policy and the mandatory readability gate."""
 import copy
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -260,8 +261,11 @@ class RecipeRefinementTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'LED_A') as caught:
             sheet().build('recipe_board')
         # The error states how long a run the name needs and how long the net's runs are.
-        self.assertRegex(str(caught.exception),
-                         r'at least \d+\.\d\d mm .* longest LED_A run is \d+\.\d\d mm')
+        message = str(caught.exception)
+        need, longest = map(float, re.search(
+            r'at least (\d+\.\d\d) mm .* longest LED_A run is (\d+\.\d\d) mm', message).groups())
+        self.assertGreater(need, longest)
+        self.assertIn('lengthen one straight run', message)
         _, report = sheet().build('recipe_board', draft=True)
         self.assertIn('name LED_A', report['draft_failures'])
 

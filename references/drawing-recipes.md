@@ -29,8 +29,10 @@ placing support parts from their pins with explicit spines, had 0 crossings and
 6. Run `scripts/verify_schematic.py <root.kicad_sch> --intent <intent.json>
    --out <fresh dir>`: native ERC, intent partitions and identity, hierarchy/PDF,
    symbol integrity, the mandatory readability gate and geometry on every
-   active sheet, in one pass. `compare_netlist(xml, intent, report["layout"])`
-   additionally checks a single page's label and rail names.
+   active sheet, in one pass. At board level every drawn (non-automatic) net
+   name must equal the intent name of the same pin set, allowing only a sheet
+   path prefix. `compare_netlist(xml, intent, report["layout"])` instead checks
+   a single page's label and rail names against its layout policy.
 7. Render natively and trace each declared reading task.
 
 ## Outline rules (how to decide the structure)

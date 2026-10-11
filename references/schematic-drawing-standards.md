@@ -117,8 +117,9 @@ writes `summary.json`; items 4–5 stay manual.
    ignored-check metadata, command result and exact KiCad version. An explained
    residual warning is still a residual warning, not “0/0”.
 2. Native XML netlist: all intended `reference.pin` partitions match exactly;
-   no unintended shorts, opens, lost pins or component identity changes. Use
-   source-to-output comparison too for a redraw.
+   no unintended shorts, opens, lost pins or component identity changes; every
+   drawn net name equals the intent name of the same pins (sheet path prefix
+   allowed). Use source-to-output comparison too for a redraw.
 3. Geometry: explicitly account for body overlap, wire-through-body, all visible
    field/label collisions (including same-owner), wire/text and pin/text overlap,
    page/title intrusion, electrical grid, wire/label/NC/junction attachment and

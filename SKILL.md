@@ -121,7 +121,8 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
   [--reference-contract F] [--baseline-xml B --change-contract C --preflight P]
 ```
 
-它一次完成：KiCad ERC / XML 网表 / PDF 导出，网表分区与器件身份逐脚对比意图，层次与 PDF 页数，
+它一次完成：KiCad ERC / XML 网表 / PDF 导出，网表分区与器件身份逐脚对比意图（图上画出的网名须等于同一组引脚的意图名，
+只允许页路径前缀；KiCad 自动网名不比），层次与 PDF 页数，
 符号引脚完整性，可读性门禁，以及每个有效页面的几何检查，汇总到 `summary.json`。
 只有全部门禁为 PASS 时结果才是 `AUTOMATED_PASS`。
 

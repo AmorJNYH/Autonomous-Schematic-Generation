@@ -3,9 +3,13 @@
 import hashlib
 import json
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import xml.etree.ElementTree as ET
+
+# KiCad automatic names; the pin names inside may themselves contain "/".
+AUTO_NET_NAME = re.compile(r"(?:^|/)(?:Net|unconnected)-\(")
 
 
 def find_cli(explicit=None):
@@ -53,17 +57,19 @@ def compare_netlist(xml_path, intent, layout=None):
         if actual not in expected_sets and not (len(actual) == 1 and actual <= nc):
             errors.append({"kind": "unexpected_net_partition", "pins": sorted(actual)})
     if layout is None:
-        # Board level: a drawn (non-automatic) net name must be the intent name
-        # of the same pin partition, e.g. two swapped single-use name labels.
-        # Intent names may themselves contain "/" (ESP0/STAT, /Debugger/BOOT);
-        # native local names carry the sheet path as a prefix.
+        # Board level: a drawn net name must be the intent name of the same pin
+        # partition (e.g. two swapped single-use name labels). Automatic names
+        # are skipped even when the pin names inside them contain "/". A local
+        # name may carry only its own sheet path as a prefix; intent names that
+        # start with "/" must match exactly.
+        sheets = {s.attrib.get("name", "") for s in root.findall("design/sheet")} | {"/"}
         by_pins = {frozenset(n["pins"]): n["name"] for n in intent["nets"]}
         for name, pins in nets:
-            leaf = name.rsplit("/", 1)[-1]
             expected = by_pins.get(pins)
-            if (expected is not None and not leaf.startswith(("Net-(", "unconnected-("))
-                    and name.lstrip("/") != expected.lstrip("/")
-                    and not name.endswith("/" + expected.lstrip("/"))):
+            if expected is None or AUTO_NET_NAME.search(name):
+                continue
+            allowed = {expected} if expected.startswith("/") else {expected} | {p + expected for p in sheets}
+            if name not in allowed:
                 errors.append(
                     {
                         "kind": "net_name_mismatch",
