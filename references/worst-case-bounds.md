@@ -40,6 +40,22 @@ one supply voltage is not automatically a guarantee at another. A typical curve,
 absolute maximum or value from a different row must not be substituted for the
 required guaranteed operating limit.
 
+Record each numeric limit used in a peripheral contract as a source-bound claim,
+even when it is not an input to the arithmetic preflight. Include the exact
+variant, revision, page/table/parameter row, units, MIN/TYP/MAX column, footnotes
+and applicable operating conditions. Check the table headings and column position
+against the actual source; text extraction can lose column alignment. A value in
+TYP is an estimate, and a blank or dash in the needed limit column means that bound
+remains unknown. Preserve the unknown in both the contract and dependent
+calculations. Equation replay, a nominal budget or correct units cannot turn a
+typical value into a maximum. For a load limit, distinguish the source-defined
+quantity from additional board contributions that remain budgets or handoff
+obligations. Retain independently established rating limits when a separate
+stability or functional parameter remains unknown; that supported subset does not
+close a criterion that also requires the unknown parameter. If the manufacturer
+requires a nominal selection, preserve that requirement instead of inventing a
+minimum effective value or a MIN/MAX requirement it did not specify.
+
 Use interpolation as a guarantee only where the manufacturer explicitly permits
 that method, within the specified conditions and endpoints, and for the stated
 parameter. Record that permission and its scope. Otherwise, interpolation or
