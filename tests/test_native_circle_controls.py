@@ -39,6 +39,7 @@ def native_fixture(case='legal',angle=0,mirror=''):
         tree.append(f('circle',f('center',50.8,50.8),f('radius',.635),f('stroke',f('width',.0006),f('type',A('default'))),f('fill',f('type',A('none'))),f('uuid',uid('foreign-circle'))))
     elif case=='source-variable':tree.append(f('text','${UNKNOWN}',f('at',53.34,50.8,0),f('effects',f('font',f('size',1,1))),f('uuid',uid('variable'))))
     elif case=='dash-wire':first(wire,'stroke')[2][1]=A('dash')
+    elif case=='foreign-dash':tree.append(f('polyline',f('pts',f('xy',51.7,48.26),f('xy',51.7,53.34)),f('stroke',f('width',.254),f('type',A('dash'))),f('fill',f('type',A('none'))),f('uuid',uid('dashed-foreign'))))
     elif case=='solid-wire':first(wire,'stroke')[2][1]=A('solid')
     elif case=='gap-only':tree.append(f('circle',f('center',150,100),f('radius',1),f('stroke',f('width',.254),f('type',A('default'))),f('fill',f('type',A('none'))),f('uuid',uid('gap'))))
     elif case=='warning-only':
@@ -55,7 +56,7 @@ class NativeCircleControls(unittest.TestCase):
         base=Path('/tmp/codex-work/asg-circle-tests');base.mkdir(exist_ok=True,parents=True)
         cls.temp=tempfile.TemporaryDirectory(dir=base);cls.base=Path(cls.temp.name);cls.rows={}
         cases=[(f'positive-{a}-{m or "none"}','legal',a,m) for a in (0,90,180,270) for m in ('','x','y')]
-        cases += [(c,c,0,'') for c in ('foreign','through-gap','neighbor','field','filled','visible-number','wide-ring','wide-frame','identical-foreign-frame','foreign-filled-frame','missing-own-circle-foreign','source-variable','dash-wire','solid-wire','crlf','gap-only','warning-only')]
+        cases += [(c,c,0,'') for c in ('foreign','through-gap','neighbor','field','filled','visible-number','wide-ring','wide-frame','identical-foreign-frame','foreign-filled-frame','missing-own-circle-foreign','source-variable','dash-wire','foreign-dash','solid-wire','crlf','gap-only','warning-only')]
         for name,case,a,m in cases:
             folder=cls.base/name;folder.mkdir();tree=native_fixture(case,a,m);source=folder/'control.kicad_sch'
             text=dump(tree)+'\n';source.write_bytes((text.replace('\n','\r\n') if case=='crlf' else text).encode())
@@ -74,7 +75,7 @@ class NativeCircleControls(unittest.TestCase):
                 self.assertEqual('PASS',new['status'],(name,new))
 
     def test_real_foreign_neighbor_field_and_unknown_profiles_keep_rejection(self):
-        for name in ('foreign','through-gap','neighbor','field','filled','visible-number','wide-ring','wide-frame','identical-foreign-frame','foreign-filled-frame','missing-own-circle-foreign','source-variable','dash-wire'):
+        for name in ('foreign','through-gap','neighbor','field','filled','visible-number','wide-ring','wide-frame','identical-foreign-frame','foreign-filled-frame','missing-own-circle-foreign','source-variable','dash-wire','foreign-dash'):
             _,old,new=self.rows[name]
             self.assertEqual('FAIL',new['status'],(name,new))
             self.assertEqual(old['coverage']['gaps'],new['coverage']['gaps'])

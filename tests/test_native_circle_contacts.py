@@ -7,7 +7,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from schematic_layout.sexpr import parse,first,all_nodes,form
 from schematic_layout.scene import read_scene,transform
 from schematic_layout.qa import check_scene
-from schematic_layout.native_circle_contacts import candidate_profiles,contact_corridor,refine_wire_contacts,_validate_foreground
+from schematic_layout.native_circle_contacts import candidate_profiles,contact_corridor,refine_wire_contacts,_validate_foreground,_hits
 from schematic_layout.native_geometry import SVG
 
 def fixture(angle=0,mirror='',case='legal'):
@@ -71,8 +71,13 @@ class RingContactTests(unittest.TestCase):
             self.assertEqual(original['coverage']['gaps'],drift['coverage']['gaps'])
 
     def test_unknown_foreground_cap_or_transparency_never_uses_round_bounds(self):
-        for style in ('stroke-linecap:square','stroke-linejoin:bevel','opacity:.5','fill-opacity:.5','stroke-dasharray:1,1'):
+        for style in ('stroke-linecap:square','stroke-linejoin:bevel','opacity:.5','fill-opacity:.5','stroke-dasharray:1,nan'):
             text='<svg width="30mm" height="30mm" viewBox="0 0 30 30"><path d="M 10 10 L 20 10" style="fill:none;stroke:#000000;stroke-width:.2;stroke-linecap:round;stroke-linejoin:round;'+style+'"/></svg>'
             with self.assertRaises(ValueError):_validate_foreground(SVG(text))
+
+    def test_finite_foreign_dashes_keep_the_entire_continuous_stroke_upper_bound(self):
+        text='<svg width="30mm" height="30mm" viewBox="0 0 30 30"><path d="M 10 10 L 20 10" style="fill:none;stroke:#000000;stroke-width:.2;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:1,1"/></svg>'
+        native=SVG(text);_validate_foreground(native)
+        self.assertTrue(_hits(next(iter(native.objects.values())),(15,5),(15,15),.16))
 
 if __name__=='__main__':unittest.main()
