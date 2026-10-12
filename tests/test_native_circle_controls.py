@@ -35,6 +35,16 @@ def native_fixture(case='legal',angle=0,mirror=''):
     elif case=='wide-ring':
         for c in all_nodes(graph,'circle'):first(first(c,'stroke'),'width')[1]=3
     elif case=='wide-frame':first(first(first(graph,'rectangle'),'stroke'),'width')[1]=3
+    elif case in ('wide-wire','tiny-ring'):
+        # No glyphs can mask the issue: both endpoints are real passive pins.
+        tree.remove(next(n for n in all_nodes(tree,'label') if n[1]=='END'))
+        peer=copy.deepcopy(symbol);set_node(peer,'uuid',uid('peer'));first(peer,'at')[1]=58.42
+        next(p for p in all_nodes(peer,'property') if p[1]=='Reference')[2]='J2'
+        first(first(first(peer,'instances'),'project'),'path')[2][1]='J2'
+        tree.append(peer);first(wire,'pts')[2][1:]=[58.42,50.8]
+        if case=='wide-wire':first(first(wire,'stroke'),'width')[1]=2
+        else:
+            for c in all_nodes(graph,'circle'):first(c,'radius')[1]=.1
     elif case in ('identical-foreign-frame','foreign-filled-frame'):
         tree.append(f('rectangle',f('start',49.53,46.99),f('end',52.07,54.61),f('stroke',f('width',.01),f('type',A('default'))),f('fill',f('type',A('outline' if case=='foreign-filled-frame' else 'none'))),f('uuid',uid('foreign'))))
     elif case=='missing-own-circle-foreign':
@@ -120,5 +130,19 @@ class WholeWireGlyphTests(unittest.TestCase):
             keys={k:n for k,n in native.primitives.items() if 'stroked-text' in native.objects[k]['classes']}
             a,b=read_scene(tree).wires[0]
             self.assertLess(ink_gap([[list(a),list(b),.1524]],native.segments(keys,glyph=True)),0)
+
+class TerminalApertureTests(unittest.TestCase):
+    def test_actual_wide_wire_and_minpen_tiny_inner_circle_keep_old_findings(self):
+        cli=find_cli()
+        if not cli:self.skipTest('KiCad CLI unavailable')
+        base=Path('/tmp/codex-work/asg-circle-tests');base.mkdir(exist_ok=True,parents=True)
+        for case in ('wide-wire','tiny-ring'):
+            with tempfile.TemporaryDirectory(dir=base) as tmp:
+                folder=Path(tmp);tree=native_fixture(case);source=folder/'control.kicad_sch';source.write_text(dump(tree)+'\n')
+                (folder/'control.kicad_pro').write_text('{"meta":{"version":1}}')
+                old=check_scene(read_scene(tree));new=refine_wire_contacts(source,old,cli=cli,workdir=folder/'proof')
+                self.assertEqual(old['findings'],new['findings'],(case,new))
+                self.assertEqual(old['coverage']['gaps'],new['coverage']['gaps'])
+                self.assertEqual('FAIL',new['status'])
 
 if __name__=='__main__':unittest.main()
