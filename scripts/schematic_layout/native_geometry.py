@@ -64,6 +64,12 @@ class SVG:
                 raise ValueError('unsupported native visibility/effect')
             for k in ('fill-opacity','stroke-opacity'):
                 if not 0<=finite(st.get(k,'1'))<=1: raise ValueError('invalid stroke opacity')
+            # Compare the resolved SVG paint, not its optional spelling. KiCad
+            # may move an unchanged path between groups when an annotation is
+            # added, leaving default fill-opacity implicit instead of 1.0000.
+            # Inheritance has already been resolved; non-default values remain
+            # distinct and unknown CSS/effects are still rejected below.
+            st['fill-opacity']=finite(st.get('fill-opacity','1'))
             width=finite(st.get('stroke-width','0'))
             if width<0: raise ValueError('negative stroke')
             cc=classes+([e.attrib['class']] if 'class' in e.attrib else [])
