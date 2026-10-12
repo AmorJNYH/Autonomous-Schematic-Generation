@@ -24,6 +24,10 @@ sys.path.insert(0, str(HERE))
 from schematic_layout.external_supply import audit_external_supply  # noqa: E402
 from schematic_layout.native import compare_netlist, compare_source_netlist, find_cli  # noqa: E402
 from schematic_layout.pages import normalize  # noqa: E402
+from schematic_layout.native_geometry_context import prepare_geometry_context, page_context_from_job  # noqa: E402
+from schematic_layout.sexpr import parse, all_nodes  # noqa: E402
+from schematic_layout.scene import read_scene  # noqa: E402
+from schematic_layout.qa import check_scene  # noqa: E402
 
 
 def write(path, data):
@@ -63,6 +67,7 @@ def main():
     ap.add_argument("--preflight", type=Path, help="design-preflight.json for an electrical change")
     ap.add_argument("--project", help="native project annotation name; defaults to the root file stem")
     ap.add_argument("--cli", help="kicad-cli path")
+    ap.add_argument("--native-geometry", action="store_true", help="Also qualify native pin-name geometry on a standalone page; hierarchy roots enable the finite native channel automatically")
     args = ap.parse_args()
     if args.out.exists() and any(args.out.iterdir()):
         ap.error("Output directory is not empty; use a fresh run directory")
@@ -136,10 +141,26 @@ def main():
     gates["readability"] = {"status": status_of(readability)}
 
     geometry, gaps = {}, {}
+    native = None
+    if args.native_geometry or all_nodes(parse(args.root.read_text()), "sheet"):
+        native = prepare_geometry_context(args.root, args.project, cli, out / "native-geometry")
+        commands.extend(native["commands"])
     (out / "geometry").mkdir()
     for sheet in sheets:
         report = out / "geometry" / f"{sheet.stem}.json"
-        tool("check_schematic_geometry.py", sheet, "--output", report)
+        if native is None:
+            tool("check_schematic_geometry.py", sheet, "--output", report)
+        else:
+            context_gap = None
+            try:
+                page_context = page_context_from_job(native, sheet)
+            except (ValueError, OSError, KeyError) as exc:
+                page_context = None
+                context_gap = "Fresh native geometry unavailable: " + str(exc)
+            scene = read_scene(parse(sheet.read_text()), page_context)
+            if context_gap:
+                scene.gaps.append(context_gap)
+            write(report, check_scene(scene))
         geometry[sheet.name] = status_of(report)
         try:
             found = json.loads(report.read_text())["coverage"]["gaps"]

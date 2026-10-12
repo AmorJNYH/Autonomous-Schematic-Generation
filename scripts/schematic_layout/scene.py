@@ -163,6 +163,12 @@ class Scene:
     sheet_pins: list[tuple[str, Point]] = field(default_factory=list)
     # Annotation ink is never an electrical wire or a connectivity anchor.
     graphic_segments: list[tuple[str, Point, Point, float]] = field(default_factory=list)
+    # Fresh native context is separate from in-memory Sheet.build estimates.
+    native_frames: list[dict] = field(default_factory=list)
+    native_texts: list[dict] = field(default_factory=list)
+    native_pin_texts: list[dict] = field(default_factory=list)
+    native_owner_outlines: list[dict] = field(default_factory=list)
+    native_stroke_upper_mm: float = 0.0
 
 
 def sheet_polyline(node):
@@ -329,7 +335,7 @@ def _instance_reference(root, node, property_ref, unit):
     return property_ref, f"{property_ref}: ambiguous/unbound instance reference or unit; project/full sheet path review required"
 
 
-def read_scene(root):
+def read_scene(root, native_context=None):
     if root[0] != "kicad_sch":
         raise ValueError("Expected kicad_sch")
     paper = first(root, "paper", [None, "A4"])
@@ -619,4 +625,25 @@ def read_scene(root):
                 )
     scene.junctions = [xy(n) for n in all_nodes(root, "junction")]
     scene.no_connects = [xy(n) for n in all_nodes(root, "no_connect")]
+    if native_context is not None:
+        if "page_mm" in native_context:
+            width,height=native_context["page_mm"]
+            scene.page=Box(0,0,min(scene.page.x_max,width),min(scene.page.y_max,height))
+        scene.gaps.extend(native_context.get("gaps", []))
+        scene.native_frames = native_context.get("frames", [])
+        scene.native_pin_texts = native_context.get("pin_texts", [])
+        scene.native_owner_outlines = native_context.get("owner_outlines", [])
+        scene.native_stroke_upper_mm = native_context.get("stroke_upper_mm", 0.0)
+        for item in native_context.get("texts", []):
+            legacy = text_field(item["property"], text=item["literal"]).box()
+            actual = Box(*item["box"])
+            scene.native_texts.append({**item, "conservative_box": union([legacy, actual])})
+        for kind in ("sheet", "rectangle"):
+            records = [r for r in scene.native_frames if r["kind"] == kind]
+            expected_ids = [str(value(n,"uuid")) for n in all_nodes(root,kind)]
+            if (len(records) == len(all_nodes(root, kind)) and records
+                    and sorted(r["id"] for r in records) == sorted(expected_ids)
+                    and len(set(expected_ids)) == len(expected_ids)
+                    and all(r.get("qualified") for r in records)):
+                scene.gaps = [g for g in scene.gaps if g != f"Unsupported sheet object: {kind}"]
     return scene

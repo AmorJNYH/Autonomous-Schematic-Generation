@@ -10,6 +10,7 @@ from schematic_layout.qa import check_scene
 from schematic_layout.generate import pin_net_map
 from schematic_layout.geometry import Box
 from schematic_layout.pages import normalize
+from schematic_layout.native_geometry_context import load_page_context
 
 
 def main():
@@ -19,6 +20,8 @@ def main():
     ap.add_argument("--intent", type=Path)
     ap.add_argument("--layout", type=Path)
     ap.add_argument("--grid-mm", type=float, default=1.27)
+    ap.add_argument("--native-context", type=Path, help="Fresh full-project geometry sidecar")
+    ap.add_argument("--native-context-sha256", help="Same-job sidecar receipt SHA")
     args = ap.parse_args()
     layout = json.loads(args.layout.read_text()) if args.layout else {}
     pin_nets = None
@@ -27,8 +30,18 @@ def main():
             pin_nets = pin_net_map(normalize(json.loads(args.intent.read_text())))
         except (ValueError, TypeError, KeyError) as exc:
             ap.error(f"Invalid --intent: {exc}; use nets {{name: [ref.pin]}} or [{{name, pins}}]")
+    native_context = None
+    context_gap = None
+    if args.native_context:
+        try:
+            native_context = load_page_context(args.native_context, args.schematic, args.native_context_sha256)
+        except (ValueError, OSError, KeyError, TypeError) as exc:
+            context_gap = "Native geometry context unavailable: " + str(exc)
+    scene = read_scene(parse(args.schematic.read_text()), native_context)
+    if context_gap:
+        scene.gaps.append(context_gap)
     report = check_scene(
-        read_scene(parse(args.schematic.read_text())),
+        scene,
         grid=layout.get("grid_mm", args.grid_mm),
         reserved=[Box(*b) for b in layout["reserved"]]
         if "reserved" in layout

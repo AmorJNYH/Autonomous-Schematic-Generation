@@ -4,6 +4,7 @@ from collections import Counter
 from .geometry import Box, union
 from .scene import GlobalLabelText
 from .routing import on_segment, intersection, segment_hits_box, wire_box, grid_point
+from .native_geometry import ink_gap
 
 
 def _round_stroke_hits_box(a, b, box, radius):
@@ -322,6 +323,74 @@ def check_scene(scene, grid=1.27, reserved=None, body_clearance=1.27, pin_nets=N
                         "severity": "warning",
                     }
                 )
+    # Native channels are independent of Sheet.build's existing estimates.
+    # Frames protect edges/structure, not an opaque box against architecture text.
+    native_extents = []
+    for i, frame in enumerate(scene.native_frames):
+        if not frame.get("segments"): continue
+        for other in scene.native_frames[i+1:]:
+            if not other.get("segments"): continue
+            if (ink_gap(frame["segments"],other["segments"])<=0
+                    or (frame["kind"]==other["kind"]=="sheet"
+                        and Box(*frame["interior"]).overlaps(Box(*other["interior"])) )):
+                add("native_frame_overlap",[frame["id"],other["id"]],"Native structural outlines/overlapping sheets collide")
+    for frame in scene.native_frames:
+        if not frame.get("segments"):
+            continue
+        name = frame["kind"] + ":" + frame["id"]
+        native_extents.append((name, Box(*frame["box"])))
+        for target, box in fields + bodies:
+            if any(_round_stroke_hits_box(a, b, box, w / 2) for a, b, w in frame["segments"]):
+                add("native_frame_object", [name, target], "Native structural edge intersects visible object bounds")
+        for i, (a, b) in enumerate(scene.wires):
+            if (any(_round_stroke_hits_box(c, d, wire_box(a, b, 0), (w + scene.native_stroke_upper_mm) / 2)
+                    for c, d, w in frame["segments"])
+                    or (frame["kind"] == "sheet" and _round_stroke_hits_box(a,b,Box(*frame["interior"]),scene.native_stroke_upper_mm/2))):
+                add("wire_sheet_frame", [f"wire:{i}", name], "Electrical wire crosses native frame/structural footprint")
+    native_fields = [(f["id"], f["conservative_box"]) for f in scene.native_texts]
+    for i, (name, box) in enumerate(native_fields):
+        native_extents.append((name, box))
+        for target, other in fields + native_fields[i + 1:]:
+            if box.overlaps(other, gap_mm=.15):
+                add("native_sheet_text_overlap", [name, target], "Complete shown sheet text conservative envelopes collide")
+        for target, other in bodies:
+            if box.overlaps(other): add("native_sheet_text_body", [name, target], "Sheet field intersects foreign symbol body")
+        for frame in scene.native_frames:
+            if any(_round_stroke_hits_box(a, b, box, w / 2) for a, b, w in frame.get("segments", [])):
+                add("native_sheet_text_frame", [name, frame["id"]], "Complete sheet field envelope intersects native frame ink")
+        for pin in pins:
+            if pin.point != pin.inner and segment_hits_box(pin.point, pin.inner, box):
+                add("native_sheet_text_pin", [name, pin.id], "Sheet field crosses pin leg")
+        for wi, (a, b) in enumerate(scene.wires):
+            if _round_stroke_hits_box(a,b,box,scene.native_stroke_upper_mm/2): add("native_sheet_wire_text", [f"wire:{wi}", name], "Wire crosses full sheet field envelope")
+    for i, item in enumerate(scene.native_pin_texts):
+        name=item["id"]; ink=item["segments"]; box=Box(*item["box"])
+        native_extents.append((name, box))
+        for other in scene.native_pin_texts[i + 1:]:
+            if ink_gap(ink, other["segments"]) <= 0:
+                add("native_pin_text_overlap", [name, other["id"]], "Different native pin-name strokes intersect")
+        for outline in scene.native_owner_outlines:
+            if ink_gap(ink,outline["segments"])<=0:
+                add("native_pin_text_outline",[name,outline["id"]],"Pin-name ink crosses actual symbol foreground outline")
+        for target, field_box in fields + native_fields:
+            if any(_round_stroke_hits_box(a, b, field_box, w / 2) for a,b,w in ink):
+                add("native_pin_text_field", [name, target], "Native pin-name ink intersects field envelope")
+        for symbol in scene.symbols:
+            if str(next((n[1] for n in symbol.node if isinstance(n,list) and n and n[0]=='uuid'),'')) == item["symbol_uuid"]:
+                # Background fill intentionally contains pin names. Foreground
+                # outline uncertainty is an explicit context gap, not PASS.
+                continue
+            if symbol.body and any(_round_stroke_hits_box(a,b,symbol.body,w/2) for a,b,w in ink):
+                add("native_pin_text_body", [name, symbol.ref], "Pin-name crosses foreign symbol body")
+        for wi,(a,b) in enumerate(scene.wires):
+            # Upper bound is taken from ALL visible same-page native strokes.
+            width=item["page_stroke_upper_mm"]
+            if ink_gap(ink, [[a,b,width]]) <= 0:
+                add("native_pin_wire_text", [name,f"wire:{wi}"], "Wire intersects native pin-name ink")
+    for name,box in native_extents:
+        if not box.inside(scene.page,margin_mm=5): add("off_page",[name],"Native geometry outside page/frame clearance")
+        if any(box.overlaps(r) for r in reserved): add("reserved_region",[name],"Native geometry enters reserved region")
+    extents += native_extents
     content = union(box for name, box in extents + graphic_extents)
     counts = Counter(f["code"] for f in findings)
     status = (
@@ -341,6 +410,10 @@ def check_scene(scene, grid=1.27, reserved=None, body_clearance=1.27, pin_nets=N
             "pins": len(pins),
             "sheet_pins": len(scene.sheet_pins),
             "graphic_segments": len(scene.graphic_segments),
+            "native_frames": len(scene.native_frames),
+            "native_sheet_fields": len(scene.native_texts),
+            "native_pin_names": len(scene.native_pin_texts),
+            "native_owner_outlines": len(scene.native_owner_outlines),
             "gaps": sorted(set(gaps)),
             "checks": [
                 "body_overlap",

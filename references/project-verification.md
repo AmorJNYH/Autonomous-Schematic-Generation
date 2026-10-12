@@ -141,3 +141,12 @@ XML-only `compare_netlist` API returns `INSUFFICIENT` for a differing automatic-
 looking name without source evidence. Page layout checks retain their existing
 scope. Inspect `net-name-origin.json` and its source hashes and native commands;
 a passing partition comparison alone does not establish name provenance.
+# Finite hierarchy geometry
+
+The runner's fresh hierarchy SVG channel can qualify supported no-sheet-pin
+rectangular frames and complete shown sheet fields, and capture finite uniquely
+bound pin-name ink. Unknown rendering/instance/number/outline profiles retain
+coverage gaps; this does not make an incomplete page PASS. See
+[native geometry scope](native-geometry.md) for exact binding, reject rules and
+the audit-only serialized sidecar boundary. Ordinary in-memory build defaults
+are unchanged.
