@@ -113,17 +113,39 @@ def _scan(sheets):
             lib_id = str(value(sym, "lib_id", ""))
             try:
                 lib = resolve(lib_id)
-                pins = [p for sub in all_nodes(lib, "symbol") for p in all_nodes(sub, "pin")]
-                if not pins:
-                    if first(lib, "power") is not None:
-                        gaps.append(f"{key}: cached power symbol {lib_id} lacks pin metadata")
-                    # Non-power pinless symbols are outside this gate.
+                if first(lib, "power") is None:
                     continue
-                if first(lib, "power") is not None and any(str(p[1]) == "power_out" for p in pins):
+                # A cached output in an unused unit/style cannot qualify this
+                # placed symbol. Common definitions apply to the current unit.
+                if any(len(all_nodes(sym, field)) > 1 for field in ("unit", "body_style", "convert")):
+                    raise ValueError(f"{key}: ambiguous placed unit/style for {lib_id}")
+                if (first(sym, "body_style") is not None and first(sym, "convert") is not None
+                        and value(sym, "body_style") != value(sym, "convert")):
+                    raise ValueError(f"{key}: conflicting placed body_style/convert for {lib_id}")
+                unit = int(value(sym, "unit", 1))
+                style = int(value(sym, "body_style", value(sym, "convert", 1)))
+                if unit < 1 or style < 1:
+                    raise ValueError(f"{key}: invalid placed unit/style for {lib_id}")
+                active, definitions = [], set()
+                for sub in all_nodes(lib, "symbol"):
+                    match = re.search(r"_(\d+)_(\d+)$", str(sub[1]))
+                    if not match:
+                        raise ValueError(f"{key}: unknown cached unit/style for {lib_id}")
+                    pair = (int(match[1]), int(match[2]))
+                    if pair in definitions:
+                        raise ValueError(f"{key}: duplicate cached unit/style for {lib_id}")
+                    definitions.add(pair)
+                    if pair[0] in (0, unit) and pair[1] in (0, style):
+                        active.append(sub)
+                pins = [p for sub in active for p in all_nodes(sub, "pin")]
+                if not pins:
+                    gaps.append(f"{key}: cached power symbol {lib_id} lacks active pin metadata")
+                    continue
+                if any(str(p[1]) == "power_out" for p in pins):
                     markers.setdefault(key, []).append(sym)
                     if not _refs(sym):
                         gaps.append(f"{key}: power-output marker has no reference")
-            except ValueError as exc:
+            except (ValueError, TypeError) as exc:
                 gaps.append(str(exc))
     return trees, markers, gaps, used
 
@@ -220,6 +242,18 @@ def _via(root, intent, ref):
         return "FAIL", ("via must be a series resistor, inductor, ferrite bead or fuse: a Device:R/L/FerriteBead/Fuse/"
                         "Polyfuse symbol, or an MPN-named library part with fields.ComponentRole "
                         + "/".join(sorted(SERIES_ROLES)))
+    native_roles = [f.text or "" for f in comp.findall("fields/field[@name='ComponentRole']")]
+    property_roles = [p.get("value", "") for p in comp.findall("property[@name='ComponentRole']")]
+    if len(native_roles) > 1 or len(property_roles) > 1:
+        return "INSUFFICIENT", "duplicate native ComponentRole metadata"
+    if native_roles and property_roles and native_roles != property_roles:
+        return "FAIL", "native ComponentRole representations conflict"
+    observed_role = (native_roles or property_roles)
+    if observed_role and not observed_role[0].strip():
+        return "INSUFFICIENT", "empty native ComponentRole metadata"
+    # Missing legacy native fields retain the existing intent-only policy.
+    if role is not None and observed_role and observed_role[0] != role:
+        return "FAIL", "via intent/native ComponentRole mismatch"
     lib = comp.find("libsource")
     native_id = f"{lib.get('lib')}:{lib.get('part')}" if lib is not None else ""
     if native_id != c.get("lib_id") or ("value" in c and (comp.findtext("value") or "") != c["value"]):
@@ -233,6 +267,17 @@ def _via(root, intent, ref):
     pins = parts[0].findall("pins/pin")
     if len(pins) != 2 or any(p.get("type") != "passive" for p in pins):
         return "FAIL", "via must have exactly two passive pins"
+    numbers = [p.get("num") for p in pins]
+    if any(not n for n in numbers) or len(set(numbers)) != 2:
+        return "INSUFFICIENT", "via library pin numbers are missing or ambiguous"
+    nodes = root.findall(f"nets/net/node[@ref='{ref}']")
+    actual_numbers = [p.get("pin") for p in nodes]
+    if len(nodes) != 2 or set(actual_numbers) != set(numbers):
+        return "FAIL", "via needs exactly one native node for each physical pin"
+    if any(not p.get("pintype") for p in nodes):
+        return "INSUFFICIENT", "via actual native pin type unavailable"
+    if any(p.get("pintype") != "passive" for p in nodes):
+        return "FAIL", "via actual native pins must both be passive"
     return "PASS", "fitted two-pin passive series part with matching identity"
 
 
@@ -247,9 +292,16 @@ def judge(xml_path, intent, aliases):
     by_pin = {f"{r}.{p}": net for net in nets for r, p, _ in net["nodes"]}
     flags = [(aliases[r], net) for net in nets for r, _, _ in net["nodes"] if r in aliases]
     for alias, ref in aliases.items():
-        count = sum(r == alias for net in nets for r, _, _ in net["nodes"])
+        marker_nodes = [t for net in nets for r, _, t in net["nodes"] if r == alias]
+        count = len(marker_nodes)
         if count != 1:
             errors.append({"kind": "marker_native_coverage", "flag": ref, "nodes": count})
+        elif not marker_nodes[0]:
+            gaps.append({"kind": "marker_native_type", "flag": ref, "reason": "native pin type unavailable"})
+        elif marker_nodes[0] != "power_out":
+            errors.append({"kind": "marker_native_type", "flag": ref, "actual": marker_nodes[0]})
+        elif any(not p.get("pin") for p in root.findall(f"nets/net/node[@ref='{alias}']")):
+            gaps.append({"kind": "marker_native_coverage", "flag": ref, "reason": "native pin number unavailable"})
     intent_pins = {n["name"]: set(n["pins"]) for n in intent.get("nets", [])}
     derived = {}  # declared net name -> native net on the declared side of the via
     for d in filtered:
