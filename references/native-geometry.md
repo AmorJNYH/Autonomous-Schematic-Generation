@@ -62,6 +62,15 @@ only its own unchanged live fresh-job return value and rechecks input, producer,
 environment, tool, configuration and raw output bindings before geometry.
 Editing arrays/gaps or replaying a self-declared PASS JSON cannot authorize PASS.
 
+The live object is a receipt of a **trusted internal controller**, not a security
+boundary against Python code running in that same process. Its private mutable
+seal is an integrity check for the official runner's unchanged return value,
+not an authentication token: a caller that deliberately overwrites the private
+seal can re-seal modified arrays. Such privileged same-process rewriting is
+outside this API's qualification contract and must never be presented as a
+protected input path. External serialized contexts remain audit-only and the
+official CLI does not accept caller-supplied live objects.
+
 This is a finite geometry gate, not full font/renderer coverage, electrical GO,
 or human render review. An unsupported page remains INSUFFICIENT; a captured
 actual collision is FAIL even when another category is unknown. Baseline bench
