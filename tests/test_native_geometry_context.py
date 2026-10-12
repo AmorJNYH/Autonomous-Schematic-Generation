@@ -33,6 +33,7 @@ def fixture(kind):
     if kind=='overlay': root.append(f('text','OVERLAY',f('at',x,y+40.64,0),effects(),f('uuid',uid('foreign-text'))))
     if kind=='identical': root.append(f('rectangle',f('start',x,y),f('end',x+76.2,y+38.1),f('stroke',f('width',.254),f('type',A('default'))),f('fill',f('type',A('none'))),f('uuid',uid('foreign-outline'))))
     if kind=='unknown-stroke': first(sh,'stroke').append(f('color',0,0,0,0))
+    if kind=='extra-display': sh.append(f('dnp',A('yes')))
     if kind in ('cjk','rotate90','rotate180','bold','filledfont'):
         prop=all_nodes(sh,'property')[0]
         if kind=='cjk': prop[2]='重复 字段'

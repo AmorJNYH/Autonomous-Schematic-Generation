@@ -21,6 +21,9 @@ hashes and raw export hashes. Fontconfig warnings are retained and are not a
 qualification by themselves; reproducibility and complete differences determine
 the supported finite profile. Unknown source font faces, variables, filled or
 curved glyphs, visible transforms and other unsupported profiles remain gaps.
+The source-edit subset is UTF-8/LF; non-LF schematics remain INS rather than
+normalize bytes outside a target span. Extra structural display flags, including
+DNP, are unsupported; their added ink cannot be covered by a borrowed rectangle.
 
 Supported structural graphics are axis-aligned unfilled rectangles, including
 transparent rectangular sheets without sheet pins. Native/source coordinates

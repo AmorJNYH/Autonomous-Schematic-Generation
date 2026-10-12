@@ -143,6 +143,13 @@ def prepare_geometry_context(root, project, cli, workdir, pin_names=True):
         ink['witness']='mask-%04d'%counter
         return ink
     def frame_ink(rel,page_svg,node,nodepaths,ranges,placement=None):
+        keys=[str(n[0]) for n in node[1:] if isinstance(n,list) and n]
+        allowed=({'at','size','stroke','fill','uuid','property','instances'} if node[0]=='sheet'
+                 else {'start','end','stroke','fill','uuid'})
+        if len(keys)!=len(node)-1 or set(keys)-allowed:
+            raise ValueError('unknown structural display/profile property')
+        required={'at','size','stroke','fill','uuid'} if node[0]=='sheet' else {'start','end','stroke','fill'}
+        if any(keys.count(k)!=1 for k in required): raise ValueError('duplicate/missing structural property')
         stroke=first(node,'stroke'); width=first(stroke or [],'width')
         if (width is None or len(width)!=2 or first(stroke,'type')!=['type','default']
                 or len(stroke)!=3 or len(all_nodes(stroke,'type'))!=1):
@@ -211,6 +218,8 @@ def prepare_geometry_context(root, project, cli, workdir, pin_names=True):
         if any(sum(p['path']==page['path'] for p in h.pages)!=1 for page in h.pages):
             raise ValueError('reused hierarchical source instance unsupported')
         source_files=context_files(root,h)
+        if any(b'\r' in p.read_bytes() for name,p in source_files.items() if name.endswith('.kicad_sch')):
+            raise ValueError('non-LF source text profile unsupported; preserve exact source bytes')
         result['producer_sha256']=producer_hashes()
         result['configuration_sha256']=configuration_hashes()
         result['source_sha256']={name:sha(p) for name,p in source_files.items()}
@@ -287,6 +296,7 @@ def prepare_geometry_context(root, project, cli, workdir, pin_names=True):
                 data['gaps'].append('pin-text:'+str(uid)+': physical pin-number native render review remains unqualified')
                 nums=[str(value(p,'number','')) for p in active]
                 if (not uid or first(lib,'extends') or first(lib,'power') is not None
+                    or str(value(symbol,'dnp','no'))!='no'
                     or str(value(symbol,'convert',1))!='1'
                     or any(re.search(r'_(\d+)_[01]$',str(sub[1])) and int(re.search(r'_(\d+)_[01]$',str(sub[1]))[1])>1 for sub in all_nodes(lib,'symbol'))
                     or sum(value(s,'lib_id')==libid for s in symbols)!=1
