@@ -6,6 +6,7 @@ The probe mutates only marker Reference properties and instance references.
 """
 import copy
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import xml.etree.ElementTree as ET
@@ -38,7 +39,9 @@ def declarations(intent):
 
 
 
-SERIES_PREFIXES = ("R", "L", "FB", "F")
+SERIES_LIBS = ("Device:R", "Device:L", "Device:FerriteBead", "Device:Fuse", "Device:Polyfuse")
+SERIES_ROLES = {"series_resistor", "inductor", "ferrite_bead", "fuse"}
+RETURN_NAME = re.compile(r"GND|VSS|RTN|RETURN", re.IGNORECASE)
 
 
 def filtered_declarations(intent):
@@ -198,26 +201,34 @@ def _origin(root, intent, pin):
     return "PASS", "explicit role, exact identity and native passive contacts; mechanical semantics require source review"
 
 
-def _via(root, ref):
-    """A fitted two-terminal series part with passive pins that is not a capacitor."""
-    comps = root.findall(f"components/comp[@ref='{ref}']")
-    if len(comps) != 1:
-        return "FAIL", "via needs exactly one native component"
-    comp = comps[0]
+def _via(root, intent, ref):
+    """A fitted two-pin passive series part whose intent role is a resistor, inductor, bead or fuse."""
+    components = intent.get("components", [])
+    if isinstance(components, dict):
+        components = [{"ref": r, **c} for r, c in components.items()]
+    expected = [c for c in components if c.get("ref") == ref]
+    actual = root.findall(f"components/comp[@ref='{ref}']")
+    if len(expected) != 1 or len(actual) != 1:
+        return "FAIL", "via needs one intent and one native component"
+    c, comp = expected[0], actual[0]
+    role = c.get("fields", {}).get("ComponentRole")
+    if not (role in SERIES_ROLES or (role is None and str(c.get("lib_id", "")).startswith(SERIES_LIBS))):
+        return "FAIL", ("via must be a series resistor, inductor, ferrite bead or fuse: lib_id Device:R*/L*/"
+                        "FerriteBead*/Fuse*/Polyfuse* or fields.ComponentRole " + "/".join(sorted(SERIES_ROLES)))
     lib = comp.find("libsource")
-    part = lib.get("part", "") if lib is not None else ""
-    parts = [p for p in root.findall("libparts/libpart")
-             if lib is not None and p.get("lib") == lib.get("lib") and p.get("part") == part]
+    native_id = f"{lib.get('lib')}:{lib.get('part')}" if lib is not None else ""
+    if native_id != c.get("lib_id") or ("value" in c and (comp.findtext("value") or "") != c["value"]):
+        return "FAIL", "via intent/native identity mismatch"
+    if comp.find("property[@name='dnp']") is not None or c.get("dnp", False):
+        return "FAIL", "via must be fitted"
+    parts = [p for p in root.findall("libparts/libpart") if lib is not None
+             and p.get("lib") == lib.get("lib") and p.get("part") == lib.get("part")]
     if len(parts) != 1:
         return "INSUFFICIENT", "via library pin metadata unavailable"
     pins = parts[0].findall("pins/pin")
     if len(pins) != 2 or any(p.get("type") != "passive" for p in pins):
         return "FAIL", "via must have exactly two passive pins"
-    if comp.find("property[@name='dnp']") is not None:
-        return "FAIL", "via must be fitted"
-    if part.upper().startswith("C") or not ref.upper().startswith(SERIES_PREFIXES):
-        return "FAIL", "via must be a series resistor, inductor, ferrite bead or fuse"
-    return "PASS", "fitted two-terminal series passive"
+    return "PASS", "fitted two-pin passive series part with matching identity"
 
 
 def judge(xml_path, intent, aliases):
@@ -263,28 +274,44 @@ def judge(xml_path, intent, aliases):
     def has_source(net):
         return any(r not in aliases and t.split("+", 1)[0] == "power_out" for r, _, t in net["nodes"])
 
-    # A source qualifies when it is board-driven, connector-fed, or itself a qualified derived rail.
-    qualified = {d["net"] for d in decls}
-    pending = list(filtered)
+    sheets = {s.get("name", "") for s in root.findall("design/sheet")} | {"/"}
+
+    def named(native, wanted):
+        """Native name equals the declared name, allowing only a listed sheet-path prefix."""
+        return native == wanted or (not wanted.startswith("/") and any(native == p + wanted for p in sheets))
+
+    far = {}
+    for d in filtered:
+        net = derived.get(d["net"])
+        ends = [by_pin[p] for p in by_pin if p.rsplit(".", 1)[0] == d["via"] and by_pin[p] is not net]
+        if net is not None and len(ends) == 1:
+            far[d["net"]] = ends[0]
+    # Qualify by native net objects: board-driven or connector-fed, then through qualified vias.
+    qualified = {id(n) for n in nets if has_source(n)} | {id(by_pin[d["pin"]]) for d in decls if d["pin"] in by_pin}
+    pending = [d for d in filtered if d["net"] in derived and d["net"] in far]
     while True:
-        done = [d for d in pending if d["from"] in qualified
-                or any(has_source(n) for n in nets if n["name"].rsplit("/", 1)[-1] == d["from"])]
+        done = [d for d in pending if id(far[d["net"]]) in qualified]
         if not done:
             break
-        qualified.update(d["net"] for d in done)
+        qualified.update(id(derived[d["net"]]) for d in done)
         pending = [d for d in pending if d not in done]
     for d in filtered:
-        via_status, reason = _via(root, d["via"])
+        via_status, reason = _via(root, intent, d["via"])
         if via_status != "PASS":
             (errors if via_status == "FAIL" else gaps).append({"kind": "filtered_via", "net": d["net"], "via": d["via"], "reason": reason})
         net = derived.get(d["net"])
         if net is None:
             errors.append({"kind": "declared_pin_missing", "net": d["net"], "via": d["via"]}); continue
-        other = [by_pin.get(p) for p in by_pin if p.rsplit(".", 1)[0] == d["via"] and by_pin.get(p) is not net]
-        if len(other) != 1 or other[0]["name"].rsplit("/", 1)[-1] != d["from"].rsplit("/", 1)[-1]:
+        if not named(net["name"], d["net"]):
+            errors.append({"kind": "filtered_net_name_mismatch", "net": d["net"], "actual": net["name"]})
+        if d["net"] not in far or not named(far[d["net"]]["name"], d["from"]):
             errors.append({"kind": "filtered_via_not_between_nets", "net": d["net"], "from": d["from"], "via": d["via"]})
-        if d in pending:
+        elif d in pending:
             errors.append({"kind": "filtered_source_not_driven", "net": d["net"], "from": d["from"]})
+        if not any(r not in aliases and t.split("+", 1)[0] == "power_in" for r, _, t in net["nodes"]):
+            errors.append({"kind": "filtered_net_without_power_input", "net": d["net"]})
+        if RETURN_NAME.search(d["net"].rsplit("/", 1)[-1]) and not RETURN_NAME.search(d["from"].rsplit("/", 1)[-1]):
+            errors.append({"kind": "filtered_return_from_supply", "net": d["net"], "from": d["from"]})
         count = sum(n is net for _, n in flags)
         if count != 1:
             errors.append({"kind": "missing_pwr_flag" if not count else "duplicate_pwr_flag", "net": d["net"], "via": d["via"], "flags": count})
@@ -292,7 +319,8 @@ def judge(xml_path, intent, aliases):
             errors.append({"kind": "net_has_power_source", "net": d["net"]})
     status = ("FAIL" if errors else "INSUFFICIENT" if gaps
               else "PASS" if decls or filtered or flags else "NOT_APPLICABLE")
-    return {"status": status, "scope": "Declared connector structure and native markers only; source semantics, supply ratings and protection require review.",
+    return {"status": status, "scope": ("Declared connector and filtered-supply structure and native markers only; source semantics, filter values, "
+                      "series drop at the pin's maximum current, supply ratings and protection require review."),
             "declarations": decls, "filtered_declarations": filtered, "flags": sorted(f for f, _ in flags), "origins": origins, "errors": errors, "coverage_gaps": gaps}
 
 

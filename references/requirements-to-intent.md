@@ -94,10 +94,13 @@
 器件的电源输入脚经一颗串联电阻、电感、磁珠或保险丝从已有驱动的电源取电时（例如 RC 滤波的模拟电源 AVCC），
 KiCad 看不到无源器件传过来的驱动，必报 `power_pin_not_driven`。逐网声明
 `filtered_supply: [{"net": "AVCC", "from": "PVCC", "via": "R1", "reason": "10 Ω/1 µF RC 滤波"}]`，
-同样用 `Sheet.power_flag()` 每网放一个。门禁核对：`via` 是已贴装、恰好两只 passive 脚的串联电阻/电感/磁珠/保险丝
-（不能是电容），一端在 `from`、一端在声明网；`from` 有板上 power_out 驱动，或本身是已声明的
-`external_supply`/`filtered_supply`（可链式）；声明网没有 power_out 驱动、恰好一个旗标。
-声明只解决 ERC 记账，滤波取值、压降和电源纹波仍按计算预检核对。
+同样用 `Sheet.power_flag()` 每网放一个。门禁核对：`via` 的意图库 ID 属于 `Device:R*`/`L*`/`FerriteBead*`/`Fuse*`/`Polyfuse*`
+（以 MPN 命名的库件写 `fields.ComponentRole`：`series_resistor`/`inductor`/`ferrite_bead`/`fuse`），已贴装、身份与原生一致、
+恰好两只 passive 脚，一端在 `from` 的原生网、一端在声明网（网名只允许页路径前缀）；`from` 所在原生网有板上 power_out
+驱动、是已声明的 `external_supply` 网，或是已合格的 `filtered_supply` 网（可链式）；声明网上至少有一个电源输入脚、
+没有 power_out 驱动、恰好一个旗标；地/回流类网只能从地/回流类网派生。
+声明只解决 ERC 记账：按该脚最大电流核串联压降，并确认手册允许该脚串联阻抗；偏置馈电（如手册要求的串联大电阻）
+与滤波电源分开写理由。逐条列入交接说明，由 SR 复核取值、压降和纹波。
 
 核心引脚参考合同的 names/types 不接受空、空白或 `~` 别名；显式未分配的空 footprint 仍合法。
 

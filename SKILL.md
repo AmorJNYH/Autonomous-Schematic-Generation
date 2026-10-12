@@ -132,7 +132,7 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
 - 失败时修改相应页面脚本，在新的运行目录重新生成并验证。不得为了降低计数而加 PWR_FLAG、加排除项或改引脚类型。
 - 受控例外只有两类，都在意图中逐网声明、用 `Sheet.power_flag()` 每网放一个 PWR_FLAG，由 `external_supply` 门禁核对：
   只由连接器引入、板上没有电源输出脚驱动的电源或地（`external_supply`）；经一颗串联电阻、电感、磁珠或保险丝
-  从已有驱动的电源派生的电源脚供电网，例如 RC 滤波的模拟电源（`filtered_supply`）。声明格式与核对内容见
+  从已有驱动的电源派生的电源脚供电网，例如 RC 滤波的模拟电源（`filtered_supply`，逐条列入交接说明由 SR 复核）。声明格式与核对内容见
   [requirements-to-intent.md](references/requirements-to-intent.md) 第 5 节“连接器角色与外部供电”。
 - `symbol_integrity` 的 `unnamed_pins` 只作诊断（KiCad 运放、单门逻辑等符号的输入/输出脚按库惯例不写名字）。
   列出的每个器件（不限核心器件）都要在参考合同里按数据手册名字逐脚绑定，并在交接说明中列出这些脚；
