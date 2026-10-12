@@ -39,9 +39,11 @@ def declarations(intent):
 
 
 
-SERIES_LIBS = ("Device:R", "Device:L", "Device:FerriteBead", "Device:Fuse", "Device:Polyfuse")
-SERIES_ROLES = {"series_resistor", "inductor", "ferrite_bead", "fuse"}
-RETURN_NAME = re.compile(r"GND|VSS|RTN|RETURN", re.IGNORECASE)
+# Exact KiCad Device symbols only: Device:LED*, Device:Lamp and Device:R_Photo share prefixes.
+SERIES_LIB = re.compile(r"^Device:(R|R_Small|R_US|R_Small_US|L|L_Small|L_Core_\w+|L_Iron\w*"
+                        r"|FerriteBead|FerriteBead_Small|Fuse|Fuse_Small|Polyfuse|Polyfuse_Small)$")
+SERIES_ROLES = {"series_resistor", "inductor", "ferrite_bead", "fuse"}  # MPN-named libraries only
+RETURN_NAME = re.compile(r"GND|VSS|RTN|RETURN|^0V$|^COM$", re.IGNORECASE)
 
 
 def filtered_declarations(intent):
@@ -211,10 +213,11 @@ def _via(root, intent, ref):
     if len(expected) != 1 or len(actual) != 1:
         return "FAIL", "via needs one intent and one native component"
     c, comp = expected[0], actual[0]
-    role = c.get("fields", {}).get("ComponentRole")
-    if not (role in SERIES_ROLES or (role is None and str(c.get("lib_id", "")).startswith(SERIES_LIBS))):
-        return "FAIL", ("via must be a series resistor, inductor, ferrite bead or fuse: lib_id Device:R*/L*/"
-                        "FerriteBead*/Fuse*/Polyfuse* or fields.ComponentRole " + "/".join(sorted(SERIES_ROLES)))
+    role, lib_id = c.get("fields", {}).get("ComponentRole"), str(c.get("lib_id", ""))
+    if not (SERIES_LIB.match(lib_id) or (not lib_id.startswith("Device:") and role in SERIES_ROLES)):
+        return "FAIL", ("via must be a series resistor, inductor, ferrite bead or fuse: a Device:R/L/FerriteBead/Fuse/"
+                        "Polyfuse symbol, or an MPN-named library part with fields.ComponentRole "
+                        + "/".join(sorted(SERIES_ROLES)))
     lib = comp.find("libsource")
     native_id = f"{lib.get('lib')}:{lib.get('part')}" if lib is not None else ""
     if native_id != c.get("lib_id") or ("value" in c and (comp.findtext("value") or "") != c["value"]):
@@ -271,8 +274,18 @@ def judge(xml_path, intent, aliases):
         sources = sorted(f"{r}.{p}" for r, p, t in net["nodes"] if r not in aliases and t.split("+", 1)[0] == "power_out")
         if sources:
             errors.append({"kind": "net_has_power_source", "net": d["net"], "sources": sources})
+    unfitted = {c.get("ref") for c in root.findall("components/comp") if c.find("property[@name='dnp']") is not None}
+    functions = {(p.get("ref"), p.get("pin")): p.get("pinfunction", "") for p in root.findall("nets/net/node")}
+
     def has_source(net):
-        return any(r not in aliases and t.split("+", 1)[0] == "power_out" for r, _, t in net["nodes"])
+        return any(r not in aliases and r not in unfitted and t.split("+", 1)[0] == "power_out"
+                   for r, _, t in net["nodes"])
+
+    def is_return(name, net):
+        """Return-class by declared name or by the native names of its power-input pins."""
+        return bool(RETURN_NAME.search(name.rsplit("/", 1)[-1])) or (net is not None and any(
+            t.split("+", 1)[0] == "power_in" and re.search(r"GND|VSS|^EP$|PAD", functions.get((r, p), ""), re.IGNORECASE)
+            for r, p, t in net["nodes"] if r not in aliases))
 
     sheets = {s.get("name", "") for s in root.findall("design/sheet")} | {"/"}
 
@@ -310,7 +323,7 @@ def judge(xml_path, intent, aliases):
             errors.append({"kind": "filtered_source_not_driven", "net": d["net"], "from": d["from"]})
         if not any(r not in aliases and t.split("+", 1)[0] == "power_in" for r, _, t in net["nodes"]):
             errors.append({"kind": "filtered_net_without_power_input", "net": d["net"]})
-        if RETURN_NAME.search(d["net"].rsplit("/", 1)[-1]) and not RETURN_NAME.search(d["from"].rsplit("/", 1)[-1]):
+        if is_return(d["net"], net) != is_return(d["from"], far.get(d["net"])):
             errors.append({"kind": "filtered_return_from_supply", "net": d["net"], "from": d["from"]})
         count = sum(n is net for _, n in flags)
         if count != 1:

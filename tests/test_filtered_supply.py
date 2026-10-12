@@ -91,9 +91,17 @@ class FilteredSupplyTests(unittest.TestCase):
         self.assertEqual(self.run_judge(nets(), intent=mpn, parts=dict(PARTS, R1=("Vishay", "CRCW060310R0FKEA", "10")))["status"], "PASS")
         self.assertIn("filtered_via", self.kinds(self.run_judge(nets(), parts=dict(PARTS, R1=("Device", "R", "22")))))
         self.assertIn("filtered_via", self.kinds(self.run_judge(nets(), dnp=("R1",))))
+        for lib in ("LED", "LED_Small", "Lamp", "R_Photo"):   # share a prefix with Device:L / Device:R
+            fake = copy.deepcopy(INTENT); fake["components"][1]["lib_id"] = f"Device:{lib}"
+            self.assertIn("filtered_via", self.kinds(self.run_judge(nets(), intent=fake,
+                                                                   parts=dict(PARTS, R1=("Device", lib, "10")))), lib)
+        role = copy.deepcopy(INTENT); role["components"][1].update(lib_id="Device:D", fields={"ComponentRole": "series_resistor"})
+        self.assertIn("filtered_via", self.kinds(self.run_judge(nets(), intent=role, parts=dict(PARTS, R1=("Device", "D", "10")))))
 
     def test_source_must_be_driven_through_the_actual_far_net(self):
         self.assertIn("filtered_source_not_driven", self.kinds(self.run_judge(nets(pvcc_driven=False))))
+        self.assertIn("filtered_source_not_driven", self.kinds(self.run_judge(
+            nets(), parts=dict(PARTS, U9=("Reg", "LDO", "")), dnp=("U9",))))      # unfitted regulator
         n = nets(pvcc_driven=False)
         n["/x/PVCC"] = n.pop("PVCC")                      # undriven far net on another sheet
         n["PVCC"] = [("U9", "1", "power_out"), ("U7", "1", "power_in")]  # unrelated driven net, same leaf
@@ -121,6 +129,10 @@ class FilteredSupplyTests(unittest.TestCase):
         self.assertIn("filtered_net_without_power_input", self.kinds(self.run_judge(n)))
         g = nets(); g["/amp/AGND"] = g.pop("/amp/AVCC")
         self.assertIn("filtered_return_from_supply", self.kinds(self.run_judge(g, intent=renamed("AVCC", "AGND"))))
+        z = nets(); z["/amp/0V"] = z.pop("/amp/AVCC")
+        self.assertIn("filtered_return_from_supply", self.kinds(self.run_judge(z, intent=renamed("AVCC", "0V"))))
+        down = nets(); down["GND"] = down.pop("PVCC") + [("U7", "9", "power_in")]  # supply derived from a ground
+        self.assertIn("filtered_return_from_supply", self.kinds(self.run_judge(down, intent=renamed("PVCC", "GND"))))
 
     def test_declared_native_name_must_match(self):
         n = nets(); n["/amp/FOO"] = n.pop("/amp/AVCC")
