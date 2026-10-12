@@ -66,6 +66,9 @@ ASG 不负责以下事项：
   见 [symbol-and-peripheral-contracts.md](references/symbol-and-peripheral-contracts.md)。
 - 数值计算按 [calculation-preflight.md](references/calculation-preflight.md) 写明保证条件；上电/热插拔、关断/掉电、
   全温角点和引脚应力四类按 [requirements-to-intent.md](references/requirements-to-intent.md) 第 4 节清单逐项核。
+- 按 [worst-case-bounds.md](references/worst-case-bounds.md) 推导真正的上下界：非线性量检查区间端点、内部驻点和约束边界，
+  保留变量依赖；重放同一算式只验证算术。源表条件须匹配实际电压、温度、电流及测试条件，
+  仅在厂家明确许可的范围内使用其插值；工程估计和未知轴不能升为保证。
 - 原理图阶段 `footprint` 可以留空；散热和机械需求写进交接文档。
 - **资料规则**：新下载的器件数据手册存入工程，同时复制到
   `~/Documents/知识库/HardwareWiki/raw/Datasheet/<分类>/<子类>/`，文件名为 `Vendor - PartNumber.pdf`
@@ -108,6 +111,9 @@ for n, (key, page) in enumerate(page_intents(board, rails=RAILS).items(), 1):
 
 - 先看 `s.plan` 给出的器件角色和网络标签角色。只给锚点写坐标，其余器件用与角色相符的画法从引脚推出。
   有意偏离纲要时用 `s.justify(对象, 理由)` 记录。
+- 先列真实 planned 局部网名及其字号。在相应 series 段或 own-pin stub 放置前，显式用
+  `max(原gap, s.name_run_steps(原net, font=原字号))` 预留直段，之后仍调用原 `s.name`。
+  多段链逐段按真实网络预算；不得全局加gap、缩字、改名或用标签绕过连线。预算不证明无遮挡或原生字体覆盖。
 - `build()` 遇到硬缺陷会直接报错。`report["structure"]` 必须为 PASS，`report["readability"]["gate"]` 必须为 PASS。
   失败时按 O8 改结构（方向、间隙、顺序 → 锚点 → 拆行）后重建，不得手调坐标打补丁。
 - 图页脚本随交付版本一起保存；下一版只重生成有变化的页面。
@@ -128,6 +134,8 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
 只有全部门禁为 PASS 时结果才是 `AUTOMATED_PASS`。
 
 - 新设计要求 ERC 零违规。重画工程时保留基线和最终两份原始 ERC，逐条确认没有新增违规，并披露继承的问题。
+- ERC 摘要按原始报告的 UUID/object 绑定实际层次实例、引脚及原生网络，再归因到 rail；
+  不凭位号或网名文字猜问题对象。无法绑定时保留原违规与待核边界，见 [project-verification.md](references/project-verification.md#erc-summary-object-binding)。
 - `geometry` 为 INSUFFICIENT 时（例如根页含层次图框），说明该页超出检查器覆盖范围，必须在渲染图上核对。
 - 失败时修改相应页面脚本，在新的运行目录重新生成并验证。不得为了降低计数而加 PWR_FLAG、加排除项或改引脚类型。
 - 受控例外只有两类，都在意图中逐网声明、用 `Sheet.power_flag()` 每网放一个 PWR_FLAG，由 `external_supply` 门禁核对：
@@ -186,6 +194,7 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
 | 架构页、参考设计外围、学习工程师图面 | [reference-driven-board-design.md](references/reference-driven-board-design.md) |
 | 选符号、引脚表、外围合同 | [symbol-and-peripheral-contracts.md](references/symbol-and-peripheral-contracts.md) |
 | 计算条件合同 | [calculation-preflight.md](references/calculation-preflight.md) |
+| 非线性极值、条件匹配与插值边界 | [worst-case-bounds.md](references/worst-case-bounds.md) |
 | 纲要 O1–O8 与 recipes API | [drawing-recipes.md](references/drawing-recipes.md) |
 | 阅读路径、HR-01–HR-11、目检 | [human-readable-routing.md](references/human-readable-routing.md) |
 | 拓扑结构、标签策略、验证门禁 | [schematic-drawing-standards.md](references/schematic-drawing-standards.md) |

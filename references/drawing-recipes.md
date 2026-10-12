@@ -22,6 +22,11 @@ placing support parts from their pins with explicit spines, had 0 crossings and
    then draw every other part with the recipe its role allows. Keep coordinates
    only for anchors and deliberate Z legs. Record each intended deviation with
    `sheet.justify(part_or_net, reason)` where it is made.
+   List the actual planned local names and fonts before placing their runs.
+   For the relevant series leg or own-pin stub, explicitly reserve
+   `max(existing_gap, sheet.name_run_steps(net, font))`, then call `name` with
+   that same raw logical name and font. Budget each net separately in a chain;
+   do not enlarge all gaps or change the naming policy.
 4. `root, report = sheet.build(name)`, then write `dump(root)`. Build raises on
    any hard defect (see below); fix the structure, not the symptom.
 5. `report["structure"]` must be PASS: every finding is either fixed or a
@@ -83,7 +88,8 @@ on the rendered page before calling the page readable.
 | `wire(*pins_or_points, net)` | Explicit orthogonal polyline; every pin must be on `net`. |
 | `power(target, symbol, net, length)` | Rail/return symbol whose Value is the net name (declared symbol by default); a perpendicular pin is left sideways far enough to clear the part body. |
 | `label(target, kind, length, outward, net, reason)` | Global label where the net leaves the sheet, or a local join with `reason`. Extends along the pin direction or `outward`: left, right, up or down. |
-| `name(net, at)` | Small 1.0 mm local name on the net's own wire, mid-segment and clear of pins and dots: above a horizontal wire, else beside a vertical one. |
+| `name_run_steps(net, font=1.0)` | Read-only necessary straight-run budget: the existing local `label_geometry` width for this declared raw logical net/font plus two grid steps, rounded up to grid steps. No placement or label is added. |
+| `name(net, at, font=1.0)` | Small local name on the net's own wire, mid-segment and clear of pins and dots: above a horizontal wire, else beside a vertical one. |
 | `select_local_names(intent, external, rails)` | Default selection: page-local nets touching a part with three or more pins. |
 | `text(text, at, font)` | Block title or note. |
 
@@ -95,6 +101,30 @@ corner. Content stays 12 mm inside the drawing-sheet frame. The report holds eve
 locations, label and rail sets, readability metrics with the gate, the
 structure audit, and a `layout` whose net policies `compare_netlist` uses to
 check label and rail names.
+
+`name_run_steps` validates a declared logical net and a finite positive numeric
+font; it does not decode names, shorten them, resolve variables or pick a font.
+The grid is 1.27 mm; the local-name font defaults to 1.0 mm, independently of
+Reference/Value field defaults. Explicit reservation before placement can avoid
+a later insufficient-length rejection, but sufficient length is only a space
+budget. Parts, text, foreign wires, junctions, page boundaries and native glyph
+coverage still need the unchanged strict build and native verification. The
+query gives no new qualification for encoded/markup/CJK/variable text, external
+fonts or mirrored glyphs. Keep their existing source and coverage boundaries.
+
+For a declared local net `node`, one series leg may be planned as:
+
+```python
+font = 1.0
+gap = max(existing_gap, sheet.name_run_steps(node, font))
+sheet.series(start_pin, [support_ref], toward, gap=gap)
+sheet.name(node, font=font)
+```
+
+`start_pin` must actually be on `node`; every later leg in a multi-part chain
+can have a different net and needs its own budget. The same query can explicitly
+budget `stub(pin, max(existing_length, ...))` before wiring that own-pin exit.
+It does not move existing anchors or promise that an entire first build passes.
 
 For a multi-page project keep one board intent (see
 [requirements-to-intent.md](requirements-to-intent.md)) and split it with

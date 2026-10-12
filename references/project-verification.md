@@ -107,6 +107,19 @@ writing the candidate and at final delivery. Include its status and unresolved
 assumptions alongside native/ERC/readability results. Artifact freshness alone does
 not detect a freshly generated stale note; facts bindings check declared current values.
 
+## ERC summary object binding
+
+Keep the original native ERC report and bind each summarized violation through
+its actual UUID/object to the current source hierarchy instance, pin and native
+net before attributing it to a rail. References, display names and coordinates
+are useful locators, but their text alone does not establish the affected object
+or rail; reused sheets and renamed nets can make such guesses wrong. Include the
+source/report hashes and object locator used for the attribution in the review
+evidence. If an object cannot be resolved, retain the original violation and
+state the unresolved attribution rather than inventing a rail diagnosis or
+quieting it. This is a review instruction, not a new required schema field or a
+change to ERC thresholds, power flags or existing gates.
+
 ### Automatic-looking names need source evidence
 
 For board verification, XML alone cannot distinguish a hand-written `Net-(...)`

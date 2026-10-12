@@ -597,6 +597,30 @@ class Sheet:
             self.reasons[f"label:{net}"] = reason
         return p
 
+    def name_run_steps(self, net, font=1.0):
+        """Necessary local-name run budget in grid steps; does not place or name.
+
+        Reserve this explicitly before a series gap or own-pin stub is drawn.
+        It uses the same raw name, font and two-grid margin as build's O7
+        diagnostic. A sufficient length does not prove obstacle clearance or
+        native font/encoding coverage; the existing strict build still decides.
+        """
+        if not isinstance(net, str) or not any(n["name"] == net for n in self.intent["nets"]):
+            raise ValueError(f"{net!r} is not a declared logical net")
+        if isinstance(font, bool) or not isinstance(font, (int, float)):
+            raise ValueError("Name font must be a finite positive number")
+        try:
+            valid_font = math.isfinite(font) and font > 0
+        except OverflowError:
+            valid_font = False
+        if not valid_font:
+            raise ValueError("Name font must be a finite positive number")
+        box = label_geometry("local", net, (0, 0), RIGHT, font)[2]
+        steps = (box.width + 2 * G) / G
+        if not math.isfinite(steps):
+            raise ValueError("Name run budget is not finite")
+        return math.ceil(steps)
+
     def name(self, net, at=None, font=1.0):
         """Small local name on the net's own visible wire (placed at build time)."""
         if at is not None and not any(n == net and on_segment(pt(at), a, b) for n, a, b in self.segments):
