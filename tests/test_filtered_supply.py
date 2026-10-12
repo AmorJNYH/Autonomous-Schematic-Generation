@@ -29,7 +29,8 @@ def xml(nets, parts=PARTS, dnp=()):
     libparts = "".join(f'<libpart lib="{l}" part="{p}"><pins><pin num="1" type="passive"/><pin num="2" type="passive"/></pins></libpart>'
                        for l, p in sorted({(l, p) for l, p, _ in parts.values()}) if p != "AMP")
     body = "".join(f'<net code="{i}" name="{name}">'
-                   + "".join(f'<node ref="{r}" pin="{p}" pintype="{t}"/>' for r, p, t in nodes)
+                   + "".join(f'<node ref="{n[0]}" pin="{n[1]}" pintype="{n[2]}"'
+                             + (f' pinfunction="{n[3]}"' if len(n) > 3 else "") + "/>" for n in nodes)
                    + "</net>" for i, (name, nodes) in enumerate(nets.items(), 1))
     design = "".join(f'<sheet number="{i}" name="{s}"/>' for i, s in enumerate(SHEETS, 1))
     return f"<export><design>{design}</design><components>{comps}</components><libparts>{libparts}</libparts><nets>{body}</nets></export>"
@@ -133,6 +134,15 @@ class FilteredSupplyTests(unittest.TestCase):
         self.assertIn("filtered_return_from_supply", self.kinds(self.run_judge(z, intent=renamed("AVCC", "0V"))))
         down = nets(); down["GND"] = down.pop("PVCC") + [("U7", "9", "power_in")]  # supply derived from a ground
         self.assertIn("filtered_return_from_supply", self.kinds(self.run_judge(down, intent=renamed("PVCC", "GND"))))
+
+    def test_return_class_also_follows_native_power_pin_names(self):
+        n = nets(); n["/amp/AVCC"] = [(*x, "GND_2") if x[:2] == ("U1", "2") else x for x in n["/amp/AVCC"]]
+        self.assertIn("filtered_return_from_supply", self.kinds(self.run_judge(n)))   # neutral name, GND pin
+        for supply_pin in ("VDD_PAD", "AVCC_7"):
+            n = nets(); n["/amp/AVCC"] = [(*x, supply_pin) if x[:2] == ("U1", "2") else x for x in n["/amp/AVCC"]]
+            self.assertEqual(self.run_judge(n)["status"], "PASS", supply_pin)
+        n = nets(); n["/amp/AVCC"] = [(*x, "EP_25") if x[:2] == ("U1", "2") else x for x in n["/amp/AVCC"]]
+        self.assertIn("filtered_return_from_supply", self.kinds(self.run_judge(n)))
 
     def test_declared_native_name_must_match(self):
         n = nets(); n["/amp/FOO"] = n.pop("/amp/AVCC")

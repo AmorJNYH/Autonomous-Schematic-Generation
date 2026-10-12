@@ -44,6 +44,8 @@ SERIES_LIB = re.compile(r"^Device:(R|R_Small|R_US|R_Small_US|L|L_Small|L_Core_\w
                         r"|FerriteBead|FerriteBead_Small|Fuse|Fuse_Small|Polyfuse|Polyfuse_Small)$")
 SERIES_ROLES = {"series_resistor", "inductor", "ferrite_bead", "fuse"}  # MPN-named libraries only
 RETURN_NAME = re.compile(r"GND|VSS|RTN|RETURN|^0V$|^COM$", re.IGNORECASE)
+# Native pin functions carry KiCad's "_<pin>" suffix (GND_3, EP_25); pad names are anchored so VDD_PAD stays a supply.
+RETURN_PIN = re.compile(r"GND|VSS|^(E?PAD|EP|THERMAL_PAD|0V)(_\d+)?$", re.IGNORECASE)
 
 
 def filtered_declarations(intent):
@@ -284,7 +286,7 @@ def judge(xml_path, intent, aliases):
     def is_return(name, net):
         """Return-class by declared name or by the native names of its power-input pins."""
         return bool(RETURN_NAME.search(name.rsplit("/", 1)[-1])) or (net is not None and any(
-            t.split("+", 1)[0] == "power_in" and re.search(r"GND|VSS|^EP$|PAD", functions.get((r, p), ""), re.IGNORECASE)
+            t.split("+", 1)[0] == "power_in" and RETURN_PIN.search(functions.get((r, p), ""))
             for r, p, t in net["nodes"] if r not in aliases))
 
     sheets = {s.get("name", "") for s in root.findall("design/sheet")} | {"/"}
