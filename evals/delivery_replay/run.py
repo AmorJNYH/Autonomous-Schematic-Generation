@@ -3,6 +3,8 @@ import sys,argparse,time
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from bench_common import *
+from incremental_delivery import require_cache_revision
+from run_binding import capture,open_run,validate_run
 # Exact outputs of the audited historical helpers; relative to suite/base roots.
 # Parent directory names never determine whether an XML is native evidence.
 REBUILT_NATIVE_OUTPUTS={
@@ -33,7 +35,7 @@ def locate_native_output(root,round_number,outputs):
  return candidate if candidate.is_file() else None
 
 def main():
- a=argparse.ArgumentParser();a.add_argument('--cache',required=True,type=Path);a.add_argument('--out',required=True,type=Path);v=a.parse_args();v.out.resolve().relative_to(Path('/tmp/codex-work').resolve());v.out.mkdir(parents=True,exist_ok=False);t=time.monotonic();runs=[];rounds={}
+ a=argparse.ArgumentParser();a.add_argument('--cache',required=True,type=Path);a.add_argument('--out',required=True,type=Path);a.add_argument('--revision',type=int,choices=[2,3],default=2);v=a.parse_args();require_cache_revision(v.cache,v.revision);v.out.resolve().relative_to(Path('/tmp/codex-work').resolve());binding_receipt=open_run(v.out,capture(ROOT,v.cache,v.revision,[],'delivery'));t=time.monotonic();runs=[];rounds={}
  for h in get(v.cache/'prepared.json')['helpers']:
   if h['status']!='READY':runs.append({'id':h['id'],'status':'NOT_RUN'});continue
   p=Path(h['cached_helper']);assert sha(p)==h['sha256'];old=p.read_text();new=old.replace("assert O.is_relative_to(R.resolve())and not O.exists()", "assert O.is_relative_to(Path('/tmp/codex-work').resolve())and not O.exists()")
@@ -55,7 +57,16 @@ def main():
   if old and new and Path(old).exists():
    before=native(old);after=native(new);equality={'component_identity_equal':before['components']==after['components'],'physical_partition_equal':before['partitions']==after['partitions'],'frozen_xml':str(old),'frozen_sha256':sha(old),'rebuilt_xml':str(new),'rebuilt_sha256':sha(new)}
   r['frozen_native_comparison']=equality;r['comparison_status']='MEASURED' if equality else 'NOT_RUN';r['known_inherited_build_failure']=n==2
- summary={'asg_commit':subprocess.check_output(['git','-C',str(ROOT),'rev-parse','HEAD'],text=True).strip(),'seconds':time.monotonic()-t,'rounds':rounds,'runs':runs,'scope':'Historical build compatibility only; gates remain raw. Round02 inherited failure separate. Source-answer equivalence is distinct from freeze-rebuild equality. No human SR/hardware release.'}
+ extra={}
+ if v.revision==3:
+  from incremental_delivery import replay_frozen
+  extra=replay_frozen(get(v.cache/'prepared.json').get('frozen_deliveries',[]),v.out/'incremental',verify,native);rounds.update(extra)
+ summary={'benchmark_revision':v.revision,'incremental_input_fingerprint':get(v.cache/'prepared.json').get('incremental_input_fingerprint'),'incremental_sources':list(extra),'asg_commit':subprocess.check_output(['git','-C',str(ROOT),'rev-parse','HEAD'],text=True).strip(),'seconds':time.monotonic()-t,'rounds':rounds,'runs':runs,'scope':'Historical build compatibility only; gates remain raw. Round02 inherited failure separate. Source-answer equivalence is distinct from freeze-rebuild equality. No human SR/hardware release.'}
+ summary['run_binding']=validate_run(v.out,ROOT,v.cache,v.revision,[],'delivery',binding_receipt)
  provenance=execution_provenance(v.out,'delivery');summary['execution_provenance_verified']=provenance['verified'];summary['execution_provenance']=provenance
+ if v.revision==3:
+  incremental_provenance=execution_provenance(v.out/'incremental','mutation')
+  summary['incremental_execution_provenance']=incremental_provenance
+  summary['execution_provenance_verified']=summary['execution_provenance_verified'] and incremental_provenance['verified']
  put(v.out/'summary.json',summary);print(json.dumps({'seconds':summary['seconds'],'rounds':{k:{'build_exit':r.get('build_exit',r.get('asg',{}).get('build_returncode')),'comparison_status':r['comparison_status'],'native':r['frozen_native_comparison']} for k,r in rounds.items()}},ensure_ascii=False))
 if __name__=='__main__':main()

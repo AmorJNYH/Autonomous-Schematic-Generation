@@ -7,7 +7,9 @@ from run import reports,new_entries,classify
 from operators import TYPES
 
 def main():
- a=argparse.ArgumentParser();a.add_argument('--run',required=True,type=Path);v=a.parse_args();v.run.resolve().relative_to(Path('/tmp/codex-work').resolve());rows=get(v.run/'matrix.json');old=get(v.run/'summary.json');put(v.run/'summary-before-measurement-parser-repair.json',old);native_hashes={str(p.relative_to(v.run)):sha(p) for p in v.run.glob('*/**/verify/*.json')};before={k:sha(v.run/k) for k in ['matrix.json','summary.json']};changes=[]
+ a=argparse.ArgumentParser();a.add_argument('--run',required=True,type=Path);v=a.parse_args();v.run.resolve().relative_to(Path('/tmp/codex-work').resolve())
+ if (v.run/'run-binding.json').exists():raise ValueError('Bound runs cannot be recomputed in place; create a separately versioned fresh run')
+ rows=get(v.run/'matrix.json');old=get(v.run/'summary.json');put(v.run/'summary-before-measurement-parser-repair.json',old);native_hashes={str(p.relative_to(v.run)):sha(p) for p in v.run.glob('*/**/verify/*.json')};before={k:sha(v.run/k) for k in ['matrix.json','summary.json']};changes=[]
  for r in rows:
   if 'mutant_gates' not in r:continue
   d=v.run/r['round'];bs=get(d/'baseline/verify/summary.json');br=reports(d/'baseline/verify');out=d/r['type'];ms=get(out/'verify/summary.json');mr=reports(out/'verify');p=r['plan'];oldstatus=r['status'];r['new_errors']={g:new_entries(br,mr,g) for g in set(br)|set(mr)};r['caught_by']=[];classify(bs,br,ms,mr,p,r)

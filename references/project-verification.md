@@ -87,7 +87,8 @@ retain every remaining baseline pin and all declared new pins exactly once.
 Unknown, duplicate, missing and invented pins fail. `#` references are virtual
 and excluded consistently; physical NC singleton nets remain significant. Local
 net names may change without changing partitions; use `named_nets` for important
-names. Expected partitions must come from independent intent, not the candidate.
+names. `verify_schematic.py` still requires drawn names to match the intent, so
+update the intent names in the same revision. Expected partitions must come from independent intent, not the candidate.
 
 Native exported pins are not independent datasheet evidence. This tool does not
 check package mapping, unexported hidden pins, assembled DNP operation or analog
@@ -105,3 +106,25 @@ For electrical revisions also run the [change preflight](change-preflight.md) be
 writing the candidate and at final delivery. Include its status and unresolved
 assumptions alongside native/ERC/readability results. Artifact freshness alone does
 not detect a freshly generated stale note; facts bindings check declared current values.
+
+### Automatic-looking names need source evidence
+
+For board verification, XML alone cannot distinguish a hand-written `Net-(...)`
+(or `unconnected-(...)`) label from a KiCad generated name. `verify_schematic.py`
+and the native board verifier use a same-source native naming counterfactual
+when such a name differs from the intent: re-export the unchanged hierarchy,
+then consistently rename scalar labels, sheet interfaces, power names and hidden
+power-pin names in a diagnostic copy. Both exports must retain the complete
+physical partitions and component identity, including UUID sheet paths. A
+copy-location `Sheetfile` property is excluded from identity comparison; ordinary
+component fields are retained. No source design is edited.
+
+A changed native name carrying the unique diagnostic marker proves an explicit
+name on that partition. A proven automatic name may differ from the intent,
+including when its pin name contains `/`. The origin audit leaves bus, encoded/variable interface names,
+inherited or missing embedded symbol definitions and unbound source/XML
+unqualified; this does not qualify the separate encoding contract. The public
+XML-only `compare_netlist` API returns `INSUFFICIENT` for a differing automatic-
+looking name without source evidence. Page layout checks retain their existing
+scope. Inspect `net-name-origin.json` and its source hashes and native commands;
+a passing partition comparison alone does not establish name provenance.

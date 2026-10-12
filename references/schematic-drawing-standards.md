@@ -117,8 +117,9 @@ writes `summary.json`; items 4–5 stay manual.
    ignored-check metadata, command result and exact KiCad version. An explained
    residual warning is still a residual warning, not “0/0”.
 2. Native XML netlist: all intended `reference.pin` partitions match exactly;
-   no unintended shorts, opens, lost pins or component identity changes. Use
-   source-to-output comparison too for a redraw.
+   no unintended shorts, opens, lost pins or component identity changes; every
+   drawn net name equals the intent name of the same pins (sheet path prefix
+   allowed). Use source-to-output comparison too for a redraw.
 3. Geometry: explicitly account for body overlap, wire-through-body, all visible
    field/label collisions (including same-owner), wire/text and pin/text overlap,
    page/title intrusion, electrical grid, wire/label/NC/junction attachment and
@@ -144,3 +145,13 @@ For EasyEDA Pro, hand off to `easyeda-schematic-draw` with the same electrical
 mapping and readability criteria. For unsupported native KiCad authoring, use
 a scoped project writer; preserve multi-unit/hierarchy information and apply
 the same gates instead of flattening the input.
+
+Encoded-slash hierarchical label text retains its conservative raw-text extent
+and native-review coverage gaps. Only the default scalar fallback with strict
+native styles (0/90 with left, 180/270 with right; square .889/1.0/1.27 mm font;
+no extra formatting, variables or other encodings) uses readable 180→0 and
+270→90 text orientation. It does not decode or shorten the model text, move the
+anchor, qualify the outline or native font, or exempt owner wires/pins/bodies.
+Rejecting that narrow style qualification retains the original fallback. Native
+render inspection and actual finding identities remain required; absence of a
+finding with coverage gaps is not a geometry PASS.

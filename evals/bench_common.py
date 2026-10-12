@@ -16,14 +16,28 @@ def call(argv,out,cwd=None,timeout=600):
  except subprocess.TimeoutExpired as e:put(str(out)+'.command.json',{'argv':list(map(str,argv)),'status':'TIMEOUT','seconds':time.monotonic()-t});return -1
  Path(str(out)+'.stdout').write_text(q.stdout);Path(str(out)+'.stderr').write_text(q.stderr);put(str(out)+'.command.json',{'argv':list(map(str,argv)),'cwd':str(cwd) if cwd else None,'returncode':q.returncode,'seconds':time.monotonic()-t});return q.returncode
 
+def assembly_flag(component,name):
+ """KiCad XML exports fitted/exclusion flags as marker property nodes."""
+ nodes=[x for x in component.findall('property') if x.get('name')==name]+component.findall(name)
+ states=[]
+ for x in nodes:
+  raw=(x.get('value') if x.get('value') is not None else x.text or '').strip().lower()
+  if raw in ('','yes','true','1'):states.append(True)
+  elif raw in ('no','false','0'):states.append(False)
+  else:raise ValueError('Unknown native assembly flag: '+name)
+ if len(set(states))>1:raise ValueError('Conflicting native assembly flag: '+name)
+ return bool(states and states[0])
+
 def native(p):
  t=ET.parse(p).getroot();cs={}
  for c in t.findall('components/comp'):
   ref=c.get('ref');
   if ref.startswith('#'):continue
-  cs[ref]={k:c.findtext(k,'') for k in ['value','footprint','dnp','exclude_from_bom']};ls=c.find('libsource');cs[ref]['lib']=ls.attrib if ls is not None else None
+  cs[ref]={k:c.findtext(k,'') for k in ['value','footprint']}
+  cs[ref].update({k:assembly_flag(c,k) for k in ['dnp','exclude_from_bom','exclude_from_board']})
+  ls=c.find('libsource');cs[ref]['lib']=ls.attrib if ls is not None else None
   cs[ref]['MPN']={f.get('name'):f.text or '' for f in c.findall('fields/field')}.get('MPN')
- return {'components':cs,'partitions':sorted([sorted(x.get('ref')+'.'+x.get('pin') for x in n.findall('node') if not x.get('ref').startswith('#')) for n in t.findall('nets/net') if any(not x.get('ref').startswith('#') for x in n.findall('node'))])}
+ return {'identity_schema_version':2,'identity_scope':'value/footprint/MPN/libsource and native DNP/BOM/board exclusion flags; not arbitrary user fields or all library pin definitions','components':cs,'partitions':sorted([sorted(x.get('ref')+'.'+x.get('pin') for x in n.findall('node') if not x.get('ref').startswith('#')) for n in t.findall('nets/net') if any(not x.get('ref').startswith('#') for x in n.findall('node'))])}
 
 def treehash(p):return {x.relative_to(p).as_posix():sha(x) for x in Path(p).rglob('*') if x.is_file() and '.git' not in x.parts and '__pycache__' not in x.parts}
 

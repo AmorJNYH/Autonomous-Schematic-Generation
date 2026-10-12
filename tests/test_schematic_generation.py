@@ -30,7 +30,7 @@ from schematic_layout.scene import Scene, Symbol, Pin, read_scene
 from schematic_layout.qa import check_scene
 from schematic_layout.sexpr import parse, dump, form, Atom, first, all_nodes, set_node
 from schematic_layout.generate import generate, library_dirs
-from schematic_layout.native import find_cli, compare_netlist
+from schematic_layout.native import find_cli, compare_netlist, compare_source_netlist
 
 FIXTURES = ROOT / "tests/fixtures/generation"
 
@@ -418,7 +418,7 @@ class NativeTests(unittest.TestCase):
                 timeout=60,
             )
             self.assertEqual(p.returncode, 0)
-            self.assertEqual(compare_netlist(xml, intent)["status"], "PASS")
+            self.assertEqual(compare_source_netlist(path, xml, intent, find_cli(), out / "name-origin")[0]["status"], "PASS")
 
     def test_native_rotations_and_mirrors_preserve_pin_numbers(self):
         with tempfile.TemporaryDirectory() as td:

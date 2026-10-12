@@ -3,9 +3,13 @@
 import hashlib
 import json
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import xml.etree.ElementTree as ET
+
+# KiCad automatic names; the pin names inside may themselves contain "/".
+AUTO_NET_NAME = re.compile(r"(?:^|/)(?:Net|unconnected)-\(")
 
 
 def find_cli(explicit=None):
@@ -17,7 +21,7 @@ def find_cli(explicit=None):
     return next((str(p) for p in candidates if p and Path(p).is_file()), None)
 
 
-def compare_netlist(xml_path, intent, layout=None):
+def compare_netlist(xml_path, intent, layout=None, name_origins=None):
     root = ET.parse(xml_path).getroot()
     if (
         root.tag != "export"
@@ -40,6 +44,7 @@ def compare_netlist(xml_path, intent, layout=None):
     expected_sets = {frozenset(n["pins"]) for n in intent["nets"]}
     nc = set(intent.get("no_connect", []))
     errors = []
+    coverage_gaps = []
     for expected in expected_sets:
         if expected not in actual_sets:
             errors.append(
@@ -52,6 +57,35 @@ def compare_netlist(xml_path, intent, layout=None):
     for actual in actual_sets:
         if actual not in expected_sets and not (len(actual) == 1 and actual <= nc):
             errors.append({"kind": "unexpected_net_partition", "pins": sorted(actual)})
+    if layout is None:
+        # Board level: a drawn net name must be the intent name of the same pin
+        # partition (e.g. two swapped single-use name labels). Automatic-looking names
+        # require same-source native origin evidence before they can be skipped. A local
+        # name may carry only its own sheet path as a prefix; intent names that
+        # start with "/" must match exactly.
+        sheets = {s.attrib.get("name", "") for s in root.findall("design/sheet")} | {"/"}
+        by_pins = {frozenset(n["pins"]): n["name"] for n in intent["nets"]}
+        for name, pins in nets:
+            expected = by_pins.get(pins)
+            if expected is None:
+                continue
+            allowed = {expected} if expected.startswith("/") else {expected} | {p + expected for p in sheets}
+            if name not in allowed and AUTO_NET_NAME.search(name):
+                origin = (name_origins or {}).get(pins)
+                if origin == "AUTOMATIC":
+                    continue
+                if origin != "EXPLICIT":
+                    coverage_gaps.append({"kind": "net_name_origin_unknown", "actual": name,
+                                          "pins": sorted(pins)})
+                    continue
+            if name not in allowed:
+                errors.append(
+                    {
+                        "kind": "net_name_mismatch",
+                        "expected": expected,
+                        "actual": [name],
+                    }
+                )
     for n in intent["nets"]:
         policy = (layout or {}).get("nets", {}).get(n["name"], {})
         if (policy.get("mode") in ("labels", "power") or policy.get("label")
@@ -150,13 +184,27 @@ def compare_netlist(xml_path, intent, layout=None):
                 }
             )
     return {
-        "status": "FAIL" if errors else "PASS",
+        "status": "FAIL" if errors else "INSUFFICIENT" if coverage_gaps else "PASS",
         "errors": errors,
+        **({"coverage_gaps": coverage_gaps} if coverage_gaps else {}),
         "expected_connected_pins": sum(len(s) for s in expected_sets),
         "expected_nets": len(expected_sets),
         "actual_nets": len(actual_sets),
         "no_connect_pins": sorted(nc),
     }
+
+
+def compare_source_netlist(schematic, xml_path, intent, cli, output):
+    """Board check with source-qualified automatic-name evidence when needed."""
+    result = compare_netlist(xml_path, intent)
+    if not result.get("coverage_gaps"):
+        return result, None
+    from .net_name_origin import audit_name_origins
+    audit = audit_name_origins(schematic, xml_path, cli, output)
+    origins = audit["origins"]
+    evidence = {**audit, "origins": [{"pins": sorted(p), "kind": k}
+                                  for p, k in origins.items()]}
+    return compare_netlist(xml_path, intent, name_origins=origins), evidence
 
 
 def verify(schematic, intent, layout, output, cli=None, reference_contract=None):
@@ -235,11 +283,18 @@ def verify(schematic, intent, layout, output, cli=None, reference_contract=None)
             result["erc"]["status"] = "INSUFFICIENT"
     else:
         result["erc"] = {"status": "INSUFFICIENT"}
-    result["netlist"] = (
-        compare_netlist(netlist, intent, layout)
-        if net_run.returncode == 0 and netlist.is_file()
-        else {"status": "INSUFFICIENT"}
-    )
+    if net_run.returncode == 0 and netlist.is_file():
+        if layout is None:
+            result["netlist"], evidence = compare_source_netlist(
+                schematic, netlist, intent, cli, output / "net-name-origin")
+            if evidence is not None:
+                result["net_name_origin"] = evidence
+                records.extend(evidence["commands"])
+                (output / "net-name-origin.json").write_text(json.dumps(evidence, indent=2) + "\n")
+        else:
+            result["netlist"] = compare_netlist(netlist, intent, layout)
+    else:
+        result["netlist"] = {"status": "INSUFFICIENT"}
     # Run on the saved hierarchy and native export, including custom library ink.
     # An ERC/netlist match alone cannot detect a shortened internal pin leg.
     from .symbol_integrity import audit_symbols

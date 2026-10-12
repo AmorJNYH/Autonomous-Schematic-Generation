@@ -1,7 +1,19 @@
 """Release guards compare preserved measured sets, never just aggregate ratios."""
 import argparse,json
 from pathlib import Path
-from bench_common import get,put
+from bench_common import get,put,sha
+
+def bound_origin(meta,expected,suite):
+ receipt=meta.get('run_binding',{})
+ if not receipt.get('verified') or not receipt.get('initial_receipt_verified') or not receipt.get('sha256') or not receipt.get('path'):return False
+ try:
+  if sha(receipt['path'])!=receipt['sha256']:return False
+  bound=get(receipt['path'])
+ except (OSError,ValueError,TypeError):return False
+ return (bound.get('schema_version')==1 and bound.get('HEAD')==expected and bound.get('suite')==suite
+         and bound.get('revision')==meta.get('benchmark_revision',2)
+         and bound.get('input_fingerprint')==meta.get('incremental_input_fingerprint')
+         and bool(bound.get('source_bytes')) and bool(bound.get('cache_bytes')))
 
 def changed_engineering_inputs(row):
  # KiCad may create a new .kicad_prl UI/session cache during native verification/resume.
@@ -10,10 +22,17 @@ def changed_engineering_inputs(row):
 
 def compare(before,after,expected_before=None,expected_after=None):
  errors=[]
+ strict_bindings=any(get(root/'mutation/summary.json').get('benchmark_revision',2)==3 for root in [before,after])
+ for suite in ['mutation','delivery']:
+  old=get(before/suite/'summary.json');new=get(after/suite/'summary.json')
+  if old.get('benchmark_revision',2)!=new.get('benchmark_revision',2):errors.append('BENCHMARK_REVISION_CHANGED:'+suite)
+  if old.get('benchmark_revision',2)==3:
+   if not old.get('incremental_input_fingerprint') or old['incremental_input_fingerprint']!=new.get('incremental_input_fingerprint'):errors.append('INCREMENTAL_INPUT_FINGERPRINT_CHANGED_OR_MISSING:'+suite)
  if not expected_before or not expected_after:errors.append('EXPECTED_ASG_COMMITS_MISSING')
  for label,root,expected in [('before',before,expected_before),('after',after,expected_after)]:
   for suite in ['overstrict','mutation','delivery']:
    meta=get(root/suite/'summary.json')
+   if strict_bindings and not bound_origin(meta,expected,suite):errors.append('IMMUTABLE_RUN_BINDING_UNVERIFIED:'+label+':'+suite)
    if meta.get('asg_commit')!=expected:errors.append('ASG_COMMIT_MISMATCH:'+label+':'+suite)
    if not meta.get('execution_provenance_verified'):errors.append('ASG_COMMAND_ROOT_UNVERIFIED:'+label+':'+suite)
  bs=get(before/'overstrict/summary.json');a=get(after/'overstrict/summary.json');bm=get(before/'overstrict/matrix.json');am={r['id']:r for r in get(after/'overstrict/matrix.json')}
@@ -49,6 +68,11 @@ def compare(before,after,expected_before=None,expected_after=None):
  for key,row in get(before/'delivery/summary.json')['rounds'].items():
   prior=row.get('frozen_native_comparison');new=delivery.get(key,{}).get('frozen_native_comparison')
   if prior is None and key=='02':continue
+  if key=='b2-r02-v1' and old_delivery.get('benchmark_revision')==new_delivery.get('benchmark_revision')==3:
+   current=delivery.get(key,{})
+   if (prior is None and new is None and row.get('functional_native')==current.get('functional_native')=='NOT_RUN'
+       and row.get('comparison_status')==current.get('comparison_status')=='NOT_RUN'
+       and row.get('source_fingerprint') and row['source_fingerprint']==current.get('source_fingerprint')):continue
   if prior and new and (not prior.get('frozen_sha256') or prior.get('frozen_sha256')!=new.get('frozen_sha256')):errors.append('DELIVERY_FROZEN_BASELINE_CHANGED:'+key)
   if not prior or not new or not new.get('component_identity_equal') or not new.get('physical_partition_equal'):errors.append('DELIVERY_NATIVE_CHANGE_OR_MISSING:'+key)
  return {'status':'REJECT' if errors else 'AUTOMATIC_GUARDS_PASS','errors':errors,'G1_before':bs['G1']['reported'],'G1_after':a['G1']['reported'],'G2_before':bs['G2'],'G2_after':a['G2'],'scope':'Benchmark input fingerprint and per-row source/commit/page/gate/rule/objects/coordinates must remain identical. Mapping repair requires a separately versioned baseline. Measured sets must not shrink or become UNMAPPED. Missing source/report rejects. G2 retention, G3 catch retention and native equivalence guard only; no hardware or human-review approval.'}

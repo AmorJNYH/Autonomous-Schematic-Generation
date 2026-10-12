@@ -22,7 +22,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 from schematic_layout.external_supply import audit_external_supply  # noqa: E402
-from schematic_layout.native import compare_netlist, find_cli  # noqa: E402
+from schematic_layout.native import compare_netlist, compare_source_netlist, find_cli  # noqa: E402
 from schematic_layout.pages import normalize  # noqa: E402
 
 
@@ -104,7 +104,10 @@ def main():
 
     if xml.is_file():
         intent = normalize(json.loads(args.intent.read_text(encoding="utf-8")))
-        result = compare_netlist(xml, intent)
+        result, name_origin = compare_source_netlist(args.root, xml, intent, cli, out / "net-name-origin")
+        if name_origin is not None:
+            write(out / "net-name-origin.json", name_origin)
+            commands.extend(name_origin["commands"])
         write(out / "intent-netlist.json", result)
         gates["intent_netlist"] = {"status": result["status"], "errors": len(result["errors"])}
     else:

@@ -26,6 +26,53 @@ PAPERS = {
 }
 
 
+def _encoded_hierarchical_readable(node):
+    """Narrow native-qualified readable rotation; retain fallback box/gaps."""
+    if not node or node[0] != "hierarchical_label" or len(node) < 2:
+        return False
+    text = str(node[1])
+    if "{slash}" not in text or not all(32 <= ord(c) <= 126 for c in text):
+        return False
+    if any(c in text.replace("{slash}", "") for c in "{}$@~^\\"):
+        return False
+    if any(m.start() and text[m.start()-1] in "$~^_" for m in re.finditer(r"\{slash\}", text)):
+        return False
+    children = node[2:]
+    if any(not isinstance(c, list) or not c or c[0] not in ("shape", "at", "effects", "uuid") for c in children):
+        return False
+    if any(len(all_nodes(node, key)) != 1 for key in ("shape", "at", "effects", "uuid")):
+        return False
+    shape, at, effects, uid = (first(node, key) for key in ("shape", "at", "effects", "uuid"))
+    if len(shape) != 2 or shape[1] not in ("input", "output", "bidirectional", "tri_state", "passive"):
+        return False
+    if len(uid) != 2 or not str(uid[1]) or len(at) != 4:
+        return False
+    if any(not isinstance(c, list) or not c or c[0] not in ("font", "justify") for c in effects[1:]):
+        return False
+    if len(all_nodes(effects, "font")) != 1 or len(all_nodes(effects, "justify")) != 1:
+        return False
+    font, justify = first(effects, "font"), first(effects, "justify")
+    if len(justify) != 2 or justify[1] not in ("left", "right"):
+        return False
+    if any(not isinstance(c, list) or not c or c[0] not in ("size", "thickness") for c in font[1:]):
+        return False
+    if len(all_nodes(font, "size")) != 1 or len(all_nodes(font, "thickness")) > 1:
+        return False
+    size = first(font, "size")
+    thickness = first(font, "thickness")
+    if len(size) != 3 or thickness is not None and len(thickness) != 2:
+        return False
+    try:
+        x, y, angle = map(float, at[1:])
+        w, h = map(float, size[1:])
+        return (all(math.isfinite(n) for n in (x, y, angle, w, h))
+                and w == h and w in (.889, 1.0, 1.27)
+                and (thickness is None or float(thickness[1]) == 0)
+                and (angle, justify[1]) in ((0, "left"), (90, "left"), (180, "right"), (270, "right")))
+    except (TypeError, ValueError):
+        return False
+
+
 def xy(node, key="at"):
     n = first(node, key)
     if not n or len(n) < 3:
@@ -564,6 +611,8 @@ def read_scene(root):
                         f.text, f.x, f.y, f.angle, f.font_mm, f.bold, f.justify,
                         HIERARCHICAL_LABEL_STYLES[style]))
                 else:
+                    if f.angle in (180, 270) and _encoded_hierarchical_readable(n):
+                        scene.labels[-1] = (kind, replace(f, angle=f.angle % 180))
                     scene.gaps.append("Hierarchical label text style needs native review")
                 scene.gaps.append(
                     f"{kind}: outline and attached fields need render review"

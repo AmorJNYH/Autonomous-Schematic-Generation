@@ -3,6 +3,7 @@ import sys,argparse,collections,time
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from bench_common import *
+from run_binding import capture,open_run,validate_run
 def valid_report(p,rc,page,kind):
  if not p.exists():return {}
  try:r=get(p)
@@ -19,7 +20,7 @@ def valid_report(p,rc,page,kind):
  return sheet
 
 def main():
- a=argparse.ArgumentParser();a.add_argument('--cache',type=Path,required=True);a.add_argument('--out',type=Path,required=True);v=a.parse_args();v.out.resolve().relative_to(Path('/tmp/codex-work').resolve());v.out.mkdir(parents=True,exist_ok=False);t=time.monotonic();data=get(v.cache/'prepared.json');checks={};results=[]
+ a=argparse.ArgumentParser();a.add_argument('--cache',type=Path,required=True);a.add_argument('--out',type=Path,required=True);v=a.parse_args();v.out.resolve().relative_to(Path('/tmp/codex-work').resolve());binding_receipt=open_run(v.out,capture(ROOT,v.cache,2,[],'overstrict'));t=time.monotonic();data=get(v.cache/'prepared.json');checks={};results=[]
  for s in data['sources']:
   d=v.cache/s['round'];reports={}
   if s['status']!='READY' or any(not (d/n).exists() or sha(d/n)!=h for n,h in s['source']['source_files'].items()):checks[s['round']]={};continue
@@ -47,6 +48,7 @@ def main():
  benchmark_inputs_hash=hashlib.sha256(json.dumps(input_payload,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
  report_verified=all(all(bool(report.get(k))for k in ['geometry','readability']) for pages in checks.values()for report in pages.values()) and all(bool(checks.get(x['round']))for x in data['sources'])
  summary={'report_execution_verified':report_verified,'measured_repo':str(ROOT.resolve()),'benchmark_inputs_hash':benchmark_inputs_hash,'asg_commit':subprocess.check_output(['git','-C',str(ROOT),'rev-parse','HEAD'],text=True).strip(),'seconds':time.monotonic()-t,'source_cache_hash_verified':all(s['status']=='READY' and all((v.cache/s['round']/n).exists() and sha(v.cache/s['round']/n)==h for n,h in s['source']['source_files'].items()) for s in data['sources']),'G1':counts['FALSE_POSITIVE'],'G2':counts['REAL'],'counts':counts,'unmapped_disposition_breakdown':dict(collections.Counter(r.get('adjudication_preserved',r['adjudication']) for r in results if r['measurement_status']=='UNMAPPED')),'per_round':{s['round']:dict(collections.Counter(r['measurement_status'] for r in results if r['round']==s['round'])) for s in data['sources']},'scope':'Exact historical rule/object or readability point identity; no alias guessing. A absent old rule is not proof of visually improved readability. WARNING/INSUFFICIENT separate. Geometric/readability duplicate gate rows not merged into root count.'}
+ summary['run_binding']=validate_run(v.out,ROOT,v.cache,2,[],'overstrict',binding_receipt)
  provenance=execution_provenance(v.out,'overstrict');summary['execution_provenance_verified']=provenance['verified'];summary['execution_provenance']=provenance
  put(v.out/'matrix.json',results);put(v.out/'summary.json',summary);print(json.dumps(summary,ensure_ascii=False))
 if __name__=='__main__':main()
