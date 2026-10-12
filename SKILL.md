@@ -138,7 +138,9 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
 - 新设计要求 ERC 零违规。重画工程时保留基线和最终两份原始 ERC，逐条确认没有新增违规，并披露继承的问题。
 - ERC 摘要按原始报告的 UUID/object 绑定实际层次实例、引脚及原生网络，再归因到 rail；
   不凭位号或网名文字猜问题对象。无法绑定时保留原违规与待核边界，见 [project-verification.md](references/project-verification.md#erc-summary-object-binding)。
-- `geometry` 为 INSUFFICIENT 时（例如根页含层次图框），说明该页超出检查器覆盖范围，必须在渲染图上核对。
+- 层次工程的几何检查使用本次原生导出的有限覆盖，支持已合格的图框、完整层次字段和部分脚名字迹；
+  具体范围及未支持对象见 [native-geometry.md](references/native-geometry.md)。外部 JSON 回执不能授权放行。
+  `geometry` 为 INSUFFICIENT 时（如层次脚轮廓、脚号或字形尚未合格），保留缺口并在原生渲染图上核对；有限图框 PASS 不等于所有字迹或整案通过。
 - 失败时修改相应页面脚本，在新的运行目录重新生成并验证。不得为了降低计数而加 PWR_FLAG、加排除项或改引脚类型。
 - 受控例外只有两类，都在意图中逐网声明、用 `Sheet.power_flag()` 每网放一个 PWR_FLAG，由 `external_supply` 门禁核对：
   只由连接器引入、板上没有电源输出脚驱动的电源或地（`external_supply`）；经一颗串联电阻、电感、磁珠或保险丝
