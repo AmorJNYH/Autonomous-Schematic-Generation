@@ -251,6 +251,8 @@ def _via(root, intent, ref):
     observed_role = (native_roles or property_roles)
     if observed_role and not observed_role[0].strip():
         return "INSUFFICIENT", "empty native ComponentRole metadata"
+    if observed_role and observed_role[0] not in SERIES_ROLES:
+        return "FAIL", "native ComponentRole is not a series passive role"
     # Missing legacy native fields retain the existing intent-only policy.
     if role is not None and observed_role and observed_role[0] != role:
         return "FAIL", "via intent/native ComponentRole mismatch"
