@@ -129,6 +129,9 @@ def contact_corridor(profile,a,b,wire_width,circles):
             vx,vy=other[0]-p[0],other[1]-p[1]
             if not (vx or vy) or abs(vx*dy-vy*dx)>1e-8:continue
             if x1-pad<=other[0]<=x2+pad and y1-pad<=other[1]<=y2+pad:continue
+            contact=next(c for c in circles if tuple(c['center'])==p)
+            inner=contact['radius']-contact['width']/2
+            if inner<=0 or wire_width/2+EPS>=inner:continue
             if any(tuple(c['center'])!=p and point_segment(tuple(c['center']),p,other)<=c['radius']+(wire_width+c['width'])/2+EPS for c in circles):continue
             return True
     except (ValueError,KeyError,TypeError):pass
@@ -343,7 +346,7 @@ def refine_wire_contacts(schematic,report,cli=None,workdir=None,expected_source_
                     if c['radius']+(cw+rw)/2+EPS>=min(c['center'][0]-x1,x2-c['center'][0],c['center'][1]-y1,y2-c['center'][1]):raise ValueError('native ring exceeds own local frame')
                     circles.append({**c,'width':cw})
                     cap_key,cap_width=cap_witness[pairkey(c['center'],c['center'])]
-                    if cap_width/2+EPS>=c['radius']:raise ValueError('native cap exceeds contact circle')
+                    if cap_width/2+EPS>=c['radius']-cw/2:raise ValueError('native cap exceeds contact circle inner aperture')
                     keys[cap_key]+=1
                 owned[p['uuid']]=(keys,circles,rw)
         evidence['bindings']=[{'object':p['object'],'source_uuid':p['uuid'],'unit':p['unit'],'convert':1,'lib_id':p['lib_id'],'pins':[{'physical_pin':v,'anchor':list(k)} for k,v in p['pin_numbers'].items()],'native_circles':owned[p['uuid']][1],'native_frame_width':owned[p['uuid']][2]} for p in profiles]
