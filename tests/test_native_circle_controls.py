@@ -27,6 +27,9 @@ def native_fixture(case='legal',angle=0,mirror=''):
     tree.append(f('label','END',f('at',*end,0),f('effects',f('font',f('size',1,1)),f('justify',A('left'),A('bottom'))),f('uuid',uid('end'))))
     lib=first(first(tree,'lib_symbols'),'symbol');graph=all_nodes(lib,'symbol')[0]
     if case=='field':tree.append(f('text','BLOCK',f('at',53.34,50.8,0),f('effects',f('font',f('size',1.27,1.27))),f('uuid',uid('field'))))
+    elif case=='far-field':
+        prop=next(p for p in all_nodes(symbol,'property') if p[1]=='Value')
+        prop[2]='hide';first(prop,'at')[1:]=[54.61,50.8,0];first(prop,'effects').remove('hide')
     elif case=='filled':first(first(graph,'rectangle'),'fill')[1][1]=A('outline')
     elif case=='visible-number':lib.remove(first(lib,'pin_numbers'))
     elif case=='wide-ring':
@@ -101,5 +104,21 @@ class NativeCircleControls(unittest.TestCase):
             self.assertEqual(old['findings'],new['findings'])
             self.assertEqual(old['coverage']['gaps'],new['coverage']['gaps'])
             self.assertIn('hide measured',new['native_contact_qualification']['reason'])
+
+class WholeWireGlyphTests(unittest.TestCase):
+    def test_visible_literal_hide_outside_the_corridor_still_blocks_release(self):
+        cli=find_cli()
+        if not cli:self.skipTest('KiCad CLI unavailable')
+        base=Path('/tmp/codex-work/asg-circle-tests');base.mkdir(exist_ok=True,parents=True)
+        with tempfile.TemporaryDirectory(dir=base) as tmp:
+            folder=Path(tmp);tree=native_fixture('far-field');source=folder/'control.kicad_sch';source.write_text(dump(tree)+'\n')
+            (folder/'control.kicad_pro').write_text('{"meta":{"version":1}}')
+            old=check_scene(read_scene(tree));new=refine_wire_contacts(source,old,cli=cli,workdir=folder/'proof')
+            self.assertIn('wire_body',new['counts'],new)
+            from schematic_layout.native_geometry import SVG,ink_gap
+            native=SVG((folder/'proof/baseline/svg/control.svg').read_text())
+            keys={k:n for k,n in native.primitives.items() if 'stroked-text' in native.objects[k]['classes']}
+            a,b=read_scene(tree).wires[0]
+            self.assertLess(ink_gap([[list(a),list(b),.1524]],native.segments(keys,glyph=True)),0)
 
 if __name__=='__main__':unittest.main()
