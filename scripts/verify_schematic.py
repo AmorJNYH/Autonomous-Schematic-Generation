@@ -13,6 +13,7 @@ and the full electrical review (schematic-review) remain pending.
 """
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 import subprocess
@@ -25,6 +26,7 @@ from schematic_layout.external_supply import audit_external_supply  # noqa: E402
 from schematic_layout.native import compare_netlist, compare_source_netlist, find_cli  # noqa: E402
 from schematic_layout.pages import normalize  # noqa: E402
 from schematic_layout.native_geometry_context import prepare_geometry_context, page_context_from_job  # noqa: E402
+from schematic_layout.native_circle_contacts import refine_wire_contacts  # noqa: E402
 from schematic_layout.sexpr import parse, all_nodes  # noqa: E402
 from schematic_layout.scene import read_scene  # noqa: E402
 from schematic_layout.qa import check_scene  # noqa: E402
@@ -157,10 +159,12 @@ def main():
             except (ValueError, OSError, KeyError) as exc:
                 page_context = None
                 context_gap = "Fresh native geometry unavailable: " + str(exc)
-            scene = read_scene(parse(sheet.read_text()), page_context)
+            source_bytes = sheet.read_bytes()
+            scene = read_scene(parse(source_bytes.decode('utf-8')), page_context)
             if context_gap:
                 scene.gaps.append(context_gap)
-            write(report, check_scene(scene))
+            write(report, refine_wire_contacts(sheet, check_scene(scene), cli=cli,
+                                               expected_source_sha256=hashlib.sha256(source_bytes).hexdigest()))
         geometry[sheet.name] = status_of(report)
         try:
             found = json.loads(report.read_text())["coverage"]["gaps"]

@@ -6,6 +6,38 @@ Choose a fresh `--out` path for every run. Existing files, symlinks and hardlink
 aliases are rejected before processing, and reports are created exclusively.
 This also protects malformed input files from being overwritten by error reports.
 
+Geometry uses conservative source bounds by default. The saved-file geometry
+CLI additionally attempts a fresh native qualification when an existing
+`wire_body` finding involves a single-column background frame with one-to-one,
+zero-length passive ring terminals and hidden pin names/numbers. This is a
+local exact-pin exit, not an owner exemption. All other body, field, glyph,
+foreign graphic, wire and neighboring terminal protections remain active.
+
+The tool must find one same-directory project root and one active page instance,
+copy/hash all reachable inputs and project/library context, and run KiCad 10.0.6.
+Baseline/replica, a page marker, complete cache graphic masks, pin **leg-length**
+probes and a whole-page wire mask bind the actual foreground and wire strokes.
+Pin numbers, UUIDs, unit and anchors are never changed by these render probes.
+The SVG job explicitly omits page canvas paint (`--no-background-color`);
+source background fills and all foreign foreground remain in its proof.
+Unknown profiles or any extra native changes keep the original finding and
+coverage. Existing gaps or review-only warnings cannot turn a measured error
+into missing data after refinement. Native receipts are audit evidence;
+external JSON, even with a matching SHA, never authorizes geometry coverage.
+
+Source spans preserve UTF-8 and CRLF/LF bytes. The ring channel's finite profile
+does not extend the sheet/pin-name channel's existing source/font/instance
+qualification. Typical jobs need baseline, replica, marker, one graphic and
+one leg probe per cache group, plus one wire mask; receipts include the actual
+commands, source/tool/config/producer hashes and time. Failures retain source
+bounds; they do not certify native readability or hardware.
+
+Native SVG equality resolves inheritance before comparing finite
+`fill-opacity`, treating omitted default 1 and numeric 1.0000 equally. Actual
+nondefault transparency, opacity products, geometry, stroke, paint and unknown
+CSS/effects still differ or remain unsupported. This closes an exporter group
+ordering artifact without deleting genuine drawing changes.
+
 For pin-to-body artwork, physical pin/type/source evidence and peripheral/stage
 contracts, also run the tools in
 [symbol-and-peripheral-contracts.md](symbol-and-peripheral-contracts.md).

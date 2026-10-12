@@ -2,6 +2,7 @@
 """Read-only KiCad geometry gate. Unsupported objects remain INSUFFICIENT."""
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 from schematic_layout.sexpr import parse
@@ -11,6 +12,7 @@ from schematic_layout.generate import pin_net_map
 from schematic_layout.geometry import Box
 from schematic_layout.pages import normalize
 from schematic_layout.native_geometry_context import load_page_context
+from schematic_layout.native_circle_contacts import refine_wire_contacts
 
 
 def main():
@@ -37,7 +39,8 @@ def main():
             native_context = load_page_context(args.native_context, args.schematic, args.native_context_sha256)
         except (ValueError, OSError, KeyError, TypeError) as exc:
             context_gap = "Native geometry context unavailable: " + str(exc)
-    scene = read_scene(parse(args.schematic.read_text()), native_context)
+    source_bytes = args.schematic.read_bytes()
+    scene = read_scene(parse(source_bytes.decode('utf-8')), native_context)
     if context_gap:
         scene.gaps.append(context_gap)
     report = check_scene(
@@ -48,6 +51,8 @@ def main():
         else None,
         pin_nets=pin_nets,
     )
+    report = refine_wire_contacts(args.schematic, report,
+                                  expected_source_sha256=hashlib.sha256(source_bytes).hexdigest())
     result = json.dumps(report, indent=2, ensure_ascii=False) + "\n"
     if args.output:
         args.output.write_text(result)

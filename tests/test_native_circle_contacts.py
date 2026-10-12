@@ -7,7 +7,8 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from schematic_layout.sexpr import parse,first,all_nodes,form
 from schematic_layout.scene import read_scene,transform
 from schematic_layout.qa import check_scene
-from schematic_layout.native_circle_contacts import candidate_profiles,contact_corridor,refine_wire_contacts
+from schematic_layout.native_circle_contacts import candidate_profiles,contact_corridor,refine_wire_contacts,_validate_foreground
+from schematic_layout.native_geometry import SVG
 
 def fixture(angle=0,mirror='',case='legal'):
     shapes='(rectangle (start -1.27 3.81) (end 1.27 -3.81) (stroke (width .01) (type default)) (fill (type background)))'
@@ -40,6 +41,7 @@ class RingContactTests(unittest.TestCase):
         scene,p=self.profile(fixture())
         self.assertFalse(contact_corridor(p,*scene.wires[0],3,self.circles(p,3)))
         self.assertFalse(contact_corridor(p,*scene.wires[0],.16,self.circles(p)[:-1]))
+        self.assertFalse(contact_corridor({**p,'native_frame_width':.0847},scene.wires[0][0],(52.08,50.8),.16,self.circles(p)))
 
     def test_unknown_or_mixed_profile_keeps_old_protection(self):
         for mutation in ('filled','visible-number','nonpassive','nonzero','mixed','negative-radius','duplicate-number','unknown-stroke','unknown-symbol-flag'):
@@ -64,5 +66,13 @@ class RingContactTests(unittest.TestCase):
             self.assertEqual(original['findings'],out['findings'])
             self.assertEqual(original['status'],out['status'])
             self.assertEqual(original['coverage']['gaps'],out['coverage']['gaps'])
+            drift=refine_wire_contacts(p,original,expected_source_sha256='wrong')
+            self.assertEqual(original['findings'],drift['findings'])
+            self.assertEqual(original['coverage']['gaps'],drift['coverage']['gaps'])
+
+    def test_unknown_foreground_cap_or_transparency_never_uses_round_bounds(self):
+        for style in ('stroke-linecap:square','stroke-linejoin:bevel','opacity:.5','fill-opacity:.5','stroke-dasharray:1,1'):
+            text='<svg width="30mm" height="30mm" viewBox="0 0 30 30"><path d="M 10 10 L 20 10" style="fill:none;stroke:#000000;stroke-width:.2;stroke-linecap:round;stroke-linejoin:round;'+style+'"/></svg>'
+            with self.assertRaises(ValueError):_validate_foreground(SVG(text))
 
 if __name__=='__main__':unittest.main()
