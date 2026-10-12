@@ -37,6 +37,35 @@ def declarations(intent):
     return decls, errors
 
 
+
+SERIES_PREFIXES = ("R", "L", "FB", "F")
+
+
+def filtered_declarations(intent):
+    """Supplies derived from a driven rail through one declared series passive.
+
+    ``{"net", "from", "via", "reason"}``: the declared net is fed from ``from``
+    only through the two-terminal part ``via`` (resistor, inductor, ferrite
+    bead or fuse), e.g. an RC-filtered analog supply pin.
+    """
+    decls = intent.get("filtered_supply", [])
+    if not isinstance(decls, list):
+        raise ValueError("filtered_supply must be a list")
+    nets = {n["name"]: set(n["pins"]) for n in intent.get("nets", [])}
+    errors, seen = [], set()
+    for d in decls:
+        if (not isinstance(d, dict) or set(d) != {"net", "from", "via", "reason"}
+                or not all(isinstance(d[k], str) and d[k].strip() for k in d)):
+            raise ValueError("filtered_supply entries need nonempty net, from, via and reason")
+        if d["net"] in seen:
+            raise ValueError(f"filtered_supply declares {d['net']} twice")
+        seen.add(d["net"])
+        via = [p for pins in nets.values() for p in pins if p.rsplit(".", 1)[0] == d["via"]]
+        if (len(via) != 2 or len(nets.get(d["net"], set()) & set(via)) != 1
+                or len(nets.get(d["from"], set()) & set(via)) != 1):
+            errors.append({"kind": "filtered_via_not_in_intent", "net": d["net"], "from": d["from"], "via": d["via"]})
+    return decls, errors
+
 def _refs(sym):
     found = {properties(sym).get("Reference", "")}
     found |= {str(value(p, "reference", "")) for inst in all_nodes(sym, "instances")
@@ -169,8 +198,32 @@ def _origin(root, intent, pin):
     return "PASS", "explicit role, exact identity and native passive contacts; mechanical semantics require source review"
 
 
+def _via(root, ref):
+    """A fitted two-terminal series part with passive pins that is not a capacitor."""
+    comps = root.findall(f"components/comp[@ref='{ref}']")
+    if len(comps) != 1:
+        return "FAIL", "via needs exactly one native component"
+    comp = comps[0]
+    lib = comp.find("libsource")
+    part = lib.get("part", "") if lib is not None else ""
+    parts = [p for p in root.findall("libparts/libpart")
+             if lib is not None and p.get("lib") == lib.get("lib") and p.get("part") == part]
+    if len(parts) != 1:
+        return "INSUFFICIENT", "via library pin metadata unavailable"
+    pins = parts[0].findall("pins/pin")
+    if len(pins) != 2 or any(p.get("type") != "passive" for p in pins):
+        return "FAIL", "via must have exactly two passive pins"
+    if comp.find("property[@name='dnp']") is not None:
+        return "FAIL", "via must be fitted"
+    if part.upper().startswith("C") or not ref.upper().startswith(SERIES_PREFIXES):
+        return "FAIL", "via must be a series resistor, inductor, ferrite bead or fuse"
+    return "PASS", "fitted two-terminal series passive"
+
+
 def judge(xml_path, intent, aliases):
     decls, errors = declarations(intent)
+    filtered, filtered_errors = filtered_declarations(intent)
+    errors += filtered_errors
     root = ET.parse(xml_path).getroot()
     gaps, origins = [], []
     nets = [{"name": n.get("name"), "nodes": [(p.get("ref"), p.get("pin"), p.get("pintype", "")) for p in n.findall("node")]}
@@ -181,9 +234,15 @@ def judge(xml_path, intent, aliases):
         count = sum(r == alias for net in nets for r, _, _ in net["nodes"])
         if count != 1:
             errors.append({"kind": "marker_native_coverage", "flag": ref, "nodes": count})
+    intent_pins = {n["name"]: set(n["pins"]) for n in intent.get("nets", [])}
+    derived = {}  # declared net name -> native net on the declared side of the via
+    for d in filtered:
+        side = sorted(intent_pins.get(d["net"], set()) & {p for p in by_pin if p.rsplit(".", 1)[0] == d["via"]})
+        if len(side) == 1:
+            derived[d["net"]] = by_pin[side[0]]
     for flag, net in flags:
         pins = {f"{r}.{p}" for r, p, _ in net["nodes"]}
-        owners = [d for d in decls if d["pin"] in pins]
+        owners = [d for d in decls if d["pin"] in pins] + [d for d in filtered if derived.get(d["net"]) is net]
         if len(owners) != 1:
             errors.append({"kind": "undeclared_pwr_flag" if not owners else "ambiguous_pwr_flag",
                            "flag": flag, "net": net["name"], "declarations": [d["net"] for d in owners]})
@@ -201,9 +260,40 @@ def judge(xml_path, intent, aliases):
         sources = sorted(f"{r}.{p}" for r, p, t in net["nodes"] if r not in aliases and t.split("+", 1)[0] == "power_out")
         if sources:
             errors.append({"kind": "net_has_power_source", "net": d["net"], "sources": sources})
-    status = "FAIL" if errors else "INSUFFICIENT" if gaps else "PASS" if decls or flags else "NOT_APPLICABLE"
+    def has_source(net):
+        return any(r not in aliases and t.split("+", 1)[0] == "power_out" for r, _, t in net["nodes"])
+
+    # A source qualifies when it is board-driven, connector-fed, or itself a qualified derived rail.
+    qualified = {d["net"] for d in decls}
+    pending = list(filtered)
+    while True:
+        done = [d for d in pending if d["from"] in qualified
+                or any(has_source(n) for n in nets if n["name"].rsplit("/", 1)[-1] == d["from"])]
+        if not done:
+            break
+        qualified.update(d["net"] for d in done)
+        pending = [d for d in pending if d not in done]
+    for d in filtered:
+        via_status, reason = _via(root, d["via"])
+        if via_status != "PASS":
+            (errors if via_status == "FAIL" else gaps).append({"kind": "filtered_via", "net": d["net"], "via": d["via"], "reason": reason})
+        net = derived.get(d["net"])
+        if net is None:
+            errors.append({"kind": "declared_pin_missing", "net": d["net"], "via": d["via"]}); continue
+        other = [by_pin.get(p) for p in by_pin if p.rsplit(".", 1)[0] == d["via"] and by_pin.get(p) is not net]
+        if len(other) != 1 or other[0]["name"].rsplit("/", 1)[-1] != d["from"].rsplit("/", 1)[-1]:
+            errors.append({"kind": "filtered_via_not_between_nets", "net": d["net"], "from": d["from"], "via": d["via"]})
+        if d in pending:
+            errors.append({"kind": "filtered_source_not_driven", "net": d["net"], "from": d["from"]})
+        count = sum(n is net for _, n in flags)
+        if count != 1:
+            errors.append({"kind": "missing_pwr_flag" if not count else "duplicate_pwr_flag", "net": d["net"], "via": d["via"], "flags": count})
+        if has_source(net):
+            errors.append({"kind": "net_has_power_source", "net": d["net"]})
+    status = ("FAIL" if errors else "INSUFFICIENT" if gaps
+              else "PASS" if decls or filtered or flags else "NOT_APPLICABLE")
     return {"status": status, "scope": "Declared connector structure and native markers only; source semantics, supply ratings and protection require review.",
-            "declarations": decls, "flags": sorted(f for f, _ in flags), "origins": origins, "errors": errors, "coverage_gaps": gaps}
+            "declarations": decls, "filtered_declarations": filtered, "flags": sorted(f for f, _ in flags), "origins": origins, "errors": errors, "coverage_gaps": gaps}
 
 
 def audit_external_supply(root, sheets, intent, xml_path, cli, workdir):

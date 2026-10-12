@@ -85,11 +85,20 @@
 
 板上没有 power_out 驱动、经连接器引入的电源/回路，逐网声明
 `external_supply: [{"net": "VCC", "pin": "J1.1", "reason": "主机引入电源，见器件合同"}]`，
-用 `Sheet.power_flag()` 每网放一个 PWR_FLAG。这是 PWR_FLAG 的唯一受控用法，未声明的网不得放。
+用 `Sheet.power_flag()` 每网放一个 PWR_FLAG。未声明的网不得放 PWR_FLAG。
 `external_supply` 门禁核对：每个 PWR_FLAG 都在已声明的网上；每个声明网恰好一个；声明的连接器脚在该网上；
 该网没有板上 power_out 驱动；连接器的精确身份、装配状态与意图一致，声明触点及整个库引脚表都是 passive。
 门禁按缓存的原生 power/power_out 标记识别所有 namespace 的旗标，缓存缺失或继承无法解析记 INSUFFICIENT。
 原厂来源含义、供电能力、保护和完整性另交 SR。
+
+器件的电源输入脚经一颗串联电阻、电感、磁珠或保险丝从已有驱动的电源取电时（例如 RC 滤波的模拟电源 AVCC），
+KiCad 看不到无源器件传过来的驱动，必报 `power_pin_not_driven`。逐网声明
+`filtered_supply: [{"net": "AVCC", "from": "PVCC", "via": "R1", "reason": "10 Ω/1 µF RC 滤波"}]`，
+同样用 `Sheet.power_flag()` 每网放一个。门禁核对：`via` 是已贴装、恰好两只 passive 脚的串联电阻/电感/磁珠/保险丝
+（不能是电容），一端在 `from`、一端在声明网；`from` 有板上 power_out 驱动，或本身是已声明的
+`external_supply`/`filtered_supply`（可链式）；声明网没有 power_out 驱动、恰好一个旗标。
+声明只解决 ERC 记账，滤波取值、压降和电源纹波仍按计算预检核对。
+
 核心引脚参考合同的 names/types 不接受空、空白或 `~` 别名；显式未分配的空 footprint 仍合法。
 
 ## 6. 开放项

@@ -559,15 +559,17 @@ class Sheet:
         return end
 
     def power_flag(self, target, length=2):
-        """PWR_FLAG on a connector-fed supply declared in ``intent["external_supply"]``.
+        """PWR_FLAG on a supply declared in ``intent["external_supply"]`` (connector-fed)
+        or ``intent["filtered_supply"]`` (fed from a driven rail through one series passive).
 
         The flag names no net and is checked by the external-supply gate; put it
-        on the declared connector pin's net, once per declared net.
+        once per declared net, at the connector pin or the series part.
         """
         net = self._net(target)
-        declared = {d.get("net") for d in self.intent.get("external_supply", [])}
+        declared = {d.get("net") for key in ("external_supply", "filtered_supply") for d in self.intent.get(key, [])}
         if net not in declared:
-            raise ValueError(f"{net} is not declared in external_supply; PWR_FLAG only marks declared connector-fed nets")
+            raise ValueError(f"{net} is not declared in external_supply or filtered_supply; "
+                             "PWR_FLAG only marks declared connector-fed or filtered nets")
         return self.power(target, symbol=FLAG_SYMBOL, net=net, length=length)
 
     def label(self, target, kind="global", length=3, outward=None, net=None, font=None, reason=None):

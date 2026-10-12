@@ -90,7 +90,8 @@ in addition to the electrical and geometry checks below.
   does not establish source capability; verify native ERC and the actual power
   topology. Avoid gratuitous flags used to suppress real errors. In generated
   designs the only flags are the declared connector-fed supplies
-  (`external_supply` in the intent, drawn with `Sheet.power_flag()`); the
+  (`external_supply` in the intent) and supplies derived through one declared
+  series passive (`filtered_supply`), drawn with `Sheet.power_flag()`; the
   `external_supply` gate rejects any other flag.
 
 ### Version-specific connectivity facts
