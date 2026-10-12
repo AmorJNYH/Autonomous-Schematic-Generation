@@ -370,6 +370,10 @@ def refine_wire_contacts(schematic,report,cli=None,workdir=None,expected_source_
             if len(ps)!=1:continue
             p=ps[0];wi=int(next(x for x in f['objects'] if x.startswith('wire:')).split(':')[1]);a,b=scene.wires[wi];keys,circles,rw=owned[p['uuid']];width=wire_widths[pairkey(a,b)]
             if not contact_corridor({**p,'native_frame_width':rw},a,b,max(width,upper),circles):continue
+            # A field's legacy estimate may be absent or too narrow. Preserve
+            # the old rejection if any actual glyph touches this entire wire,
+            # including portions beyond the owner's local contact corridor.
+            if any('stroked-text' in native.objects[k]['classes'] and _hits(native.objects[k],a,b,max(width,upper)) for k in native.primitives):continue
             point=a if a in p['pins'] else b;other=b if point==a else a;x1,y1,x2,y2=p['interior']
             exitpoint=(x2+rw/2+EPS,point[1]) if other[0]>point[0] else (x1-rw/2-EPS,point[1]) if other[0]<point[0] else (point[0],y2+rw/2+EPS) if other[1]>point[1] else (point[0],y1-rw/2-EPS)
             rest=native.primitives-keys-wire_deleted
