@@ -152,9 +152,17 @@ def _locate_root(source):
     if h.errors or h.coverage_gaps or any(sum(p['path']==q['path'] for q in h.pages)!=1 for p in h.pages):raise ValueError('unbound or repeated native context')
     return h
 
-def _paint(o):
+def _paint(o, foreign=False):
     st=o['style']
-    if o['opacity']!=1 or finite(st.get('stroke-opacity',1))!=1 or finite(st['fill-opacity'])!=1 or st.get('stroke-dasharray','none')!='none' or st.get('stroke-linecap')!='round' or st.get('stroke-linejoin')!='round':
+    dash=st.get('stroke-dasharray','none')
+    if dash!='none':
+        # Foreign dashed ink is protected by its entire continuous capsule
+        # union. This is an upper bound for finite round dash caps/joins, not
+        # a dash-gap permission. Owned artwork and conductors remain solid.
+        if not foreign or not re.fullmatch(r'[\d.eE+\-\s,]+',dash):raise ValueError('unsupported native dash paint')
+        values=[finite(v) for v in re.split(r'[\s,]+',dash.strip())]
+        if len(values)<2 or any(v<=0 for v in values):raise ValueError('unsupported native dash pattern')
+    if o['opacity']!=1 or finite(st.get('stroke-opacity',1))!=1 or finite(st['fill-opacity'])!=1 or st.get('stroke-linecap')!='round' or st.get('stroke-linejoin')!='round':
         raise ValueError('unsupported native paint')
     width=finite(st.get('stroke-width',0))
     if width<=0:raise ValueError('unbound native stroke')
@@ -186,7 +194,7 @@ def _validate_foreground(native):
         if o['opacity']!=1 or finite(st.get('stroke-opacity',1))!=1 or finite(st['fill-opacity'])!=1:
             raise ValueError('unknown foreground transparency')
         if o['tag'] not in ('path','rect','circle'):raise ValueError('unsupported foreground shape')
-        if st.get('stroke','none')!='none':_paint(o)
+        if st.get('stroke','none')!='none':_paint(o,foreign=True)
         if st.get('fill','none')!='none':
             if o['tag']=='path' or not re.fullmatch(r'#[0-9a-fA-F]{6}',st['fill']):raise ValueError('filled font or unknown foreground paint')
         if o['tag']=='rect' and finite(o['attrs'].get('rx',0))!=0:raise ValueError('rounded foreground rectangle')

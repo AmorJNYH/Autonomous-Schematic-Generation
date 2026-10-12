@@ -37,6 +37,11 @@ Native SVG equality resolves inheritance before comparing finite
 nondefault transparency, opacity products, geometry, stroke, paint and unknown
 CSS/effects still differ or remain unsupported. This closes an exporter group
 ordering artifact without deleting genuine drawing changes.
+Finite positive dash arrays on foreign round-stroked foreground are protected
+by the complete continuous stroke envelope, including the gaps. They do not
+authorize a dash-gap crossing. Owned rings, frames, pin caps and causally
+attributed wires still require solid strokes; malformed/unknown dash paint
+retains the original finding.
 
 For pin-to-body artwork, physical pin/type/source evidence and peripheral/stage
 contracts, also run the tools in
