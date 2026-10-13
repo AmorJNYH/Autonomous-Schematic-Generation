@@ -2,6 +2,14 @@
 
 ## Finite native diameter semicircles, 2026-10-13
 
+- A subsequent independent audit found terminal `Z` could append a 4097th
+  segment after an exactly 4096-segment arc. All arc-path additions now use
+  one bounded append operation, with a final total check. The 4096 budget is
+  unchanged. Reject-first controls include the actual SVG consumer, closure,
+  preceding ML strokes, later subpaths, repeated Z and token/radius overflow;
+  exactly 4096 segments with and without closure remain legal. This closes
+  a profile-budget violation; the audit did not establish lost electrical ink.
+
 - A native absolute circular `A` on one page previously aborted full-project
   SVG parsing and prevented every page from obtaining a fresh context. Added
   the bounded, exact-diameter, unrotated half-circle profile documented in

@@ -91,13 +91,17 @@ def stroke_path(d, width):
     if re.sub(r'[\s,]','',d)!=''.join(tokens): raise ValueError('unknown path syntax')
     if len(tokens)>20000: raise ValueError('circular-A path token budget exceeded')
     out=[]; current=None; start=None; raw_current=None; raw_start=None; command=None; i=0; closed=False
+    def append_segment(segment):
+        # Every branch, including Z and later subpaths, shares the same bound.
+        if len(out)>=ARC_SEGMENT_BUDGET: raise ValueError('circular-A segment budget exceeded')
+        out.append(segment)
     while i<len(tokens):
         if tokens[i].isalpha():
             command=tokens[i]; i+=1
             if command not in ('M','L','A','Z'): raise ValueError('unsupported native path command')
             if command=='Z':
                 if current is None or start is None or closed: raise ValueError('invalid path closure')
-                out.append([list(current),list(start),width]);current=start;raw_current=raw_start;command=None;closed=True
+                append_segment([list(current),list(start),width]);current=start;raw_current=raw_start;command=None;closed=True
                 continue
             if i==len(tokens): raise ValueError('malformed native path')
         count=7 if command=='A' else 2
@@ -110,7 +114,7 @@ def stroke_path(d, width):
             if command=='M':start=current=p;raw_start=raw_current=args;command='L'
             else:
                 if current is None: raise ValueError('line without move')
-                out.append([list(current),list(p),width]);current=p;raw_current=args
+                append_segment([list(current),list(p),width]);current=p;raw_current=args
         else:
             if current is None: raise ValueError('arc without move')
             rx,ry,rotation,large,sweep,x,y=args
@@ -139,10 +143,11 @@ def stroke_path(d, width):
             for j in range(1,n+1):
                 angle=theta+direction*step*j
                 q=p if j==n else (center[0]+radius*math.cos(angle),center[1]+radius*math.sin(angle))
-                out.append([list(previous),list(q),effective_width]);previous=q
+                append_segment([list(previous),list(q),effective_width]);previous=q
             current=p;raw_current=[x,y]
         closed=False
         if len(out)>ARC_SEGMENT_BUDGET: raise ValueError('circular-A segment budget exceeded')
+    if len(out)>ARC_SEGMENT_BUDGET: raise ValueError('circular-A segment budget exceeded')
     return out
 
 class SVG:
