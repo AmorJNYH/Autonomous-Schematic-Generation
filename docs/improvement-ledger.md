@@ -1,5 +1,30 @@
 # 此前问题点的改造闭环
 
+## Finite native diameter semicircles, 2026-10-13
+
+- A native absolute circular `A` on one page previously aborted full-project
+  SVG parsing and prevented every page from obtaining a fresh context. Added
+  the bounded, exact-diameter, unrotated half-circle profile documented in
+  `references/native-geometry.md`; no reference, model or coordinate special
+  cases, no page-failure isolation and no unknown-curve skipping.
+- Every arc chord carries stroke+sagitta+serialization+numerical protection,
+  shared by native ink consumers and foreign foreground contact checks.
+  Physical conductor/pin-cap/pin-leg attribution remains strict MLZ. Full
+  primitive equality, hidden text, causal deletions and fresh input/tool/raw
+  producer bindings are unchanged.
+- Reject-first vectors cover arc interior versus endpoint/bbox shortcuts,
+  near tangency and wide paint, both sweeps, foreign dashes, malformed/overflow
+  inputs, ellipses, transforms, filled glyphs and finite segment budgets.
+  Native fixtures also retain wide-wire/tiny-aperture/glyph protections. A
+  supported far native arc does not remove an existing unknown sheet-object
+  gap or hide a measured finding behind that gap.
+- ERC zero-violation policy is unchanged. Duplicate physical common-output
+  facts require a future explicitly evidenced generic rule; same reference or
+  same name does not authorize independent power outputs to connect.
+- This entry describes scope and regression controls, not benchmark results,
+  whole-page PASS, G1 reduction or hardware approval. Those require independent
+  same-input measurement and review.
+
 ## Symbol and peripheral generation gates, 2026-09-15
 
 - Added actual inner-pin-to-stroke checks, distinct from symbol AABBs and native

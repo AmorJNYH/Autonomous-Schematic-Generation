@@ -21,7 +21,7 @@ import uuid
 import xml.etree.ElementTree as ET
 
 from .native import find_cli
-from .native_geometry import SVG, finite, linear_path, distance, point_segment
+from .native_geometry import SVG, finite, linear_path, stroke_path, distance, point_segment
 from .native_geometry_context import configuration_hashes, context_files, spans, paths, sha
 from .native_hierarchy import NativeHierarchy
 from .scene import read_scene, transform, is_hidden
@@ -188,7 +188,11 @@ def _hits(o,a,b,wire_width):
             return _round_stroke_hits_box(a,b,Box(x,y,x+ww,y+hh),radius)
         pts=[(x,y),(x+ww,y),(x+ww,y+hh),(x,y+hh),(x,y)]
         return any(distance(a,b,c,d)<=radius for c,d in zip(pts,pts[1:]))
-    if tag=='path' and st.get('fill','none')=='none':return any(distance(a,b,c,d)<=radius for c,d in linear_path(attrs['d']))
+    if tag=='path' and st.get('fill','none')=='none':
+        # Arc capsules already include their own sagitta/serialization/numeric
+        # envelope. Physical pin caps/legs and source-wire identity below still
+        # require strict MLZ, never an approximated circular path.
+        return any(distance(a,b,c,d)<=(wire_width+v)/2+EPS for c,d,v in stroke_path(attrs['d'],w))
     raise ValueError('unsupported foreground; retain old finding')
 
 def _validate_foreground(native):

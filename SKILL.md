@@ -140,6 +140,8 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
   不凭位号或网名文字猜问题对象。无法绑定时保留原违规与待核边界，见 [project-verification.md](references/project-verification.md#erc-summary-object-binding)。
 - 层次工程的几何检查使用本次原生导出的有限覆盖，支持已合格的图框、完整层次字段和部分脚名字迹；
   具体范围及未支持对象见 [native-geometry.md](references/native-geometry.md)。外部 JSON 回执不能授权放行。
+  原生路径只增加有限的绝对圆形直径半圆 `A` 覆盖，逐段保护弧内部和实际笔宽；椭圆、非半圆、填充曲线、曲线字形等仍不足。
+  导线与物理引脚身份仍按严格 MLZ 核验；路径可解析不等于页面几何或 ERC 全部通过。
   `geometry` 为 INSUFFICIENT 时（如层次脚轮廓、脚号或字形尚未合格），保留缺口并在原生渲染图上核对；有限图框 PASS 不等于所有字迹或整案通过。
 - 失败时修改相应页面脚本，在新的运行目录重新生成并验证。不得为了降低计数而加 PWR_FLAG、加排除项或改引脚类型。
 - 受控例外只有两类，都在意图中逐网声明、用 `Sheet.power_flag()` 每网放一个 PWR_FLAG，由 `external_supply` 门禁核对：
