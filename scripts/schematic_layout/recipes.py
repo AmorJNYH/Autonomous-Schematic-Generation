@@ -20,6 +20,7 @@ from .field_placer import FieldSpec, autoplace_fields
 from .generate import Libraries, library_dirs, make_root, pin_clipped_body, pin_net_map
 from .geometry import Box, TextField, text_extent
 from .label_geometry import global_outline, DIRECTION_STYLE
+from .net_roles import validate_net_roles
 from .readability import gate, measure
 from .routing import on_segment, segment_hits_box, wire_box
 from .scene import read_scene
@@ -129,6 +130,7 @@ ALLOWED = {
 }
 
 
+
 class Sheet:
     """Structured drawing of one sheet; see the module docstring.
 
@@ -138,6 +140,7 @@ class Sheet:
     """
 
     def __init__(self, intent, rails=None, external=(), paper="A4", dirs=(), power_ref_start=1):
+        validate_net_roles(intent, rails or ())
         self.intent = intent
         self.nets = pin_net_map(intent)
         self.components = {c["ref"]: c for c in intent["components"]}
@@ -533,6 +536,7 @@ class Sheet:
                 "Rail symbols must come from the power library; use rail=True "
                 "for the declared rail, or a full power: library identifier."
             )
+        validate_net_roles(self.intent, [net])
         _, shape, down = self._power_shape(symbol)
         d = DOWN if down else UP
         start = self.point(target)

@@ -41,10 +41,10 @@ class VerifySchematicTests(unittest.TestCase):
         cls.tmp.cleanup()
 
     @classmethod
-    def run_gates(cls, name, intent, tag=''):
+    def run_gates(cls, name, intent, tag='', extra=()):
         out = cls.dir / f'run-{name}{tag}'
         r = subprocess.run([sys.executable, str(RUNNER), str(cls.dir / name / 'recipe_board.kicad_sch'),
-                            '--intent', str(intent), '--out', str(out)], capture_output=True, text=True)
+                            '--intent', str(intent), '--out', str(out), *extra], capture_output=True, text=True)
         summary = json.loads((out / 'summary.json').read_text())
         return r.returncode, summary
 
@@ -53,6 +53,19 @@ class VerifySchematicTests(unittest.TestCase):
         for gate in ('intent_netlist', 'hierarchy', 'symbol_integrity', 'readability', 'geometry'):
             self.assertEqual('PASS', s['gates'][gate]['status'], gate)
         self.assertIn('schematic-review', ' '.join(s['pending']))
+
+    def test_missing_design_closure_is_explicit(self):
+        self.assertEqual('NOT_CHECKED', self.good[1]['design_closure'])
+
+    def test_design_closure_integrates_without_masking_native_erc(self):
+        record = self.dir / 'invalid-closure.json'
+        record.write_text('{}')
+        _, result = self.run_gates('good', self.dir / 'intent.json', '-closure',
+                                  ['--design-closure', str(record)])
+        self.assertEqual('checked', result['design_closure'])
+        self.assertEqual('FAIL', result['gates']['design_closure']['status'])
+        self.assertEqual('FAIL', result['gates']['erc']['status'])
+        self.assertEqual('PASS', result['gates']['intent_netlist']['status'])
 
     def test_erc_is_reported_not_hidden(self):
         # A standalone fixture page has undriven power inputs and one-ended global labels.

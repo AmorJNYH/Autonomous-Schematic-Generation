@@ -11,6 +11,8 @@ are the nets that need a global label (outline rule O6).
 
 import copy
 
+from .net_roles import validate_net_roles
+
 
 def board_nets(board):
     """Nets as a list of ``{"name", "pins"}`` from either supported form."""
@@ -37,6 +39,7 @@ def page_intents(board, field="Circuit", page_of=None, rails=()):
     ``rails`` (names, or ``{net: "power:..."}``) is returned per page restricted
     to the nets on that page, ready for ``Sheet(intent, rails=..., external=...)``.
     """
+    validate_net_roles(board, rails)
     components = board["components"]
     refs = {c["ref"] for c in components}
     pages = {}
@@ -75,6 +78,8 @@ def page_intents(board, field="Circuit", page_of=None, rails=()):
         external = sorted(n["name"] for n in local if n["name"] not in rails
                           and any(pages[p.rsplit(".", 1)[0]] != page for p in n["pins"]))
         names = {n["name"] for n in local}
+        if "net_roles" in board:
+            intent["net_roles"] = {n: role for n, role in board["net_roles"].items() if n in names}
         page_rails = ({n: s for n, s in symbols.items() if n in names} if symbols is not None
                       else sorted(rails & names))
         result[page] = {"intent": intent, "external": external, "rails": page_rails}

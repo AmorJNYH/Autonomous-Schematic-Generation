@@ -10,7 +10,8 @@ description: >-
   readability, geometry) → render review → handoff to schematic-review. Also
   redraws existing KiCad projects without electrical change, applies authorized
   electrical revisions and extracts PDF reference designs. Self-checks only;
-  strict electrical review belongs to schematic-review. Use for .kicad_sch
+  owns design feasibility, selection, calculations and functional closure;
+  independent electrical review belongs to schematic-review. Use for .kicad_sch
   generation or redraw, 原理图自动生成、从需求画原理图、画原理图、重画原理图、原理图排版.
 ---
 
@@ -25,7 +26,11 @@ ASG 从需求文档出发，让 Agent 在 KiCad 中画出**可读、电气正确
 - **可读**：结构由 Agent 按纲要 O1–O8 决定，坐标由 `recipes.Sheet` 按真实引脚几何推出。
 - **经原生验证**：以 KiCad 导出的 ERC、XML 网表和 PDF 为准；JSON、脚本成功或 solver 的 `solved` 都不算证据。
 
-ASG 不负责以下事项：
+ASG 负责需求到电路的方案可行性、选型依据、设计计算和功能实现；不能把未做完的设计留给 SR。
+SR 独立审查这些设计结论。新设计和电气改版同时遵循
+[设计闭环](references/design-closure.md)，区分工程可完成、真实外部依赖和下游验证。
+
+以下验收与独立复核不由 ASG 签署：
 
 | 事项 | 交给 |
 | --- | --- |
@@ -52,7 +57,8 @@ ASG 不负责以下事项：
 ### 0. 读需求
 
 按 [requirements-to-intent.md](references/requirements-to-intent.md) 第 1–2 节建立需求清单和
-功能追溯表。只用已确认的需求，缺口标 OPEN。只问会改变电路方案的问题。
+功能追溯表。只用已确认的需求，缺口标 OPEN。每项映射具体功能路径、器件/固件责任和验收；
+不能批量挂整板位号代替追溯。只问证据和工程判断不能解决的产品取舍。
 
 ### 1. 架构与分页
 
@@ -71,6 +77,7 @@ ASG 不负责以下事项：
   仅在厂家明确许可的范围内使用其插值；工程估计和未知轴不能升为保证。
 - 外围合同中的每个数值上/下界也须逐项核原表：确切变体、版本、页/表/参数行、单位、MIN/TYP/MAX 列、脚注及测试条件。
   不能只核计算输入；TYP 或所需限值列的空白/破折号不能写成保证的 `≤`/`≥`，依赖它的负载/时序结论继续保留未知。
+- 核实决定架构的确切型号/固件能力；未证实的依赖保持条件状态，并评估替代实现。损耗预算列出主要遗漏项及有依据的边界，不能用子总和证明达标。
 - 原理图阶段 `footprint` 可以留空；散热和机械需求写进交接文档。
 - **资料规则**：新下载的器件数据手册存入工程，同时复制到
   `~/Documents/知识库/HardwareWiki/raw/Datasheet/<分类>/<子类>/`，文件名为 `Vendor - PartNumber.pdf`
@@ -84,11 +91,12 @@ ASG 不负责以下事项：
 写一份整板 `electrical-intent.json`：器件、网络 `{name: [ref.pin]}`、`no_connect`，以及每个器件的页面
 `fields.Circuit`。格式和规则见 [requirements-to-intent.md](references/requirements-to-intent.md) 第 5 节。
 每个物理引脚要么接入网络，要么有依据地标 NC。意图从需求和手册写出，不从候选图回抄。
+用 `net_roles` 区分 power/return/signal，至少覆盖 rails 与阈值/反馈等易混淆网络；声明 signal 后 recipes 禁止给它放电源符号。
 
 ### 4. 页面方案
 
 为每页写一张简短的方案表，内容包括：读者任务（跟随能量流、看懂反馈、追一个受保护接口……）、
-功能块、主路径、rails、出页网络和标签边界。见 [human-readable-routing.md](references/human-readable-routing.md) 第 1 节。
+功能块、主路径、rails、出页网络及目的功能/页码、标签边界。先保证一条功能路径易读，再决定拆页或加大纸张。见 [human-readable-routing.md](references/human-readable-routing.md) 第 1 节。
 
 - 按拓扑选结构（Buck、LDO、隔离反激、滤波、MCU 各不相同），见
   [schematic-drawing-standards.md](references/schematic-drawing-standards.md) 第 2 节。不得为别的拓扑编造 SW 节点或电感级。
@@ -127,7 +135,8 @@ for n, (key, page) in enumerate(page_intents(board, rails=RAILS).items(), 1):
 ```bash
 python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical-intent.json \
   --out <新的空目录> [--expected-pages N] [--symbol-exceptions F] [--readability-waivers F] \
-  [--reference-contract F] [--baseline-xml B --change-contract C --preflight P]
+  [--reference-contract F] [--design-closure D --artifact-root R] \
+  [--baseline-xml B --change-contract C --preflight P]
 ```
 
 它一次完成：KiCad ERC / XML 网表 / PDF 导出，网表分区与器件身份逐脚对比意图（图上画出的网名须等于同一组引脚的意图名，
@@ -135,6 +144,7 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
 符号引脚完整性，可读性门禁，以及每个有效页面的几何检查，汇总到 `summary.json`。
 只有全部门禁为 PASS 时结果才是 `AUTOMATED_PASS`。
 
+- 新设计提供 `--design-closure`，核对需求实现、外部依赖、计算覆盖和证据新鲜度；格式与边界见 [设计闭环](references/design-closure.md)。未提供时明确为 NOT_CHECKED，不能据此声明全流程完成。
 - 新设计要求 ERC 零违规。重画工程时保留基线和最终两份原始 ERC，逐条确认没有新增违规，并披露继承的问题。
 - ERC 摘要按原始报告的 UUID/object 绑定实际层次实例、引脚及原生网络，再归因到 rail；
   不凭位号或网名文字猜问题对象。无法绑定时保留原违规与待核边界，见 [project-verification.md](references/project-verification.md#erc-summary-object-binding)。
@@ -163,6 +173,7 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
 
 - 按 [execution-evidence.md](references/execution-evidence.md) 写 `delivery-evidence.json`，报告前运行
   `scripts/check_delivery_freshness.py`；任何导出后的修改都会使旧结果作废。
+- 分别报告图纸生成、设计闭环、原生门禁、目检和独立 SR 状态；还有可独立完成的设计项就继续，不以列出缺口代替完成。
 - 交接给 `schematic-review` 的内容：工程文件和哈希、电气意图、需求追溯表、器件合同、计算、OPEN 清单、
   `summary.json` 和目检记录。报告时如实写出 PASS/FAIL/INSUFFICIENT 各项及其数量（含零）。
 
@@ -178,7 +189,7 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
 
 | ASG 出图时自检 | 交 schematic-review |
 | --- | --- |
-| 原生 ERC；网表与意图逐脚一致；器件身份/MPN/字段 | 需求符合性与功能完整性判定 |
+| 需求功能路径、架构可行性、选型与设计计算；原生 ERC 和意图一致性 | 需求符合性与功能完整性判定 |
 | 确切 MPN 引脚表；声明的外围合同（`--reference-contract`） | 工况、裕量、应力、保护和时序的系统审查 |
 | 计算预检的条件与门槛 | 全面的最坏情况分析与 FAIL/待核判定 |
 | 层次、符号完整性、几何、可读性；渲染目检 | 冻结/放行结论、P0–P3 分级、修改建议 |
@@ -196,6 +207,7 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
 
 | 何时读 | 文件 |
 | --- | --- |
+| 新设计/电气改版的设计闭环、依赖与计算结论审计 | [design-closure.md](references/design-closure.md) |
 | 从需求写电气意图 | [requirements-to-intent.md](references/requirements-to-intent.md) |
 | 架构页、参考设计外围、学习工程师图面 | [reference-driven-board-design.md](references/reference-driven-board-design.md) |
 | 选符号、引脚表、外围合同 | [symbol-and-peripheral-contracts.md](references/symbol-and-peripheral-contracts.md) |

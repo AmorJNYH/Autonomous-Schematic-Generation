@@ -67,6 +67,8 @@ def main():
     ap.add_argument("--baseline-project", help="Selected baseline annotation project")
     ap.add_argument("--change-contract", type=Path)
     ap.add_argument("--preflight", type=Path, help="design-preflight.json for an electrical change")
+    ap.add_argument("--design-closure", type=Path, help="Evidence-bound end-to-end design review record")
+    ap.add_argument("--artifact-root", type=Path, help="Evidence base for --design-closure; defaults to root parent")
     ap.add_argument("--project", help="native project annotation name; defaults to the root file stem")
     ap.add_argument("--cli", help="kicad-cli path")
     ap.add_argument("--native-geometry", action="store_true", help="Also qualify native pin-name geometry on a standalone page; hierarchy roots enable the finite native channel automatically")
@@ -207,6 +209,12 @@ def main():
         if not args.preflight:
             gates["design_change"]["note"] = "No --preflight: native delta only, not an electrical redesign closure"
 
+    if args.design_closure:
+        report = out / "design-closure.json"
+        tool("audit_design_closure.py", args.design_closure, "--intent", args.intent,
+             "--artifact-root", args.artifact_root or args.root.resolve().parent, "--out", report)
+        gates["design_closure"] = {"status": status_of(report)}
+
     states = {g["status"] for g in gates.values()}
     overall = "FAIL" if "FAIL" in states else "AUTOMATED_PASS" if states == {"PASS"} else "INCOMPLETE"
     summary = {
@@ -217,7 +225,8 @@ def main():
         "gates": gates,
         "sheets": [str(s) for s in sheets],
         "render": str(pdf) if pdf.is_file() else None,
-        "pending": ["Native render review: trace each declared reading task on every page",
+        "design_closure": "checked" if args.design_closure else "NOT_CHECKED",
+        "pending": (["End-to-end design closure not checked"] if not args.design_closure else []) + ["Native render review: trace each declared reading task on every page",
                     "Full electrical review: hand off to schematic-review"],
         "commands": commands,
     }
