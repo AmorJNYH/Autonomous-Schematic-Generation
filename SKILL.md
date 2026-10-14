@@ -154,10 +154,14 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
   导线与物理引脚身份仍按严格 MLZ 核验；路径可解析不等于页面几何或 ERC 全部通过。
   `geometry` 为 INSUFFICIENT 时（如层次脚轮廓、脚号或字形尚未合格），保留缺口并在原生渲染图上核对；有限图框 PASS 不等于所有字迹或整案通过。
 - 失败时修改相应页面脚本，在新的运行目录重新生成并验证。不得为了降低计数而加 PWR_FLAG、加排除项或改引脚类型。
-- 受控例外只有两类，都在意图中逐网声明、用 `Sheet.power_flag()` 每网放一个 PWR_FLAG，由 `external_supply` 门禁核对：
+- 受控的自动结构资格有两类，都在意图中逐网声明、用 `Sheet.power_flag()` 每网放一个 PWR_FLAG，由 `external_supply` 门禁核对：
   只由连接器引入、板上没有电源输出脚驱动的电源或地（`external_supply`）；经一颗串联电阻、电感、磁珠或保险丝
   从已有驱动的电源派生的电源脚供电网，例如 RC 滤波的模拟电源（`filtered_supply`，逐条列入交接说明由 SR 复核）。声明格式与核对内容见
   [requirements-to-intent.md](references/requirements-to-intent.md) 第 5 节“连接器角色与外部供电”。
+- 整流、变压器或分立稳压电路没有原生 `power_out` 时，不冒充连接器供电，也不修改器件脚型。
+  先复核实际能量来源、返回路径、极性、启动和故障状态，再使用 [分立供电复核](references/reviewed-circuit-supply.md)
+  的 `reviewed_circuit_supply`。该类是证据绑定的人工供电语义结论；门禁只核证据新鲜度和原生拓扑，
+  不自动证明电压、电流、效率或保护成立。未完成复核时保留 ERC，不凭降低计数批准标记。
 - `symbol_integrity` 的 `unnamed_pins` 只作诊断（KiCad 运放、单门逻辑等符号的输入/输出脚按库惯例不写名字）。
   列出的每个器件（不限核心器件）都要在参考合同里按数据手册名字逐脚绑定，并在交接说明中列出这些脚；
   否则 schematic-review 的严格解析会因缺脚名失败。

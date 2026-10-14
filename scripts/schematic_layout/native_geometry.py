@@ -14,7 +14,7 @@ import xml.etree.ElementTree as ET
 
 NUM = r'[-+]?(?:\d*\.\d+|\d+)(?:[eE][-+]?\d+)?'
 STYLE = {'fill','fill-opacity','stroke','stroke-opacity','stroke-width',
-         'stroke-linecap','stroke-linejoin','stroke-dasharray','opacity'}
+         'stroke-linecap','stroke-linejoin','stroke-dasharray','fill-rule','opacity'}
 
 def finite(x):
     n=float(x)
@@ -167,6 +167,7 @@ class SVG:
                     k,v=pair.split(':',1); local[k.strip()]=v.strip()
             if set(local)-STYLE: raise ValueError('unsupported SVG style')
             local.update({k:v for k,v in e.attrib.items() if k in STYLE})
+            if local.get('fill-rule','nonzero') not in ('nonzero','evenodd'): raise ValueError('unsupported fill rule')
             opacity*=finite(local.pop('opacity','1')); st.update(local)
             if not 0<=opacity<=1: raise ValueError('invalid opacity')
             trans=e.attrib.get('transform')

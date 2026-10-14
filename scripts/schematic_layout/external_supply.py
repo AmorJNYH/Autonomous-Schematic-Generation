@@ -12,6 +12,7 @@ import subprocess
 import xml.etree.ElementTree as ET
 
 from .component_role import is_connector
+from . import circuit_supply
 from .project_audit import properties
 from .sexpr import all_nodes, first, parse, value, dump
 
@@ -283,10 +284,12 @@ def _via(root, intent, ref):
     return "PASS", "fitted two-pin passive series part with matching identity"
 
 
-def judge(xml_path, intent, aliases):
+def judge(xml_path, intent, aliases, artifact_root=None):
     decls, errors = declarations(intent)
     filtered, filtered_errors = filtered_declarations(intent)
     errors += filtered_errors
+    reviewed, review_errors = circuit_supply.declarations(intent)
+    errors += review_errors
     root = ET.parse(xml_path).getroot()
     gaps, origins = [], []
     nets = [{"name": n.get("name"), "nodes": [(p.get("ref"), p.get("pin"), p.get("pintype", "")) for p in n.findall("node")]}
@@ -312,7 +315,7 @@ def judge(xml_path, intent, aliases):
             derived[d["net"]] = by_pin[side[0]]
     for flag, net in flags:
         pins = {f"{r}.{p}" for r, p, _ in net["nodes"]}
-        owners = [d for d in decls if d["pin"] in pins] + [d for d in filtered if derived.get(d["net"]) is net]
+        owners = [d for d in decls if d["pin"] in pins] + [d for d in filtered if derived.get(d["net"]) is net] + [d for d in reviewed if by_pin.get(d["pin"]) is net]
         if len(owners) != 1:
             errors.append({"kind": "undeclared_pwr_flag" if not owners else "ambiguous_pwr_flag",
                            "flag": flag, "net": net["name"], "declarations": [d["net"] for d in owners]})
@@ -330,6 +333,7 @@ def judge(xml_path, intent, aliases):
         sources = sorted(f"{r}.{p}" for r, p, t in net["nodes"] if r not in aliases and t.split("+", 1)[0] == "power_out")
         if sources:
             errors.append({"kind": "net_has_power_source", "net": d["net"], "sources": sources})
+    errors += circuit_supply.judge(root, intent, reviewed, by_pin, flags, aliases, artifact_root or Path(xml_path).parent)
     unfitted = {c.get("ref") for c in root.findall("components/comp") if c.find("property[@name='dnp']") is not None}
     functions = {(p.get("ref"), p.get("pin")): p.get("pinfunction", "") for p in root.findall("nets/net/node")}
 
@@ -356,7 +360,7 @@ def judge(xml_path, intent, aliases):
         if net is not None and len(ends) == 1:
             far[d["net"]] = ends[0]
     # Qualify by native net objects: board-driven or connector-fed, then through qualified vias.
-    qualified = {id(n) for n in nets if has_source(n)} | {id(by_pin[d["pin"]]) for d in decls if d["pin"] in by_pin}
+    qualified = {id(n) for n in nets if has_source(n)} | {id(by_pin[d["pin"]]) for d in decls + reviewed if d["pin"] in by_pin}
     pending = [d for d in filtered if d["net"] in derived and d["net"] in far]
     while True:
         done = [d for d in pending if id(far[d["net"]]) in qualified]
@@ -387,10 +391,10 @@ def judge(xml_path, intent, aliases):
         if has_source(net):
             errors.append({"kind": "net_has_power_source", "net": d["net"]})
     status = ("FAIL" if errors else "INSUFFICIENT" if gaps
-              else "PASS" if decls or filtered or flags else "NOT_APPLICABLE")
-    return {"status": status, "scope": ("Declared connector and filtered-supply structure and native markers only; source semantics, filter values, "
+              else "PASS" if decls or filtered or reviewed or flags else "NOT_APPLICABLE")
+    return {"status": status, "scope": ("Declared connector, filtered and manually reviewed discrete-circuit supply structure, evidence freshness and native markers only; source semantics, filter values, "
                       "series drop at the pin's maximum current, supply ratings and protection require review."),
-            "declarations": decls, "filtered_declarations": filtered, "flags": sorted(f for f, _ in flags), "origins": origins, "errors": errors, "coverage_gaps": gaps}
+            "reviewed_circuit_declarations": reviewed, "declarations": decls, "filtered_declarations": filtered, "flags": sorted(f for f, _ in flags), "origins": origins, "errors": errors, "coverage_gaps": gaps}
 
 
 def audit_external_supply(root, sheets, intent, xml_path, cli, workdir):
@@ -398,10 +402,10 @@ def audit_external_supply(root, sheets, intent, xml_path, cli, workdir):
     if gaps:
         return {"status": "INSUFFICIENT", "coverage_gaps": gaps}
     if not markers:
-        return judge(xml_path, intent, {})
+        return judge(xml_path, intent, {}, Path(root).parent)
     copy_root, aliases = renamed_copy(root, sheets, workdir)
     probe = Path(workdir) / "external-supply-netlist.xml"
     r = subprocess.run([cli, "sch", "export", "netlist", "--format", "kicadxml", "-o", str(probe), str(copy_root)], capture_output=True, text=True, timeout=300)
     if r.returncode or not probe.is_file():
         return {"status": "INSUFFICIENT", "reason": "marker-renamed native export failed", "stderr": r.stderr[-2000:]}
-    return judge(probe, intent, aliases)
+    return judge(probe, intent, aliases, Path(root).parent)
