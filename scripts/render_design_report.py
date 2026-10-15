@@ -234,6 +234,17 @@ def render(root, notes=None, title=None):
                                             cell(w.get('action') or '')))
         out.append('')
 
+    conditional = [c for c in calculations if c.get('conclusion') == 'conditional']
+    if conditional:
+        out += ['## 有条件成立的计算', '',
+                '这些计算按设计用途已经够用，不阻塞出图；结论建立在下面写明的假设或没算进去的项上，'
+                '按最坏情况逐条证明留给独立审查。', '',
+                '| 计算 | 涉及的需求 | 假设或没算进去的项 |', '|---|---|---|']
+        for c in conditional:
+            out.append('| %s | %s | %s |' % (c.get('id'), '、'.join(c.get('requirements') or []),
+                                            cell('；'.join((c.get('assumptions') or []) + (c.get('omitted_terms') or [])))))
+        out.append('')
+
     if shown:
         out += ['## 自动检查明细', '', '| 检查 | 结果 |', '|---|---|']
         for key, label, status in shown:

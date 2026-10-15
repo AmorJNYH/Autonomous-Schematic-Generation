@@ -11,10 +11,14 @@
 Requirements, datasheets and the previous version are referenced by path + SHA-256, never
 copied. Anything else at the top level, history snapshots, logs, oversized files and design
 evidence that the closure record cites but the folder does not contain all fail the pack.
+Design documents must also agree with the design: every part a 设计资料/ table or assembly file
+names must exist in the electrical intent, with the same MPN and value where the table gives them.
 """
 import argparse
+import csv
 import hashlib
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -56,6 +60,66 @@ def skill_version():
         return None
 
 
+REF_COLUMNS = ('ref', 'refs', 'reference', '位号')
+REF_KEYS = ('ref', 'refs', 'fit', 'dnp')
+SAME_FIELDS = ('mpn', 'value')
+
+
+def _refs(value):
+    """Parts named by one cell or JSON value: 'R1', 'R1, R2' or a list of them."""
+    items = value if isinstance(value, list) else [value]
+    return [r for item in items if isinstance(item, str) for r in re.split(r'[,;\s]+', item.strip()) if r]
+
+
+def document_refs(root, intent):
+    """Parts named in 设计资料/ tables and assembly files that the design does not have, or describes differently.
+
+    Covers CSV tables with a reference column (and their mpn/value columns) and JSON values under
+    ref/refs/fit/dnp keys. Free text is not parsed: a stale part mentioned only in prose is not found.
+    """
+    parts = {c.get('ref'): c for c in intent.get('components', []) if isinstance(c, dict)}
+    errors = []
+    docs = root / '设计资料'
+    for path in sorted(docs.rglob('*')) if docs.is_dir() else []:
+        rel = path.relative_to(root).as_posix()
+        if path.suffix.lower() == '.csv':
+            with open(path, encoding='utf-8-sig', newline='') as f:
+                rows = csv.DictReader(f)
+                columns = {c.strip().lower(): c for c in rows.fieldnames or [] if c}
+                ref_col = next((columns[c] for c in REF_COLUMNS if c in columns), None)
+                if not ref_col:
+                    continue
+                for line, row in enumerate(rows, 2):
+                    for ref in _refs(row.get(ref_col) or ''):
+                        part = parts.get(ref)
+                        if part is None:
+                            errors.append('%s line %d: %s is not in the design' % (rel, line, ref))
+                            continue
+                        for field in SAME_FIELDS:
+                            given = (row.get(columns.get(field, '')) or '').strip()
+                            expected = str(part.get(field) or '').strip()
+                            if given and expected and given != expected:
+                                errors.append('%s line %d: %s %s is %r, the design has %r' % (rel, line, ref, field, given, expected))
+        elif path.suffix.lower() == '.json':
+            try:
+                data = json.loads(path.read_text(encoding='utf-8'))
+            except (OSError, ValueError) as error:
+                errors.append('%s cannot be read: %s' % (rel, error))
+                continue
+            stack = [data]
+            while stack:
+                node = stack.pop()
+                if isinstance(node, dict):
+                    for key, value in node.items():
+                        if key in REF_KEYS:
+                            errors += ['%s: %s %s is not in the design' % (rel, key, r) for r in _refs(value) if r not in parts]
+                        else:
+                            stack.append(value)
+                elif isinstance(node, list):
+                    stack.extend(node)
+    return errors
+
+
 def check(root, inputs=()):
     root = Path(root)
     errors = []
@@ -92,6 +156,11 @@ def check(root, inputs=()):
             errors.append('%s is %.1f MB; keep only what the design cites, reference large inputs with --input'
                           % (rel, p.stat().st_size / 1e6))
     intent, closure = record / 'electrical-intent.json', record / 'design-closure.json'
+    if intent.is_file():
+        try:
+            errors += ['design documents: ' + e for e in document_refs(root, json.loads(intent.read_text(encoding='utf-8')))]
+        except ValueError as error:
+            errors.append('electrical-intent.json cannot be read: %s' % error)
     if intent.is_file() and closure.is_file():
         try:
             result = audit(json.loads(closure.read_text(encoding='utf-8')), intent, root, inputs)

@@ -153,8 +153,16 @@ def audit(record, intent_path, artifact_root, inputs=None):
             error('contradictory_coverage', key)
         if conclusion == 'supported' and (coverage != 'bounded' or omitted):
             error('partial_calculation_claimed_supported', key)
-        if coverage != 'bounded' or conclusion != 'supported':
-            need('calculation_not_supported', key)
+        assumptions = row.get('assumptions', [])
+        if not isinstance(assumptions, list) or any(not isinstance(x, str) for x in assumptions):
+            error('schema', key + ':assumptions must be a string list')
+            assumptions = []
+        # Design-level threshold: a conditional result with its assumptions written down is enough to
+        # draw the schematic; proving it under every guaranteed condition belongs to independent review.
+        if conclusion == 'conditional' and not (omitted or assumptions):
+            error('conditional_without_assumptions', key)
+        if conclusion == 'failed':
+            need('calculation_failed', key)
             for rid in row.get('requirements', []):
                 if rid in requirements and requirements[rid].get('status') == 'design_supported':
                     error('unsupported_calculation_dependency', rid + ':' + key)

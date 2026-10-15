@@ -83,6 +83,12 @@ class DesignReportTests(unittest.TestCase):
         self.assertIn('固件过压保护配置还没拿到。', section)
         self.assertNotIn('W-TEST', section)
 
+    def test_conditional_calculations_listed_with_assumptions(self):
+        text, _ = self.d.report()
+        section = text.split('## 有条件成立的计算')[1].split('## ')[0]
+        self.assertIn('| C1 | R-OUT | ripple |', section)
+        self.assertIn('不阻塞出图', section)
+
     def test_handoffs_listed_apart(self):
         text, _ = self.d.report()
         self.assertIn('| 样机验证 | 样机或试验验证 | 满载温升测试 |', text.split('## 交给后续环节的要求')[1])
@@ -160,6 +166,25 @@ class PackDesignTests(unittest.TestCase):
         spec.write_text('changed')
         errors, _ = self.run_pack()
         self.assertTrue(any('stale_evidence E2' in e for e in errors), errors)
+
+    def test_design_documents_must_name_parts_the_design_has(self):
+        docs = self.d.root / '设计资料'
+        (docs / '装配配置.json').write_text(json.dumps({'assemblies': [{'fit': ['U1', 'U9'], 'dnp': []}]}))
+        (docs / 'BOM约束.csv').write_text('ref,value,mpn,note\nR1,10k,,ok\nC7,1u,,removed part\n', encoding='utf-8')
+        errors, _ = self.run_pack()
+        self.assertTrue(any('装配配置.json: fit U9 is not in the design' in e for e in errors), errors)
+        self.assertTrue(any('BOM约束.csv line 3: C7 is not in the design' in e for e in errors), errors)
+        self.assertFalse(any(' U1 ' in e or ' R1 ' in e for e in errors), errors)
+
+    def test_design_document_mpn_and_value_must_match(self):
+        self.d.write('electrical-intent.json', {'components': [{'ref': 'U1', 'mpn': 'TPS7A4001DGNR', 'value': 'TPS7A4001DGNR'},
+                                                               {'ref': 'R1', 'value': '10k'}]})
+        self.d.closure['intent_sha256'] = sha256(self.d.record / 'electrical-intent.json')
+        self.d.write('design-closure.json', self.d.closure)
+        (self.d.root / '设计资料' / 'BOM约束.csv').write_text('位号,value,mpn\nU1,TPS7A4001DGNR,TPS7A16DGNR\nR1,10k,\n', encoding='utf-8')
+        errors, _ = self.run_pack()
+        self.assertTrue(any("U1 mpn is 'TPS7A16DGNR', the design has 'TPS7A4001DGNR'" in e for e in errors), errors)
+        self.assertFalse(any('R1' in e for e in errors), errors)
 
     def test_missing_schematic_outputs_fail(self):
         (self.d.root / '原理图' / 'BOM.csv').unlink()

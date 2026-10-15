@@ -69,10 +69,29 @@ class DesignClosureTests(unittest.TestCase):
     def test_omitted_loss_terms_cannot_prove_budget(self):
         self.record['calculations'][0].update(coverage='partial', omitted_terms=['core loss', 'clamp loss'])
         self.assertIn('partial_calculation_claimed_supported', self.codes())
-        self.assertIn('unsupported_calculation_dependency', self.codes())
         self.record['calculations'][0]['conclusion'] = 'conditional'
         self.record['requirements'][0]['status'] = 'conditional'
         self.assertEqual('INCOMPLETE', self.run_audit()['status'])
+
+    def test_conditional_calculation_with_written_assumptions_does_not_block(self):
+        self.record['calculations'][0].update(coverage='partial', conclusion='conditional',
+                                              omitted_terms=['line regulation has only a typical value'])
+        result = self.run_audit()
+        self.assertEqual('PASS', result['status'], result)
+        self.record['calculations'][0].update(coverage='bounded', omitted_terms=[], assumptions=['typical Vth used'])
+        self.assertEqual('PASS', self.run_audit()['status'])
+
+    def test_conditional_calculation_must_state_its_assumptions(self):
+        self.record['calculations'][0].update(conclusion='conditional')
+        self.assertIn('conditional_without_assumptions', self.codes())
+
+    def test_failed_calculation_blocks_and_cannot_support_requirement(self):
+        self.record['calculations'][0]['conclusion'] = 'failed'
+        self.assertIn('unsupported_calculation_dependency', self.codes())
+        self.record['requirements'][0]['status'] = 'conditional'
+        result = self.run_audit()
+        self.assertEqual('INCOMPLETE', result['status'])
+        self.assertIn({'code': 'calculation_failed', 'item': 'C1'}, result['pending'])
 
     def test_omissions_cannot_be_marked_bounded(self):
         self.record['calculations'][0]['omitted_terms'] = ['bias loss']
