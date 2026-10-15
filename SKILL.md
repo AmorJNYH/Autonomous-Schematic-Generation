@@ -49,6 +49,7 @@ SR 独立审查这些设计结论。新设计和电气改版同时遵循
 | 重画已有工程，电气不变 | [existing-project-redraw.md](references/existing-project-redraw.md) 冻结基线，再走第 4–8 步 |
 | 已授权、保持连线与图面的 Value 参数修改 | [value-patch.md](references/value-patch.md) 生成原生验证候选，再更新意图/脚本与计算，走第 6–8 步和 SR 复审 |
 | 授权的电气改版 | 先读 [electrical-redesign.md](references/electrical-redesign.md) 和 [change-preflight.md](references/change-preflight.md)，再走主流程 |
+| 收到 SR 审查结果后继续设计 | 先运行 `import_review_feedback.py`，按 [读取 SR 审查结果](references/review-feedback.md) 的固定对应关系分流，再按电气改版处理需要改图的项 |
 | 从 PDF 参考设计提取电路 | [pdf-schematic-extraction.md](references/pdf-schematic-extraction.md)；提取结果只作线索，仍按第 2 步核对手册 |
 | 模块化数据、SKiDL/circuit-synth 导入、锁定基线 | [circuit-ir.md](references/circuit-ir.md)。人读的页面仍按第 5 步用 recipes 画 |
 | 用户要求 CopperPilot 协助 | [copperpilot-reference-workflow.md](references/copperpilot-reference-workflow.md) |
@@ -149,11 +150,11 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
 - 新设计要求 ERC 零违规。重画工程时保留基线和最终两份原始 ERC，逐条确认没有新增违规，并披露继承的问题。
 - ERC 摘要按原始报告的 UUID/object 绑定实际层次实例、引脚及原生网络，再归因到 rail；
   不凭位号或网名文字猜问题对象。无法绑定时保留原违规与待核边界，见 [project-verification.md](references/project-verification.md#erc-summary-object-binding)。
-- 层次工程的几何检查使用本次原生导出的有限覆盖，支持已合格的图框、完整层次字段和部分脚名字迹；
-  具体范围及未支持对象见 [native-geometry.md](references/native-geometry.md)。外部 JSON 回执不能授权放行。
-  原生路径只增加有限的绝对圆形直径半圆 `A` 覆盖，逐段保护弧内部和实际笔宽；椭圆、非半圆、填充曲线、曲线字形等仍不足。
-  导线与物理引脚身份仍按严格 MLZ 核验；路径可解析不等于页面几何或 ERC 全部通过。
-  `geometry` 为 INSUFFICIENT 时（如层次脚轮廓、脚号或字形尚未合格），保留缺口并在原生渲染图上核对；有限图框 PASS 不等于所有字迹或整案通过。
+- 几何检查只覆盖本次原生导出中已合格的对象，范围与未支持对象见 [native-geometry.md](references/native-geometry.md)；
+  外部 JSON 回执不能授权放行。`geometry` 为 INSUFFICIENT 时保留缺口并在原生渲染图上核对，有限 PASS 不等于整案通过。
+- 板级 `Net-(...)` 式网名须有来源证据，仅有 XML 时保持 INSUFFICIENT，见
+  [project-verification.md](references/project-verification.md#automatic-looking-names-need-source-evidence)；
+  编码斜杠层次字段只用 [schematic-drawing-standards.md](references/schematic-drawing-standards.md) 的有限回退，不推广。
 - 失败时修改相应页面脚本，在新的运行目录重新生成并验证。不得为了降低计数而加 PWR_FLAG、加排除项或改引脚类型。
 - 受控的自动结构资格有两类，都在意图中逐网声明、用 `Sheet.power_flag()` 每网放一个 PWR_FLAG，由 `external_supply` 门禁核对：
   只由连接器引入、板上没有电源输出脚驱动的电源或地（`external_supply`）；经一颗串联电阻、电感、磁珠或保险丝
@@ -199,6 +200,9 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
 | 计算预检的条件与门槛 | 全面的最坏情况分析与 FAIL/待核判定 |
 | 层次、符号完整性、几何、可读性；渲染目检 | 冻结/放行结论、P0–P3 分级、修改建议 |
 
+SR 的结论回到 ASG 时只按 [读取 SR 审查结果](references/review-feedback.md) 分流：FAIL/DESIGN_OPEN 设计，
+EXTERNAL_DATA 按 input_requests 补证，需求未定交用户，阶段 NA 写入下游约束；ASG 不重新判定 SR 结论。
+
 ## 硬性规则
 
 - 意图独立于几何：位号、值、MPN、引脚编号、装配状态和网络归属不因摆放改变；不为布图方便改符号的引脚映射。
@@ -213,6 +217,7 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
 | 何时读 | 文件 |
 | --- | --- |
 | 新设计/电气改版的设计闭环、依赖与计算结论审计 | [design-closure.md](references/design-closure.md) |
+| 收到 SR 结果：分流、采用 SR 改进建议、收敛指标 | [review-feedback.md](references/review-feedback.md) |
 | 从需求写电气意图 | [requirements-to-intent.md](references/requirements-to-intent.md) |
 | 架构页、参考设计外围、学习工程师图面 | [reference-driven-board-design.md](references/reference-driven-board-design.md) |
 | 选符号、引脚表、外围合同 | [symbol-and-peripheral-contracts.md](references/symbol-and-peripheral-contracts.md) |
@@ -228,13 +233,3 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
 | Circuit IR、低层生成器 | [circuit-ir.md](references/circuit-ir.md)、[schematic-generation.md](references/schematic-generation.md) |
 
 运行不需要上游完整仓库、新的 MCP 服务、Bun 或网络连接。
-
-For board-level automatic-looking net names, follow the source qualification in
-[project-verification.md](references/project-verification.md#automatic-looking-names-need-source-evidence).
-A hand-written `Net-(...)` label is not evidence of an automatic name; XML-only
-unknown origin stays `INSUFFICIENT`. Do not bypass this with a name-pattern regex.
-
-For encoded-slash hierarchical fields, the narrow readable-orientation fallback
-in [schematic-drawing-standards.md](references/schematic-drawing-standards.md)
-retains raw width and all coverage gaps. Do not generalize it into decoding,
-font qualification, geometry tolerance changes or owner collision exemptions.

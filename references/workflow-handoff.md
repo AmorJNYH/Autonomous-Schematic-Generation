@@ -55,7 +55,8 @@ roles.json 只填写角色到相对路径的映射，open-items.json 只填写�
 files/roles 为空，但必须至少给一个开放项；不得用伪造文件补齐角色。
 
 每个开放项为 `{id, kind, summary, next_action}`，均为非空字符串，ID 不重复。
-kind 取 `REQUIREMENT / EVIDENCE / DESIGN / REVIEW / TOOL / DOWNSTREAM`。
+kind 取 `REQUIREMENT / EVIDENCE / DESIGN / REVIEW / TOOL / DOWNSTREAM`。由 SR 结果产生的开放项按
+[读取 SR 审查结果](review-feedback.md#2-固定对应关系) 的对应表取 kind，不自行改判；TOOL 只用于工具未完成执行。
 ASG 自检或目检未通过/未完成时必须保留开放项。SR 封装必须包含原生 workflow.current_work_items
 中每个任务的 ID，原生记录中的关闭条件、阶段和证据不能被封装覆盖。
 
@@ -90,12 +91,15 @@ ASG 自检或目检未通过/未完成时必须保留开放项。SR 封装必须
 
 1. SR intent 等于最终 plan 的 review_inputs.intent，审查阶段与 task.phase 一致。
 2. 用当前 SR parse_kicad.py 重新解析 ASG 交付的 XML；db 必须与解析结果完整一致。
-3. 重跑 validate_review.py，带 `--db`、冷/热 lint、`--require-actionable`、`--require-bindings`。
+3. 重跑 validate_review.py，带 `--db`、冷/热 lint、`--require-actionable`、`--require-bindings`、`--require-impact`
+   （与 SR 技能的标准对账命令一致；后者使 gap_cause 及 input_requests 成为必填）。
 4. review_mode=revision 时必须包含 old_db/old_plan 角色，绑定 task.previous_review 的对应文件，
    并使用 `--require-revision-impact`。规则变更后可进行完整 first 审查，不能盲复用历史结论。
 5. supplied review_gate 必须与重跑结果一致，且 valid=true。NO_GO 的有效报告仍可交付，用于整改。
 6. schematic_freeze 再加 `--require-release`；GO/CONDITIONAL_GO 才进入 READY_FOR_FREEZE。
    风险接受与下游接收只能来自 SR 要求的真实责任记录，控制器不代填。
+
+ASG 接收 SR 包后先运行 `import_review_feedback.py`（见 [读取 SR 审查结果](review-feedback.md)），再安排下一轮工作。
 
 先在临时目录输出原生 gate，再写入最终交接包。临时文件统一在 `/tmp/codex-work/<任务>/`。
 最终输入、结果和证据保存在项目中。所有引用资料的版本/适用性仍由技能判断。
