@@ -91,8 +91,8 @@ ASG 自检或目检未通过/未完成时必须保留开放项。SR 封装必须
 
 1. SR intent 等于最终 plan 的 review_inputs.intent，审查阶段与 task.phase 一致。
 2. 用当前 SR parse_kicad.py 重新解析 ASG 交付的 XML；db 必须与解析结果完整一致。
-3. 重跑 validate_review.py，带 `--db`、冷/热 lint、`--require-actionable`、`--require-bindings`、`--require-impact`
-   （与 SR 技能的标准对账命令一致；后者使 gap_cause 及 input_requests 成为必填）。
+3. 重跑 validate_review.py，带 `--db`、冷/热 lint、`--require-actionable`、`--require-bindings`
+   （与 SR 技能的标准对账命令一致；gap_cause、影响依据及 input_requests 由校验器始终强制）。
 4. review_mode=revision 时必须包含 old_db/old_plan 角色，绑定 task.previous_review 的对应文件，
    并使用 `--require-revision-impact`。规则变更后可进行完整 first 审查，不能盲复用历史结论。
 5. supplied review_gate 必须与重跑结果一致，且 valid=true。NO_GO 的有效报告仍可交付，用于整改。
