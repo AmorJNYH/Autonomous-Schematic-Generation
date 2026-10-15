@@ -70,7 +70,8 @@ actual evidence and the independent disposition.
 
 ## Snapshot gate
 
-After the final exports/checks, save `delivery-evidence.json` in the project root:
+After the final exports/checks, save `delivery-evidence.json` in the project root, or in a delivery
+folder's `record/`; there its paths are relative to the delivery folder (e.g. `原理图/board.kicad_sch`):
 
 ```json
 {

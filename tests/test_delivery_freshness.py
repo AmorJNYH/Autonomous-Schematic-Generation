@@ -27,6 +27,14 @@ class FreshnessTests(unittest.TestCase):
     def result(self):
         self.path.write_text(json.dumps(self.m))
         return check(self.path)
+    def test_record_manifest_resolves_from_delivery_folder(self):
+        sch=self.base/'原理图';sch.mkdir();record=self.base/'record';record.mkdir()
+        for n in list(self.m['inputs'])+list(self.m['outputs']):(self.base/n).rename(sch/n)
+        self.m['root']='原理图/board.kicad_sch'
+        for section in ('inputs','outputs'):self.m[section]={'原理图/'+k:v for k,v in self.m[section].items()}
+        self.m['roles']={k:['原理图/'+x for x in v] for k,v in self.m['roles'].items()}
+        self.path=record/'delivery-evidence.json'
+        self.assertEqual(self.result()['status'],'FRESH')
     def test_fresh_is_not_design_pass(self):
         r=self.result();self.assertEqual(r['status'],'FRESH');self.assertIn('no design acceptance',r['scope'])
     def test_postprocess_child_mutation_invalidates(self):

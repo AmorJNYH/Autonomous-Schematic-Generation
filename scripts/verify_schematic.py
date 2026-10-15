@@ -68,7 +68,7 @@ def main():
     ap.add_argument("--change-contract", type=Path)
     ap.add_argument("--preflight", type=Path, help="design-preflight.json for an electrical change")
     ap.add_argument("--design-closure", type=Path, help="Evidence-bound end-to-end design review record")
-    ap.add_argument("--artifact-root", type=Path, help="Evidence base for --design-closure; defaults to root parent")
+    ap.add_argument("--artifact-root", type=Path, help="Evidence base for --design-closure and reviewed_circuit_supply; defaults to root parent")
     ap.add_argument("--project", help="native project annotation name; defaults to the root file stem")
     ap.add_argument("--cli", help="kicad-cli path")
     ap.add_argument("--native-geometry", action="store_true", help="Also qualify native pin-name geometry on a standalone page; hierarchy roots enable the finite native channel automatically")
@@ -181,7 +181,7 @@ def main():
 
     if xml.is_file():
         try:
-            supply = audit_external_supply(args.root, sheets, intent, xml, cli, out / "external-supply")
+            supply = audit_external_supply(args.root, sheets, intent, xml, cli, out / "external-supply", args.artifact_root)
         except (ValueError, OSError) as exc:
             supply = {"status": "FAIL", "error": str(exc)}
         if supply["status"] != "NOT_APPLICABLE":

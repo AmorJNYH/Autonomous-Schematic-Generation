@@ -12,7 +12,9 @@ reference measurement, or other signal nets. A power role alone is not evidence.
 `reviewed_circuit_supply` entries have exactly `net`, output `pin`, `refs`,
 `reason`, `binding_sha256` and `evidence: {path, sha256, locator}`. `refs` lists
 all relevant source-path components, at least two. The evidence is a readable
-review document within the artifact root; its hash and exact locator must match.
+review document within the artifact root (`verify_schematic.py --artifact-root`, normally
+the delivery folder so the review can sit in `record/evidence/`; default is the root
+schematic's folder); its hash and exact locator must match.
 Compute the binding with `schematic_layout.circuit_supply.binding(intent, refs)`
 after the review is written. It binds component identities, values, fields,
 complete participating net partitions and NC declarations. Do not refresh the

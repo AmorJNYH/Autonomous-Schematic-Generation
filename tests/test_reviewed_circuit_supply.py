@@ -30,6 +30,12 @@ class ReviewedCircuitSupplyTests(unittest.TestCase):
  def test_native_source_conflict_fails(self):self.n['VCC'].append(('U1','1','power_out'));self.assertEqual(self.run_case()['status'],'FAIL')
  def test_duplicate_declaration_rejected(self):self.i['reviewed_circuit_supply']*=2;self.assertRaises(ValueError,declarations,self.i)
  def test_review_path_escape_fails(self):self.i['reviewed_circuit_supply'][0]['evidence']['path']='../review.md';self.assertEqual(self.run_case()['status'],'FAIL')
+ def test_review_kept_outside_schematic_folder_resolves_from_artifact_root(self):
+  sch=self.p/'原理图';sch.mkdir();rec=self.p/'record'/'evidence';rec.mkdir(parents=True)
+  self.ev.rename(rec/'review.md');self.i['reviewed_circuit_supply'][0]['evidence']['path']='record/evidence/review.md'
+  f=sch/'n.xml';f.write_text(xml(self.n,{'D1':('Device','D','D'),'C1':('Device','C','10u')}))
+  self.assertEqual(judge(f,self.i,{'FLGX1':'#FLG1'})['status'],'FAIL')
+  self.assertEqual(judge(f,self.i,{'FLGX1':'#FLG1'},self.p)['status'],'PASS')
  def test_single_component_is_not_converter_review(self):self.i['reviewed_circuit_supply'][0]['refs']=['D1'];self.assertRaises(ValueError,declarations,self.i)
 
  def test_explicit_empty_mpn_remains_empty(self):

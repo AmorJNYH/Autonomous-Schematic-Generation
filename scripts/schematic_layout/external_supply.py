@@ -397,15 +397,16 @@ def judge(xml_path, intent, aliases, artifact_root=None):
             "reviewed_circuit_declarations": reviewed, "declarations": decls, "filtered_declarations": filtered, "flags": sorted(f for f, _ in flags), "origins": origins, "errors": errors, "coverage_gaps": gaps}
 
 
-def audit_external_supply(root, sheets, intent, xml_path, cli, workdir):
+def audit_external_supply(root, sheets, intent, xml_path, cli, workdir, artifact_root=None):
+    base = artifact_root or Path(root).parent
     _, markers, gaps, _ = _scan(sheets)
     if gaps:
         return {"status": "INSUFFICIENT", "coverage_gaps": gaps}
     if not markers:
-        return judge(xml_path, intent, {}, Path(root).parent)
+        return judge(xml_path, intent, {}, base)
     copy_root, aliases = renamed_copy(root, sheets, workdir)
     probe = Path(workdir) / "external-supply-netlist.xml"
     r = subprocess.run([cli, "sch", "export", "netlist", "--format", "kicadxml", "-o", str(probe), str(copy_root)], capture_output=True, text=True, timeout=300)
     if r.returncode or not probe.is_file():
         return {"status": "INSUFFICIENT", "reason": "marker-renamed native export failed", "stderr": r.stderr[-2000:]}
-    return judge(probe, intent, aliases, Path(root).parent)
+    return judge(probe, intent, aliases, base)

@@ -15,6 +15,8 @@ REQUIRED_ROLES = {'netlist', 'erc', 'geometry', 'render'}
 def check(manifest_path):
     manifest_path = Path(manifest_path).resolve()
     base = manifest_path.parent
+    if base.name == 'record':  # delivery folder layout: paths are relative to the folder holding record/
+        base = base.parent
     errors = []
     def local(name):
         if not isinstance(name, str) or not name or Path(name).is_absolute():
@@ -51,8 +53,8 @@ def check(manifest_path):
             if relative not in m['inputs']:
                 errors.append({'kind': 'untracked_active_sheet', 'path': relative})
         root = local(m['root'])
-        ancillary = [root.with_suffix('.kicad_pro'), base / 'sym-lib-table']
-        ancillary += list((base / 'symbols').glob('*.kicad_sym'))
+        ancillary = [root.with_suffix('.kicad_pro'), root.parent / 'sym-lib-table']
+        ancillary += list((root.parent / 'symbols').glob('*.kicad_sym'))
         for path in ancillary:
             if path.is_file() and path.relative_to(base).as_posix() not in m['inputs']:
                 errors.append({'kind': 'untracked_project_input', 'path': path.relative_to(base).as_posix()})
