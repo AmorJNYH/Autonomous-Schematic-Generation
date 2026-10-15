@@ -9,6 +9,7 @@ import tempfile
 import unittest
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from test_native_circle_controls import native_fixture,uid
+from schematic_layout.scratch import scratch_base
 from schematic_layout.sexpr import form as f,Atom as A,dump
 from schematic_layout.native import find_cli
 from schematic_layout.native_geometry import SVG,ink_gap,ARC_SERIALIZATION_MM
@@ -49,9 +50,7 @@ class ActualNativeArcControls(unittest.TestCase):
     def test_actual_native_foreign_bulge_dash_far_gap_and_forged_source_binding(self):
         cli=find_cli()
         if not cli:self.skipTest('KiCad CLI unavailable')
-        configured=Path(os.environ.get('TMPDIR','/tmp/codex-work')).resolve()
-        root=Path('/tmp/codex-work').resolve()
-        base=(configured if configured.is_relative_to(root) else root)/'asg-semicircle-controls'
+        base=scratch_base()/'asg-semicircle-controls'
         base.mkdir(parents=True,exist_ok=True)
         with tempfile.TemporaryDirectory(dir=base) as tmp:
             for case in ('foreign-arc','foreign-dash-arc','far-arc','filled-arc','nonsemicircle-arc'):

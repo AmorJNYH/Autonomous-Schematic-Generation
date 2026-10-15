@@ -88,7 +88,7 @@ class Revision3Tests(unittest.TestCase):
     def test_missing_functional_cad_never_calls_verifier(self):
         entry={'id':'b2-r02-v1','functional_native':'NOT_RUN','not_run_reason':'No functional CAD','files':{}}
         def forbidden(*args): raise AssertionError('Missing functional CAD must not be verified as board')
-        result=replay_frozen([entry],Path('/tmp/codex-work/unused'),forbidden,forbidden)[entry['id']]
+        result=replay_frozen([entry],Path(tempfile.gettempdir())/'unused',forbidden,forbidden)[entry['id']]
         self.assertEqual('NOT_RUN',result['comparison_status'])
         self.assertIsNone(result['frozen_native_comparison'])
 

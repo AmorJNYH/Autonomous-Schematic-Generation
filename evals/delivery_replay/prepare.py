@@ -4,7 +4,7 @@ from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from bench_common import *
 def main():
- a=argparse.ArgumentParser();a.add_argument('--cache',required=True,type=Path);a.add_argument('--revision',type=int,choices=[2,3],default=2);v=a.parse_args();v.cache.resolve().relative_to(Path('/tmp/codex-work').resolve());v.cache.mkdir(parents=True,exist_ok=True);entries=[]
+ a=argparse.ArgumentParser();a.add_argument('--cache',required=True,type=Path);a.add_argument('--revision',type=int,choices=[2,3],default=2);v=a.parse_args();require_scratch(v.cache);v.cache.mkdir(parents=True,exist_ok=True);entries=[]
  for h in get(Path(__file__).parent/'sources.json')['helpers']:
   p=Path(h['path']);x=dict(h);x['status']='UNAVAILABLE'
   if not p.exists() and (v.cache/p.name).exists():p=v.cache/p.name

@@ -2,16 +2,17 @@
 from pathlib import Path
 import json,hashlib,os,subprocess,sys,time,uuid,shutil,xml.etree.ElementTree as ET
 ROOT=Path(__file__).resolve().parents[1]
-PY='/Users/skyfend/.local/bin/python3'
+PY=sys.executable
 sys.path.insert(0,str(ROOT/'scripts'))
 from schematic_layout.sexpr import parse,dump,first,all_nodes,value,form,Atom
 from schematic_layout.scene import read_scene
+from schematic_layout.scratch import require_scratch,scratch_base
 
 def get(p):return json.loads(Path(p).read_text())
 def put(p,x):p=Path(p);p.parent.mkdir(parents=True,exist_ok=True);p.write_text(json.dumps(x,ensure_ascii=False,indent=2)+'\n')
 def sha(p):return hashlib.sha256(Path(p).read_bytes()).hexdigest()
 def call(argv,out,cwd=None,timeout=600):
- out=Path(out);out.parent.mkdir(parents=True,exist_ok=True);t=time.monotonic();env=dict(os.environ,PYTHONDONTWRITEBYTECODE='1');env.setdefault('TMPDIR','/tmp/codex-work/asg-batch2/stage0/benches/tmp')
+ out=Path(out);out.parent.mkdir(parents=True,exist_ok=True);t=time.monotonic();env=dict(os.environ,PYTHONDONTWRITEBYTECODE='1')
  try:q=subprocess.run(list(map(str,argv)),capture_output=True,text=True,cwd=cwd,env=env,timeout=timeout)
  except subprocess.TimeoutExpired as e:put(str(out)+'.command.json',{'argv':list(map(str,argv)),'status':'TIMEOUT','seconds':time.monotonic()-t});return -1
  Path(str(out)+'.stdout').write_text(q.stdout);Path(str(out)+'.stderr').write_text(q.stderr);put(str(out)+'.command.json',{'argv':list(map(str,argv)),'cwd':str(cwd) if cwd else None,'returncode':q.returncode,'seconds':time.monotonic()-t});return q.returncode

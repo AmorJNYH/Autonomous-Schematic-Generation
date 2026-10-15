@@ -4,7 +4,7 @@ from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from bench_common import *
 def main():
- a=argparse.ArgumentParser();a.add_argument('--cache',required=True,type=Path);a.add_argument('--labels',type=Path);v=a.parse_args();v.cache.resolve().relative_to(Path('/tmp/codex-work').resolve());here=Path(__file__).parent
+ a=argparse.ArgumentParser();a.add_argument('--cache',required=True,type=Path);a.add_argument('--labels',type=Path);v=a.parse_args();require_scratch(v.cache);here=Path(__file__).parent
  sources=get(here/'sources.json')['sources'];resolved=[];reports=[]
  for s in sources:
   d=v.cache/s['round'];d.mkdir(parents=True,exist_ok=True);loc=Path(s['local_original']);status='READY'

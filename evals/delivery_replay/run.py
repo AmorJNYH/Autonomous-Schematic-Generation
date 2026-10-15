@@ -35,10 +35,10 @@ def locate_native_output(root,round_number,outputs):
  return candidate if candidate.is_file() else None
 
 def main():
- a=argparse.ArgumentParser();a.add_argument('--cache',required=True,type=Path);a.add_argument('--out',required=True,type=Path);a.add_argument('--revision',type=int,choices=[2,3],default=2);v=a.parse_args();require_cache_revision(v.cache,v.revision);v.out.resolve().relative_to(Path('/tmp/codex-work').resolve());binding_receipt=open_run(v.out,capture(ROOT,v.cache,v.revision,[],'delivery'));t=time.monotonic();runs=[];rounds={}
+ a=argparse.ArgumentParser();a.add_argument('--cache',required=True,type=Path);a.add_argument('--out',required=True,type=Path);a.add_argument('--revision',type=int,choices=[2,3],default=2);v=a.parse_args();require_cache_revision(v.cache,v.revision);require_scratch(v.out);binding_receipt=open_run(v.out,capture(ROOT,v.cache,v.revision,[],'delivery'));t=time.monotonic();runs=[];rounds={}
  for h in get(v.cache/'prepared.json')['helpers']:
   if h['status']!='READY':runs.append({'id':h['id'],'status':'NOT_RUN'});continue
-  p=Path(h['cached_helper']);assert sha(p)==h['sha256'];old=p.read_text();new=old.replace("assert O.is_relative_to(R.resolve())and not O.exists()", "assert O.is_relative_to(Path('/tmp/codex-work').resolve())and not O.exists()")
+  p=Path(h['cached_helper']);assert sha(p)==h['sha256'];old=p.read_text();new=old.replace("assert O.is_relative_to(R.resolve())and not O.exists()", "assert not O.resolve().is_relative_to(Path(%r))and not O.exists()"%str(ROOT))
   # Enforce the caller's independent role TMPDIR for legacy helpers.
   new=new.replace("str(R/'tmp/root')","os.environ['TMPDIR']").replace("str(a.out/'tmp')","os.environ['TMPDIR']")
   q=v.out/p.name;q.write_text(new);out=v.out/h['id'];args=list(h['argv']);args[args.index('--asg')+1]=str(ROOT);args[args.index('--out')+1]=str(out)

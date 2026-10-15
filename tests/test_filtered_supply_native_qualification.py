@@ -16,12 +16,13 @@ import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
+from schematic_layout.scratch import scratch_base
 from schematic_layout.external_supply import audit_external_supply, judge
 from schematic_layout.native import find_cli
 from schematic_layout.sexpr import parse, dump, first, all_nodes, value
 from test_filtered_supply import INTENT, PARTS, nets, xml
 
-TMP = Path('/tmp/codex-work/filtered-supply-native-tests')
+TMP = scratch_base() / 'filtered-supply-native-tests'
 CLI = find_cli()
 
 class EvidenceIntegrityTests(unittest.TestCase):

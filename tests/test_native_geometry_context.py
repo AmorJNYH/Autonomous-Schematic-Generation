@@ -7,6 +7,7 @@ import unittest
 import uuid
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
+from schematic_layout.scratch import scratch_base
 from schematic_layout.native import find_cli
 from schematic_layout.native_geometry_context import prepare_geometry_context,load_page_context,page_context_from_job,sha,spans
 from schematic_layout.sexpr import form as f,Atom as A,dump,parse,first,all_nodes
@@ -57,7 +58,7 @@ class NativeContextTests(unittest.TestCase):
     def setUpClass(cls):
         cls.cli=find_cli()
         if not cls.cli: raise unittest.SkipTest('KiCad native tool missing')
-        tempbase=Path(os.environ.get('TMPDIR','/tmp/codex-work/native-geometry-tests'));tempbase.mkdir(parents=True,exist_ok=True)
+        tempbase=scratch_base()/'native-geometry-tests';tempbase.mkdir(parents=True,exist_ok=True)
         cls.temp=tempfile.TemporaryDirectory(prefix='asg-native-geometry-',dir=tempbase);cls.base=Path(cls.temp.name);cls.rows={}
         for kind in ('clear','wire','overlay','offpage','pins','variable'):
             folder=cls.base/kind;folder.mkdir();a,b=fixture(kind)

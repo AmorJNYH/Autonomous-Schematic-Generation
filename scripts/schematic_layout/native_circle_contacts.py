@@ -20,6 +20,7 @@ import time
 import uuid
 import xml.etree.ElementTree as ET
 
+from .scratch import scratch_base
 from .native import find_cli
 from .native_geometry import SVG, finite, linear_path, stroke_path, distance, point_segment
 from .native_geometry_context import configuration_hashes, context_files, spans, paths, sha
@@ -245,8 +246,7 @@ def refine_wire_contacts(schematic,report,cli=None,workdir=None,expected_source_
         tool_hash=sha(Path(cli));producer={p.name:sha(p) for p in (Path(__file__),Path(__file__).with_name('native_geometry.py'),Path(__file__).with_name('native_geometry_context.py'))}
         environment={k:os.environ.get(k) for k in ('KICAD_CONFIG_HOME','KICAD_FONTCONFIG_FILE','FONTCONFIG_FILE','FONTCONFIG_PATH','LANG','LC_ALL')}
         if workdir is None:
-            tmp=Path(os.environ.get('TMPDIR','/tmp/codex-work')).resolve()
-            base=(tmp/'asg-native-contacts') if tmp.is_relative_to(Path('/tmp/codex-work').resolve()) else Path('/tmp/codex-work/asg-native-contacts')
+            base=scratch_base()/'asg-native-contacts'
             base.mkdir(parents=True,exist_ok=True);work=Path(tempfile.mkdtemp(prefix='fresh-',dir=base))
         else:
             work=Path(workdir);work.mkdir(exist_ok=False,parents=True)

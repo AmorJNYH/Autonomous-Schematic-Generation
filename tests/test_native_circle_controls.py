@@ -9,6 +9,7 @@ import unittest
 import uuid
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from test_native_circle_contacts import fixture
+from schematic_layout.scratch import scratch_base
 from schematic_layout.sexpr import first,all_nodes,form as f,Atom as A,dump,set_node,parse
 from schematic_layout.scene import read_scene
 from schematic_layout.qa import check_scene
@@ -66,7 +67,7 @@ class NativeCircleControls(unittest.TestCase):
     def setUpClass(cls):
         cls.cli=find_cli()
         if not cls.cli:raise unittest.SkipTest('KiCad CLI unavailable')
-        base=Path('/tmp/codex-work/asg-circle-tests');base.mkdir(exist_ok=True,parents=True)
+        base=scratch_base()/'asg-circle-tests';base.mkdir(exist_ok=True,parents=True)
         cls.temp=tempfile.TemporaryDirectory(dir=base);cls.base=Path(cls.temp.name);cls.rows={}
         cases=[(f'positive-{a}-{m or "none"}','legal',a,m) for a in (0,90,180,270) for m in ('','x','y')]
         cases += [(c,c,0,'') for c in ('foreign','through-gap','neighbor','field','filled','visible-number','wide-ring','wide-frame','identical-foreign-frame','foreign-filled-frame','missing-own-circle-foreign','source-variable','dash-wire','foreign-dash','solid-wire','crlf','gap-only','warning-only')]
@@ -119,7 +120,7 @@ class WholeWireGlyphTests(unittest.TestCase):
     def test_visible_literal_hide_outside_the_corridor_still_blocks_release(self):
         cli=find_cli()
         if not cli:self.skipTest('KiCad CLI unavailable')
-        base=Path('/tmp/codex-work/asg-circle-tests');base.mkdir(exist_ok=True,parents=True)
+        base=scratch_base()/'asg-circle-tests';base.mkdir(exist_ok=True,parents=True)
         with tempfile.TemporaryDirectory(dir=base) as tmp:
             folder=Path(tmp);tree=native_fixture('far-field');source=folder/'control.kicad_sch';source.write_text(dump(tree)+'\n')
             (folder/'control.kicad_pro').write_text('{"meta":{"version":1}}')
@@ -135,7 +136,7 @@ class TerminalApertureTests(unittest.TestCase):
     def test_actual_wide_wire_and_minpen_tiny_inner_circle_keep_old_findings(self):
         cli=find_cli()
         if not cli:self.skipTest('KiCad CLI unavailable')
-        base=Path('/tmp/codex-work/asg-circle-tests');base.mkdir(exist_ok=True,parents=True)
+        base=scratch_base()/'asg-circle-tests';base.mkdir(exist_ok=True,parents=True)
         for case in ('wide-wire','tiny-ring'):
             with tempfile.TemporaryDirectory(dir=base) as tmp:
                 folder=Path(tmp);tree=native_fixture(case);source=folder/'control.kicad_sch';source.write_text(dump(tree)+'\n')

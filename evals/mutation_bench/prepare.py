@@ -4,7 +4,7 @@ from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from bench_common import *
 def main():
- a=argparse.ArgumentParser();a.add_argument('--cache',required=True,type=Path);a.add_argument('--revision',type=int,choices=[2,3],default=2);v=a.parse_args();v.cache.resolve().relative_to(Path('/tmp/codex-work').resolve());entries=[]
+ a=argparse.ArgumentParser();a.add_argument('--cache',required=True,type=Path);a.add_argument('--revision',type=int,choices=[2,3],default=2);v=a.parse_args();require_scratch(v.cache);entries=[]
  for s in get(Path(__file__).parent.parent/'overstrict_bench/sources.json')['sources']:
   original=Path(s['history_delivery']);d=v.cache/s['round'];d.mkdir(parents=True,exist_ok=True)
   for p in original.rglob('*'):

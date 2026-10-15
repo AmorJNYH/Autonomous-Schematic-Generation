@@ -60,7 +60,7 @@ class RingContactTests(unittest.TestCase):
     def test_missing_project_and_export_failure_cannot_add_gap_or_remove_findings(self):
         import tempfile
         from schematic_layout.sexpr import dump
-        with tempfile.TemporaryDirectory(dir='/tmp/codex-work') as tmp:
+        with tempfile.TemporaryDirectory() as tmp:
             p=Path(tmp)/'control.kicad_sch';p.write_text(dump(fixture()))
             original=check_scene(read_scene(fixture()));out=refine_wire_contacts(p,original,cli='/does/not/exist')
             self.assertEqual(original['findings'],out['findings'])

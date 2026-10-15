@@ -4,7 +4,7 @@ from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from bench_common import *
 def main():
- a=argparse.ArgumentParser();a.add_argument('--scratch',required=True,type=Path);v=a.parse_args();v.scratch.resolve().relative_to(Path('/tmp/codex-work').resolve());v.scratch.mkdir(parents=True,exist_ok=False);here=Path(__file__).parent
+ a=argparse.ArgumentParser();a.add_argument('--scratch',required=True,type=Path);v=a.parse_args();require_scratch(v.scratch);v.scratch.mkdir(parents=True,exist_ok=False);here=Path(__file__).parent
  source=next(r for r in get(here/'labels.json')['labels'] if r['round']=='02' and r['rule']=='body_overlap' and Path(r['page'] or '').stem=='Dasduino COREPLUS');one=dict(source);two=dict(source,id=source['id']+'-conflict',adjudication='REAL' if source['adjudication']=='FALSE_POSITIVE' else 'FALSE_POSITIVE');put(v.scratch/'conflicting.json',{'labels':[one,two]})
  subprocess.run([PY,'-B',here/'prepare.py','--cache',v.scratch/'cache','--labels',v.scratch/'conflicting.json'],check=True,capture_output=True,text=True)
  prepared=get(v.scratch/'cache/prepared.json');assert len(prepared['labels'])==2 and all(r['mapping_status']=='UNMAPPED' and 'Conflicting' in r['mapping_reason'] for r in prepared['labels'])

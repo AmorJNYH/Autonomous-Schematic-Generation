@@ -20,7 +20,7 @@ def valid_report(p,rc,page,kind):
  return sheet
 
 def main():
- a=argparse.ArgumentParser();a.add_argument('--cache',type=Path,required=True);a.add_argument('--out',type=Path,required=True);v=a.parse_args();v.out.resolve().relative_to(Path('/tmp/codex-work').resolve());binding_receipt=open_run(v.out,capture(ROOT,v.cache,2,[],'overstrict'));t=time.monotonic();data=get(v.cache/'prepared.json');checks={};results=[]
+ a=argparse.ArgumentParser();a.add_argument('--cache',type=Path,required=True);a.add_argument('--out',type=Path,required=True);v=a.parse_args();require_scratch(v.out);binding_receipt=open_run(v.out,capture(ROOT,v.cache,2,[],'overstrict'));t=time.monotonic();data=get(v.cache/'prepared.json');checks={};results=[]
  for s in data['sources']:
   d=v.cache/s['round'];reports={}
   if s['status']!='READY' or any(not (d/n).exists() or sha(d/n)!=h for n,h in s['source']['source_files'].items()):checks[s['round']]={};continue
