@@ -30,14 +30,14 @@ GATES = OrderedDict([
 GATE_RESULTS = OrderedDict([('PASS', '通过（PASS）'), ('FAIL', '没通过（FAIL）'),
                             ('INSUFFICIENT', '资料不足（INSUFFICIENT）'), ('CONDITIONAL', '有条件通过')])
 VISUAL = {'REVIEWED': '已完成', 'REVIEW_PENDING': '还没做完', 'REWORK_REQUIRED': '发现要返工的地方'}
-STAGES = {'design': '设计没做完', 'external': '缺外部资料', 'validation': '样机或试验验证', 'pcb': 'PCB 实现'}
+STAGES = {'requirement': '等用户定需求', 'design': '设计没做完', 'external': '缺外部资料', 'validation': '样机或试验验证', 'pcb': 'PCB 实现'}
 REQUIREMENTS = OrderedDict([('design_supported', '有设计依据'), ('conditional', '有条件成立'), ('open', '还没有设计')])
 RESPONSES = OrderedDict([
     ('REDESIGN', ('改图', 'changes')), ('DESIGN', ('补设计', 'work_items')),
     ('OBTAIN_DATA', ('补资料', 'work_items')), ('ASK_USER', ('请用户定需求', 'detail')),
     ('HANDOFF', ('交给后续环节', 'work_items')), ('DECLINE', ('不采纳', 'evidence')),
     ('DEFERRED', ('已暂缓', 'detail'))])
-RESPONSE_STAGE = {'DESIGN': ('design',), 'OBTAIN_DATA': ('external',), 'HANDOFF': ('validation', 'pcb')}
+RESPONSE_STAGE = {'ASK_USER': ('requirement',), 'DESIGN': ('design',), 'OBTAIN_DATA': ('external',), 'HANDOFF': ('validation', 'pcb')}
 REQUIRED = ('electrical-intent.json', 'design-closure.json', 'design-closure-audit.json',
             'summary.json', 'visual-review.json')
 
@@ -185,8 +185,13 @@ def render(root, notes=None, title=None):
         out[-1] = out[-1][:-1] + '。'
     else:
         out.append('- **设计是否完成**：已完成。自动检查、看图检查和设计待办都已处理完。')
+    asks = [w for w in open_work if w.get('stage') == 'requirement']
+    if asks:
+        out.append('- **请你定的需求**：%d 件（%s）。本版先按写明的假设设计，定下来后可能要改图，列在“待办”最前面。'
+                   % (len(asks), '、'.join(w['id'] for w in asks)))
     if open_work:
-        out.append('- **待办**：%d 件，按可能后果从重到轻列在“待办”一节。' % len(open_work))
+        out.append('- **待办**：%d 件，%s按可能后果从重到轻列在“待办”一节。'
+                   % (len(open_work), '等你定的需求排最前，其余' if asks else ''))
     out.append('- 这份报告只说明 ASG 自己的设计和自检做到哪一步，不代替独立审查。')
     out.append('')
     if notes.get('summary'):
@@ -209,7 +214,7 @@ def render(root, notes=None, title=None):
 
     if open_work:
         out += ['## 待办', '', SEVERITY_LEGEND, '']
-        order = lambda w: (SEVERITIES.index(w['severity']) if w.get('severity') in SEVERITIES else len(SEVERITIES),
+        order = lambda w: (w.get('stage') != 'requirement', SEVERITIES.index(w['severity']) if w.get('severity') in SEVERITIES else len(SEVERITIES),
                            -len(w.get('requirements') or []))
         item_notes = notes.get('items') or {}
         for w in sorted(open_work, key=order):
@@ -217,7 +222,8 @@ def render(root, notes=None, title=None):
             out += ['### %s（%s）' % (w['id'], ('%s：%s' % (level, SEVERITY_WORDS[level])) if level in SEVERITY_WORDS else '未定后果'), '']
             if item_notes.get(w['id']):
                 out += [item_notes[w['id']], '']
-            for label, value in (('类型', STAGES.get(w.get('stage'), w.get('stage'))), ('要做什么', w.get('action')),
+            for label, value in (('类型', STAGES.get(w.get('stage'), w.get('stage'))),
+                                 ('本版按什么假设设计', w.get('assumption')), ('要做什么', w.get('action')),
                                  ('找谁', w.get('owner')), ('拿不到时的替代做法', w.get('fallback')),
                                  ('要先完成', '、'.join(w.get('blocked_by') or [])),
                                  ('影响的需求', '、'.join(w.get('requirements') or []))):
@@ -269,6 +275,8 @@ def render(root, notes=None, title=None):
             '| 计算：上下界完整 / 只算了一部分 | %d / %d |' % (cov.get('bounded', 0), cov.get('partial', 0)),
             '| 计算结论：满足 / 有条件满足 / 不满足 | %d / %d / %d |' % (con.get('supported', 0), con.get('conditional', 0), con.get('failed', 0)),
             '| 待办：设计没做完 / 缺外部资料（未关闭） | %d / %d |' % (stage_status.get(('design', 'open'), 0), stage_status.get(('external', 'open'), 0)),
+        ] + (['| 待办：等用户定需求（未关闭） | %d |' % stage_status[('requirement', 'open')]]
+             if stage_status.get(('requirement', 'open')) else []) + [
             '| 交给后续环节的要求 | %d |' % len(handoffs),
             '| 已关闭的待办 | %d |' % sum(v for (s, st), v in stage_status.items() if st == 'closed'), '']
     out += ['## 详细记录', '',

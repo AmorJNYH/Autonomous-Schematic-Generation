@@ -83,6 +83,41 @@ class DesignReportTests(unittest.TestCase):
         self.assertIn('固件过压保护配置还没拿到。', section)
         self.assertNotIn('W-TEST', section)
 
+    def ask_user(self):
+        c = self.d.closure
+        c['work_items'].append({'id': 'W-STBY', 'stage': 'requirement', 'status': 'open', 'severity': 'P3',
+                                'requirements': ['R-OUT'], 'evidence': [], 'owner': '产品负责人',
+                                'action': '确定待机功耗上限', 'assumption': '按待机 ≤0.1W 设计'})
+        c['requirements'][0]['depends_on'].append('W-STBY')
+        self.d.write('design-closure.json', c)
+        self.d.write('design-closure-audit.json',
+                     audit(c, self.d.record / 'electrical-intent.json', self.d.root))
+
+    def test_requirement_questions_called_out_and_listed_first(self):
+        self.ask_user()
+        text, problems = self.d.report()
+        self.assertEqual(problems, [])
+        conclusion = text.split('## 结论')[1].split('\n## ')[0]
+        self.assertIn('- **请你定的需求**：1 件（W-STBY）。本版先按写明的假设设计', conclusion)
+        self.assertIn('3 件待办没做完（等用户定需求 1 件，设计没做完 1 件，缺外部资料 1 件）', conclusion)
+        self.assertIn('等你定的需求排最前', conclusion)
+        section = text.split('## 待办')[1].split('\n## ')[0]
+        self.assertLess(section.index('W-STBY（P3'), section.index('W-FW（P0'))
+        self.assertIn('- **类型**：等用户定需求', section)
+        self.assertIn('- **本版按什么假设设计**：按待机 ≤0.1W 设计', section)
+        self.assertIn('| 待办：等用户定需求（未关闭） | 1 |', text)
+
+    def test_ask_user_response_must_point_at_requirement_items(self):
+        self.ask_user()
+        self.d.write('review-responses.json', {'schema_version': 1,
+            'sources': [{'id': 'S1', 'path': '/x', 'sha256': '0' * 64}],
+            'items': [{'id': 'RC1', 'source': 'S1', 'locator': '1', 'comment': 'c', 'response': 'ASK_USER',
+                       'detail': '待机功耗上限要产品定', 'work_items': ['W-STBY']},
+                      {'id': 'RC2', 'source': 'S1', 'locator': '2', 'comment': 'c', 'response': 'ASK_USER',
+                       'detail': 'd', 'work_items': ['W-CALC']}]})
+        _, problems = self.d.report()
+        self.assertEqual(problems, ['RC2：待办 W-CALC 的阶段与处理方式“请用户定需求”不符'])
+
     def test_conditional_calculations_listed_with_assumptions(self):
         text, _ = self.d.report()
         section = text.split('## 有条件成立的计算')[1].split('## ')[0]

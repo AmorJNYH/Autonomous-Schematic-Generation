@@ -126,6 +126,23 @@ class DesignClosureTests(unittest.TestCase):
         self.assertEqual('FAIL', result['status'])
         self.assertIn({'code': 'missing_severity', 'item': 'W1'}, result['errors'])
 
+    def test_requirement_gap_must_state_current_assumption(self):
+        self.record['requirements'][0]['status'] = 'conditional'
+        self.record['work_items'][0].update(stage='requirement', status='open', owner='用户', severity='P2',
+                                            action='确定待机功耗上限')
+        result = self.run_audit()
+        self.assertEqual('FAIL', result['status'])
+        self.assertIn({'code': 'missing_assumption', 'item': 'W1'}, result['errors'])
+        self.record['work_items'][0]['assumption'] = '按待机 ≤0.1W 设计'
+        result = self.run_audit()
+        self.assertEqual('INCOMPLETE', result['status'])
+        self.assertIn({'code': 'open_requirement', 'item': 'W1'}, result['pending'])
+
+    def test_requirement_gap_cannot_be_handed_off(self):
+        self.record['work_items'][0].update(stage='requirement', status='handoff', owner='用户',
+                                            action='确定待机功耗上限', assumption='按待机 ≤0.1W 设计')
+        self.assertIn('unfinished_design_handoff', self.codes())
+
     def test_convergence_keeps_independent_design_executable(self):
         self.record['convergence_version'] = 1
         self.record['work_items'][0].update(status='open', blocked_by=[], owner='engineering', severity='P2',

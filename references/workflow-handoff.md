@@ -52,7 +52,7 @@
 |---|---|
 | `DESIGN` | 还能用现有资料完成的设计、计算、选型、改图（含审查意见的 `REDESIGN` / `DESIGN`） |
 | `EVIDENCE` | 需要厂家或别人提供的资料（含 `OBTAIN_DATA`） |
-| `REQUIREMENT` | 需要用户决定的需求取舍（含 `ASK_USER`） |
+| `REQUIREMENT` | 需要用户决定的需求取舍（含 `ASK_USER`；对应待办阶段 `requirement`） |
 | `REVIEW` | ASG 自检或看图检查没通过、没做完 |
 | `DOWNSTREAM` | 交给 PCB、结构、样机测试的要求（含 `HANDOFF`） |
 | `TOOL` | 工具没跑完 |

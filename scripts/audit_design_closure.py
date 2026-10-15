@@ -93,7 +93,7 @@ def audit(record, intent_path, artifact_root, inputs=None):
         affected = linked(row, 'requirements', requirements, True)
         linked(row, 'evidence', evidence, row.get('status') == 'closed')
         stage, state = row.get('stage'), row.get('status')
-        if stage not in ('design', 'external', 'validation', 'pcb') or state not in ('open', 'closed', 'handoff'):
+        if stage not in ('requirement', 'design', 'external', 'validation', 'pcb') or state not in ('open', 'closed', 'handoff'):
             error('schema', key + ':invalid stage/status')
         if state == 'handoff' and stage not in ('validation', 'pcb'):
             error('unfinished_design_handoff', key)
@@ -118,6 +118,10 @@ def audit(record, intent_path, artifact_root, inputs=None):
                     error('pcb_electrical_precondition', key + ':' + dep)
         if stage == 'external' and state != 'closed' and not row.get('fallback'):
             error('missing_fallback_assessment', key)
+        # A requirement gap still waiting on the user must say what this version assumed.
+        if stage == 'requirement' and state != 'closed' and not (
+                isinstance(row.get('assumption'), str) and row['assumption'].strip()):
+            error('missing_assumption', key)
         for rid in affected:
             if rid in requirements and key not in requirements[rid].get('depends_on', []):
                 error('unlinked_dependency', rid + ':' + key)

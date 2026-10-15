@@ -81,7 +81,7 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
 
 - `coverage`：全部适用需求/设计工作均已审查才填 `complete`；抽查或历史回放填 `partial`。这不是工具自动证明的完整性。
 - `claim`：`candidate` / `design_closed`。需求状态 `design_supported` / `conditional` / `open`；`implementation` 描述功能而非只列料号。
-- `work_items`：状态 `open` / `closed` / `handoff`；`validation` 与 `pcb` 允许 `handoff`。未关闭项需 owner/action；`open` 项还需 `severity`：不做会有什么后果，P0 可能损坏器件或危及安全、P1 必需功能可能不达标、P2 局部或次要问题、P3 可选优化，报告按它排序；external 还需 fallback 评估（可以有证据地说明尚无可行替代）。closed 与 handoff 均需证据。`pcb` 须声明 `scope` 为 `footprint_library` / `layout_implementation` / `dfm`，并用非空 `electrical_preconditions` 指向已关闭的 design 工作；这些前提须有选定变体、物理脚号及相关电气边界证据，不能用“已建封装”自证。该分类仍需人工检查，脚本不理解正文电气内容。
+- `work_items`：阶段 `requirement`（等用户定需求）/ `design` / `external` / `validation` / `pcb`；状态 `open` / `closed` / `handoff`；`validation` 与 `pcb` 允许 `handoff`。未关闭项需 owner/action；`open` 项还需 `severity`：不做会有什么后果，P0 可能损坏器件或危及安全、P1 必需功能可能不达标、P2 局部或次要问题、P3 可选优化，报告按它排序；external 还需 fallback 评估（可以有证据地说明尚无可行替代）；requirement 还需 `assumption` 写明本版按什么假设设计，只用于不改变架构的需求缺口（改变架构的先问用户再设计，见 requirements-to-intent.md 第 1 节）。closed 与 handoff 均需证据。`pcb` 须声明 `scope` 为 `footprint_library` / `layout_implementation` / `dfm`，并用非空 `electrical_preconditions` 指向已关闭的 design 工作；这些前提须有选定变体、物理脚号及相关电气边界证据，不能用“已建封装”自证。该分类仍需人工检查，脚本不理解正文电气内容。
 - 计算：`coverage` 为 `bounded` / `partial`；`conclusion` 为 `supported` / `conditional` / `failed`。有遗漏项不能填 bounded 或 supported。无适用计算时提供 `no_calculations_reason`，不能用空列表绕过。
   门槛按设计用途：`conditional` 必须用 `omitted_terms` 或 `assumptions`（字符串列表）写明假设，写明后不阻塞设计完成，需求也可以据此记为 `design_supported`；报告把它们列在“有条件成立的计算”一节，交独立审查严格核对。只有 `failed` 计入未完成，且不能支撑 `design_supported` 的需求。
 - 所有证据 path 相对于 `--artifact-root`，不得逃逸该目录；必须有哈希和页码/章节/行号定位。需求源、数据手册和计算结论都纳入相应证据。`refs` 必须存在于设计要求表中；纯使用/验证条件可为空但须说明实现/交接。

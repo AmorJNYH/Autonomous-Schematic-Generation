@@ -27,7 +27,7 @@
 | `REDESIGN` | 改图 | `changes`：改了哪些位号/网络/页，及复验证据 `evidence` |
 | `DESIGN` | 补设计（计算、选型、配置） | `work_items`：design 阶段的待办 |
 | `OBTAIN_DATA` | 补资料 | `work_items`：external 阶段的待办（含替代方案评估） |
-| `ASK_USER` | 请用户定需求 | `detail`：要用户决定的具体取舍 |
+| `ASK_USER` | 请用户定需求 | `detail`：要用户决定的具体取舍；引用的 `work_items` 须为 requirement 阶段 |
 | `HANDOFF` | 交给后续环节 | `work_items`：validation 或 pcb 阶段、状态 handoff 的待办 |
 | `DECLINE` | 不采纳 | `detail` 写理由，`evidence` 给依据（计算、手册页） |
 | `DEFERRED` | 已暂缓 | `detail` 写谁、何时决定暂缓 |
