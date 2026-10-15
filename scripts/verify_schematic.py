@@ -9,7 +9,7 @@ is drawn, and optionally a reference contract and an electrical change contract.
 and ``summary.json`` go into a fresh output directory.
 
 ``AUTOMATED_PASS`` covers only these gates. Native render review of every page
-and the full electrical review (schematic-review) remain pending.
+remains pending, and none of this is an electrical design review.
 """
 
 import argparse
@@ -226,8 +226,7 @@ def main():
         "sheets": [str(s) for s in sheets],
         "render": str(pdf) if pdf.is_file() else None,
         "design_closure": "checked" if args.design_closure else "NOT_CHECKED",
-        "pending": (["End-to-end design closure not checked"] if not args.design_closure else []) + ["Native render review: trace each declared reading task on every page",
-                    "Full electrical review: hand off to schematic-review"],
+        "pending": (["End-to-end design closure not checked"] if not args.design_closure else []) + ["Native render review: trace each declared reading task on every page"],
         "commands": commands,
     }
     write(out / "summary.json", summary)

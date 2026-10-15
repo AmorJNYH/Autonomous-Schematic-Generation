@@ -2,7 +2,7 @@
 """Audit evidence-bound design claims, not electrical physics or certification.
 
 A record can be consistent yet INCOMPLETE. PASS means its declared design work
-is closed; native checks, visual review and independent SR remain separate.
+is closed; native checks and visual review remain separate.
 """
 import argparse
 import hashlib
@@ -11,11 +11,27 @@ from pathlib import Path
 from design_frontier import frontier
 
 
+SEVERITIES = ('P0', 'P1', 'P2', 'P3')
+
+
 def sha256(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def audit(record, intent_path, artifact_root):
+def resolve(p, root, inputs):
+    """Evidence lives under the artifact root, or in a declared input (requirements, datasheets)."""
+    path = (root / p).resolve()
+    if path.is_relative_to(root) and path.is_file():
+        return path
+    for base in inputs or ():
+        base = Path(base).resolve()
+        for candidate in ((base / p, base / Path(p).name) if base.is_dir() else (base,)):
+            if candidate.is_file() and candidate.name == Path(p).name:
+                return candidate
+    return None
+
+
+def audit(record, intent_path, artifact_root, inputs=None):
     errors, pending = [], []
     def error(code, item):
         errors.append({'code': code, 'item': str(item)})
@@ -53,8 +69,8 @@ def audit(record, intent_path, artifact_root):
         if not isinstance(p, str) or not p or Path(p).is_absolute():
             error('evidence_path', key)
             continue
-        path = (root / p).resolve()
-        if not path.is_relative_to(root) or not path.is_file():
+        path = resolve(p, root, inputs)
+        if path is None:
             error('evidence_missing_or_outside_root', key)
         elif row.get('sha256') != sha256(path):
             error('stale_evidence', key)
@@ -89,6 +105,9 @@ def audit(record, intent_path, artifact_root):
                 linked(row, 'evidence', evidence, True)
             else:
                 need('open_' + str(stage), key)
+                # Possible consequence if left undone; orders the report's to-do list.
+                if row.get('severity') not in SEVERITIES:
+                    error('missing_severity', key)
         if stage == 'pcb':
             if row.get('scope') not in ('footprint_library', 'layout_implementation', 'dfm'):
                 error('pcb_scope', key)
@@ -159,7 +178,7 @@ def audit(record, intent_path, artifact_root):
     if record.get('claim') == 'design_closed' and status != 'PASS':
         error('false_design_closure', 'Design closure claimed with unresolved work or invalid evidence')
         status = 'FAIL'
-    return {'status': status, 'scope': 'Declared design evidence and dependency consistency; not physics, native ERC, visual approval or SR',
+    return {'status': status, 'scope': 'Declared design evidence and dependency consistency; not physics, native ERC or visual approval',
             'intent_sha256': sha256(intent_path), 'errors': errors, 'pending': pending,
             'pcb_handoffs': [k for k, v in work.items() if v.get('stage') == 'pcb' and v.get('status') == 'handoff'],
             'counts': {k: len(v) for k, v in tables.items()}, 'convergence': convergence,

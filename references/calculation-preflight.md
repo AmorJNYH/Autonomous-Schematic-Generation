@@ -1,7 +1,7 @@
-# 计算条件合同 v1
+# 计算条件记录 v1
 
-ASG/SR 各自提供相同的 `scripts/design_preflight.py`，独立运行，不依赖另一个技能安装位置。
-修改此合同或模块时须同步两份，并运行各自 `test_calculation_preflight.py`。
+`scripts/design_preflight.py` 自成一体，独立运行，不依赖其他技能。
+修改此记录或模块时须同步两份，并运行各自 `test_calculation_preflight.py`。
 它验证声明的条件、有限算术及门槛；不自动选择电路模型、证明极值方向或做量纲代数。
 
 每个 calculation 要有 id、model、expression、inputs、output_unit、acceptance、
@@ -32,7 +32,7 @@ NTC 的 B25/50 跨温区外推和运行时偏置切换能力也要逐项注明�
 ```json
 {
   "id": "SYNTHETIC_MARGIN",
-  "model": "仅演示合同：已推导的保守电压上界与器件保证耐压比较",
+  "model": "仅演示格式：已推导的保守电压上界与器件保证耐压比较",
   "expression": "rating - stress",
   "output_unit": "V",
   "assumptions": [],

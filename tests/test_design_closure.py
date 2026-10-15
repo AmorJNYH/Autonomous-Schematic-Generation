@@ -36,7 +36,7 @@ class DesignClosureTests(unittest.TestCase):
         return {e['code'] for e in self.run_audit()['errors']}
 
     def external(self):
-        self.record['work_items'][0].update(stage='external', status='open', owner='vendor',
+        self.record['work_items'][0].update(stage='external', status='open', owner='vendor', severity='P1',
             action='Obtain exact firmware feature evidence', fallback='Compare independent hardware implementation')
 
     def test_complete_design_record_passes_but_does_not_claim_native_or_sr(self):
@@ -100,9 +100,17 @@ class DesignClosureTests(unittest.TestCase):
         self.assertEqual('INCOMPLETE', result['status'])
         self.assertTrue({'partial_review', 'calculation_scope_missing'} <= {x['code'] for x in result['pending']})
 
+    def test_open_work_needs_a_consequence_level(self):
+        self.external()
+        del self.record['work_items'][0]['severity']
+        result = self.run_audit()
+        self.assertEqual('FAIL', result['status'])
+        self.assertIn({'code': 'missing_severity', 'item': 'W1'}, result['errors'])
+
     def test_convergence_keeps_independent_design_executable(self):
         self.record['convergence_version'] = 1
-        self.record['work_items'][0].update(status='open', blocked_by=[], owner='engineering', action='Calculate remaining regulator bounds')
+        self.record['work_items'][0].update(status='open', blocked_by=[], owner='engineering', severity='P2',
+                                            action='Calculate remaining regulator bounds')
         self.record['requirements'][0]['status'] = 'conditional'
         result = self.run_audit()
         self.assertEqual('INCOMPLETE', result['status'])

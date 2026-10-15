@@ -52,7 +52,7 @@ class VerifySchematicTests(unittest.TestCase):
         code, s = self.good
         for gate in ('intent_netlist', 'hierarchy', 'symbol_integrity', 'readability', 'geometry'):
             self.assertEqual('PASS', s['gates'][gate]['status'], gate)
-        self.assertIn('schematic-review', ' '.join(s['pending']))
+        self.assertIn('Native render review', ' '.join(s['pending']))
 
     def test_missing_design_closure_is_explicit(self):
         self.assertEqual('NOT_CHECKED', self.good[1]['design_closure'])

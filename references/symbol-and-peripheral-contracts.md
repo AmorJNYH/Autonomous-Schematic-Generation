@@ -239,7 +239,7 @@ model or measured waveform; missing inputs remain OPEN/INSUFFICIENT. Likewise,
 dimension compatibility alone does not prove the model or its worst case.
 Unknown units, model definitions or unsupported derivations retain an explicit
 coverage gap. This is an ASG engineering-review obligation, not an extension
-of the shared calculation schema/runtime or a claim that SR checks dimensions.
+of the shared calculation schema/runtime.
 
 For a series limiter, isolation element or feedback support branch, bind the
 fitted part/value and **each** terminal to its intended physical endpoints with
@@ -335,8 +335,8 @@ python3 scripts/verify_design_change.py old.xml native.xml design-change.json \
   --source-root board.kicad_sch --source-role-contract reviewed-roles.json --out new-change.json
 ```
 
-These read-only checks do not replace a fresh whole-delivery verification or SR
-release decision. Missing evidence retains strict zero-pin rejection; wrong
+These read-only checks do not replace a fresh whole-delivery verification or an
+independent review. Missing evidence retains strict zero-pin rejection; wrong
 source/cache/XML hashes, annotations, identities or hidden pins still fail.
 The read-only Python API is `read_native(xml, source_root=root,
 source_roles=contract, project=selected_project)`; without a contract its existing
@@ -366,6 +366,5 @@ Report the gates separately: hierarchy/pages, pin identity/type, artwork,
 footprint identity/mechanics, native netlist/ERC, declared peripheral facts,
 required functional chains, population variants, calculations and physical
 validation. A checker PASS closes only enumerated facts. Missing evidence stays
-INSUFFICIENT. Hand full electrical review to `schematic-review` with exact hashes,
-sources, findings and remaining conditions; generation does not sign production
-release.
+INSUFFICIENT. Record exact hashes, sources, findings and remaining conditions in
+the delivery; generation does not sign production release.

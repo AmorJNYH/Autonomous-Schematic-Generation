@@ -1,0 +1,171 @@
+"""One generated report plus a small fixed folder; numbers come only from the records."""
+import json
+from pathlib import Path
+import sys
+import tempfile
+import unittest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
+from audit_design_closure import audit, sha256
+from render_design_report import render, REPORT
+from pack_design import pack
+
+JARGON = ('合同', '冻结', '门禁', '原生', '闭环', '移交', 'SR', 'schematic-review', 'design_supported', 'handoff')
+
+
+class Delivery:
+    """Synthetic delivery folder in the fixed layout."""
+
+    def __init__(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name) / 'v1'
+        self.record = self.root / 'record'
+        for d in ('原理图', '设计资料', 'record/evidence'):
+            (self.root / d).mkdir(parents=True)
+        for name in ('board.kicad_pro', 'board.kicad_sch', 'schematic.pdf', 'netlist.xml', 'BOM.csv'):
+            (self.root / '原理图' / name).write_text('x')
+        (self.root / '设计资料' / '方案与选型依据.md').write_text('# basis')
+        (self.record / 'evidence' / 'design.md').write_text('regulator design basis')
+        self.write('electrical-intent.json', {'components': [{'ref': 'U1'}, {'ref': 'R1'}]})
+        self.closure = {
+            'schema_version': 1, 'coverage': 'complete', 'claim': 'candidate',
+            'intent_sha256': sha256(self.record / 'electrical-intent.json'),
+            'evidence': [{'id': 'E1', 'path': 'record/evidence/design.md',
+                          'sha256': sha256(self.record / 'evidence' / 'design.md'), 'locator': 'section 1'}],
+            'requirements': [{'id': 'R-OUT', 'status': 'conditional', 'refs': ['U1'], 'evidence': ['E1'],
+                              'implementation': 'U1 output path', 'depends_on': ['W-FW', 'W-CALC', 'W-TEST']}],
+            'work_items': [
+                {'id': 'W-CALC', 'stage': 'design', 'status': 'open', 'severity': 'P2', 'requirements': ['R-OUT'],
+                 'evidence': [], 'owner': '设计', 'action': '补算输出电容纹波电流'},
+                {'id': 'W-FW', 'stage': 'external', 'status': 'open', 'severity': 'P0', 'requirements': ['R-OUT'],
+                 'evidence': [], 'owner': '固件供应方', 'action': '取得过压保护配置表', 'fallback': '评估独立硬件过压关断'},
+                {'id': 'W-TEST', 'stage': 'validation', 'status': 'handoff', 'requirements': ['R-OUT'],
+                 'evidence': ['E1'], 'owner': '样机验证', 'action': '满载温升测试'}],
+            'calculations': [{'id': 'C1', 'requirements': ['R-OUT'], 'evidence': ['E1'],
+                              'coverage': 'partial', 'conclusion': 'conditional', 'omitted_terms': ['ripple']}]}
+        self.write('design-closure.json', self.closure)
+        self.write('design-closure-audit.json', audit(self.closure, self.record / 'electrical-intent.json', self.root))
+        self.write('summary.json', {'status': 'INCOMPLETE', 'sheets': ['a', 'b'], 'gates': {
+            'erc': {'status': 'PASS', 'violations': 0}, 'intent_netlist': {'status': 'PASS', 'errors': 0},
+            'geometry': {'status': 'INSUFFICIENT'}, 'design_closure': {'status': 'INCOMPLETE'}}})
+        self.write('visual-review.json', {'status': 'REVIEWED', 'pages': [{'page': 1, 'paths': ['VIN to VOUT'], 'problems': []}]})
+        self.write('delivery-evidence.json', {'schema_version': 1})
+
+    def write(self, name, value):
+        (self.record / name).write_text(json.dumps(value, ensure_ascii=False))
+
+    def report(self, notes=None):
+        return render(self.root, notes)
+
+
+class DesignReportTests(unittest.TestCase):
+    def setUp(self):
+        self.d = Delivery()
+        self.addCleanup(self.d.tmp.cleanup)
+
+    def test_conclusion_counts_and_what_is_missing(self):
+        text, problems = self.d.report()
+        self.assertEqual(problems, [])
+        lines = [l for l in text.splitlines() if l.strip()]
+        self.assertEqual(lines[1], '## 结论')
+        self.assertEqual(lines[2], '- **规模**：器件 2 个，图纸 2 页。')
+        self.assertEqual(lines[3], '- **自动检查**：共 3 项。通过（PASS） 2 项，没通过（FAIL） 0 项，资料不足（INSUFFICIENT） 1 项。')
+        self.assertIn('- **需求**：共 1 条。有设计依据 0 条，有条件成立 1 条，还没有设计 0 条。', text)
+        self.assertIn('- **设计是否完成**：还没完成。还差：', text)
+        self.assertIn('1 项自动检查资料不足或没做：图面几何（重叠、穿线）', text)
+        self.assertIn('2 件待办没做完（设计没做完 1 件，缺外部资料 1 件）', text)
+
+    def test_one_todo_list_ordered_by_consequence(self):
+        text, _ = self.d.report({'items': {'W-FW': '固件过压保护配置还没拿到。'}})
+        section = text.split('## 待办')[1].split('\n## ')[0]
+        self.assertLess(section.index('W-FW（P0：可能损坏器件或危及安全）'), section.index('W-CALC（P2'))
+        self.assertIn('- **拿不到时的替代做法**：评估独立硬件过压关断', section)
+        self.assertIn('固件过压保护配置还没拿到。', section)
+        self.assertNotIn('W-TEST', section)
+
+    def test_handoffs_listed_apart(self):
+        text, _ = self.d.report()
+        self.assertIn('| 样机验证 | 样机或试验验证 | 满载温升测试 |', text.split('## 交给后续环节的要求')[1])
+
+    def test_plain_words_only(self):
+        text, _ = self.d.report()
+        for word in JARGON:
+            self.assertNotIn(word, text, word)
+
+    def test_review_responses_are_checked_and_listed(self):
+        self.d.write('review-responses.json', {'schema_version': 1,
+            'sources': [{'id': 'S1', 'path': '/x/审查报告.md', 'sha256': '0' * 64, 'from': '审查方 v0'}],
+            'items': [{'id': 'RC1', 'source': 'S1', 'locator': '待办 1', 'comment': '过压保护配置没依据',
+                       'response': 'OBTAIN_DATA', 'detail': '向固件供应方要配置表', 'work_items': ['W-FW']},
+                      {'id': 'RC2', 'source': 'S1', 'locator': '待办 2', 'comment': '缺满载温升',
+                       'response': 'DECLINE', 'detail': '只能样机测'}]})
+        text, problems = self.d.report()
+        self.assertIn('RC2：处理方式为“不采纳”时必须填 evidence', problems)
+        self.assertIn('- **收到的审查意见**：2 条。补资料 1 条，不采纳 1 条。', text)
+        self.assertIn('| RC1 | 过压保护配置没依据 | 补资料 | 向固件供应方要配置表 |', text)
+        self.assertIn('设计记录本身有问题', text.splitlines()[2])
+
+    def test_response_stage_must_match_work_item(self):
+        self.d.write('review-responses.json', {'schema_version': 1,
+            'sources': [{'id': 'S1', 'path': '/x', 'sha256': '0' * 64}],
+            'items': [{'id': 'RC1', 'source': 'S1', 'locator': '1', 'comment': 'c', 'response': 'HANDOFF',
+                       'detail': 'd', 'work_items': ['W-CALC']}]})
+        _, problems = self.d.report()
+        self.assertIn('RC1：待办 W-CALC 的阶段与处理方式“交给后续环节”不符', problems)
+
+
+class PackDesignTests(unittest.TestCase):
+    def setUp(self):
+        self.d = Delivery()
+        self.addCleanup(self.d.tmp.cleanup)
+        text, _ = self.d.report()
+        (self.d.root / REPORT).write_text(text)
+        self.inputs = Path(self.d.tmp.name) / 'req'
+        self.inputs.mkdir()
+        (self.inputs / 'spec.md').write_text('spec')
+
+    def run_pack(self):
+        return pack(self.d.root, {'requirements': str(self.inputs)})
+
+    def test_clean_delivery_packs_with_manifest(self):
+        errors, manifest = self.run_pack()
+        self.assertEqual(errors, [])
+        self.assertEqual(manifest['inputs']['requirements']['kind'], 'directory')
+        self.assertIn('原理图/schematic.pdf', manifest['packed'])
+        self.assertTrue((self.d.record / 'manifest.json').is_file())
+
+    def test_extra_files_history_and_logs_fail(self):
+        (self.d.root / 'README.md').write_text('x')
+        (self.d.record / 'baseline-v05').mkdir()
+        (self.d.record / 'run.log').write_text('x')
+        errors, _ = self.run_pack()
+        self.assertTrue(any('README.md' in e for e in errors))
+        self.assertTrue(any('record/baseline-v05/' in e for e in errors))
+        self.assertTrue(any('run.log' in e for e in errors))
+
+    def test_cited_evidence_must_be_inside(self):
+        (self.d.record / 'evidence' / 'design.md').unlink()
+        errors, _ = self.run_pack()
+        self.assertTrue(any('evidence_missing_or_outside_root' in e for e in errors), errors)
+
+    def test_requirement_evidence_may_stay_in_declared_input(self):
+        spec = self.inputs / 'spec.md'
+        self.d.closure['evidence'].append({'id': 'E2', 'path': 'requirements/spec.md', 'sha256': sha256(spec),
+                                           'locator': 'REQ-1'})
+        self.d.closure['requirements'][0]['evidence'].append('E2')
+        self.d.write('design-closure.json', self.d.closure)
+        errors, manifest = self.run_pack()
+        self.assertEqual(errors, [])
+        self.assertNotIn('requirements/spec.md', manifest['packed'])
+        spec.write_text('changed')
+        errors, _ = self.run_pack()
+        self.assertTrue(any('stale_evidence E2' in e for e in errors), errors)
+
+    def test_missing_schematic_outputs_fail(self):
+        (self.d.root / '原理图' / 'BOM.csv').unlink()
+        errors, _ = self.run_pack()
+        self.assertIn('原理图/BOM.csv is missing', errors)
+
+
+if __name__ == '__main__':
+    unittest.main()

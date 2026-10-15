@@ -1,7 +1,7 @@
 # 结构化电路与自动布局（Circuit IR v2）
 
-用于从已确认电路创建新图。`build_circuit.py` 将模块化电路编译为逐脚意图，
-按真实符号、引脚出线区和字段尺寸自动放置，再调用避障布线和原生验证。
+用于从已确认电路创建新图。`build_circuit.py` 将模块化电路编译为逐脚设计要求表，
+按真实符号、引脚出线区和字段尺寸自动放置，再调用避障布线和 KiCad 验证。
 运行时只需 Python 3.10+、KiCad CLI 与符号库；不依赖上游仓库或在线服务。
 
 ## 从两个项目提取的内容
@@ -46,7 +46,7 @@ SKiDL 对象桥读取已建立的真实对象；circuit-synth JSON 不区分局�
   根组件直接用 id。禁止重复物理位号和隐式自动重编号。
 - `modules` 是可复用定义字典；`root` 与模块具有相同结构。实例格式：
   `{"id":"filter_a","module":"rc","bindings":{"IN":"INPUT_A","OUT":"OUTPUT_A","GND":"GND"},"parameters":{"resistance":"2k"}}`。
-  绑定只可引用父模块已声明的网络，端口必须全部且只绑定一次。拒绝递归定义。
+  对应只可引用父模块已声明的网络，端口必须全部且只对应一次。拒绝递归定义。
 - 模块 `ports` 列出外部可连接的本地网络名；未导出的网络按实例路径隔离，
   例如 `filter_a__OUT` 和 `filter_b__OUT`。同名并非同一网络；限定名碰撞直接失败。
 - 模块 `parameters` 定义允许的参数及默认值。值通过 `{"param":"resistance"}`
@@ -58,7 +58,7 @@ SKiDL 对象桥读取已建立的真实对象；circuit-synth JSON 不区分局�
   模板不会添加 PWR_FLAG、改变引脚类型或猜测接线。
 - 组件必填 `id/lib_id/value/footprint`。草图可明确填写空 footprint；它不是
   已完成封装选型。可选 `mpn/datasheet/dnp/fields/ratings/evidence/role`。
-  `fields/ratings` 保存采购或额定值；写入隐藏原生属性，避免长 MPN 堆在 Value。
+  `fields/ratings` 保存采购或额定值；写入隐藏 KiCad 属性，避免长 MPN 堆在 Value。
   所有可见 Value 保持原值，不截断或用简化值替换电气数据。
 - `symbol_sha256` 可锁定解析后的实际符号。复制 `compiled.json` 中的值；
   换库/符号内容改变会失败。完整库文件 hash 也记录在每次构建中。
@@ -93,13 +93,13 @@ ID/网络名使用字母、数字、`_+-`；层次分隔符由编译器管理。
 
 | template | 支持角色 | 验证范围 |
 | --- | --- | --- |
-| `rc_filter` | input, series, shunt, output | 两组重复 RC、参数变化、原生逐脚验证 |
-| `divider` | input, upper, lower, output | 角色位置模板；须对目标器件跑完整原生回归 |
+| `rc_filter` | input, series, shunt, output | 两组重复 RC、参数变化、KiCad 逐脚验证 |
+| `divider` | input, upper, lower, output | 角色位置模板；须对目标器件跑完整 KiCad 回归 |
 | `capacitor_bank` | capacitor | 12 只长 Value 电容、额定值、MPN、DNP 回读 |
 | `ldo` | input, input_cap, regulator, output_cap, output, control, feedback | 角色模板；不构成某款 LDO 的电气设计验证 |
 | `buck_async` | input, input_cap, regulator, diode, inductor, output_cap, output, bootstrap, feedback, compensation, control | 必须有 regulator/inductor/diode；不是通用 Buck 电路生成器 |
 | `integrated_power` | input, input_cap, regulator, output_cap, output, feedback, control | 不强加外部电感/开关节点 |
-| `functional`（默认） | 任意功能角色 | 连接遍历组织、真实边界预算；LM358 三单元原生验证 |
+| `functional`（默认） | 任意功能角色 | 连接遍历组织、真实边界预算；LM358 三单元 KiCad 验证 |
 
 `orientations` 以物理位号或多单元 view key 指定 rotation/mirror；不需给
 绝对坐标。多个同角色器件分配不同格位，列宽/行高由真实总占用决定。
@@ -108,8 +108,8 @@ ID/网络名使用字母、数字、`_+-`；层次分隔符由编译器管理。
 扩大间距 40%，上限可设 1–5；从不把失败的连线自动改为标签。
 网络 `mode/rail_y/label/priority` 沿用 [低层后端格式](schematic-generation.md)。
 
-当前图面模式 `pack` 将逻辑模块排入**一张原生图纸**，保留完整模块路径与
-端口注册表。尚不生成原生层次 sheet/跨页端口或自动分页；放不下会失败，
+当前图面模式 `pack` 将逻辑模块排入**一张 KiCad 图纸**，保留完整模块路径与
+端口注册表。尚不生成 KiCad 层次 sheet/跨页端口或自动分页；放不下会失败，
 不会裁剪、丢模块或悄悄拉平一个现有多页工程。复杂 SoC/总线图需专用 writer。
 
 ## 命令和证据
@@ -123,12 +123,12 @@ python3 scripts/build_circuit.py \
 
 输出 `circuit.json/presentation.json` 原输入、`compiled.json` 层次/端口/
 引脚解析/源库 hash、`electrical_intent.json`、`layout_plan.json`、`planning.json`、
-每次 attempt 的布局/失败诊断、原生工程及 ERC/XML/PDF/verification。
-原生验证还自动执行内部引脚与符号图形衔接检查，并输出 `native/symbol-integrity.json`。
+每次 attempt 的布局/失败诊断、KiCad 工程及 ERC/XML/PDF/verification。
+KiCad 验证还自动执行内部引脚与符号图形衔接检查，并输出 `native/symbol-integrity.json`。
 可用 `--reference-contract path/to/contract.json` 将资料、封装引脚及外围事实纳入通过条件；
-格式与边界见 [符号与外围约束](symbol-and-peripheral-contracts.md)。未提供合同不代表资料已核验。
+格式与边界见 [符号与外围约束](symbol-and-peripheral-contracts.md)。未提供记录不代表资料已核验。
 引脚网表之外，还回读 Value、Footprint、MPN、额定值、自定义字段、DNP、单元
-数量和全部物理引脚（含 NC）。精确字形/引脚名称与编号仍需原生全页及局部目检。
+数量和全部物理引脚（含 NC）。精确字形/引脚名称与编号仍需 KiCad 全页及局部看图检查。
 
 ```bash
 python3 scripts/build_circuit.py revised.circuit.json presentation.json \
@@ -152,7 +152,7 @@ python3 scripts/import_circuit_synth.py exported.json --design-id imported \
 
 只支持已核实的 `nets[name]=[connection]` 和 `nets[name]={nodes:[connection],...}`。
 缺 lib_id/真实脚号拒绝导入；遗漏 NC 在编译时仍失败。重复名字须声明 shared
-或 local，混合共享范围应编辑 IR 的显式端口绑定。原坐标、注释和其他源数据
+或 local，混合共享范围应编辑 IR 的显式端口对应。原坐标、注释和其他源数据
 保存在 `import-audit.json`，不冒充已采用的布局或已验证的电气约束。
 
 对可信且已构建的 SKiDL Circuit，在其 Python 环境调用：
@@ -172,4 +172,4 @@ KiCad 库身份。Node/Part tag 保持实例与器件稳定，重复 tag/name �
 `tests/probe_structured_upstream.py` 要求固定 SKiDL 源码安装在隔离环境中，
 实际验证其对象提取，以及 circuit-synth 原始 `to_dict` 方法的两种输出形式。
 该探针未运行两个上游的整套布局/布线系统。所有示例均是软件验证夹具，
-`AUTOMATED_PASS` 不能代替目标电路的电气及原生图面审查。
+`AUTOMATED_PASS` 不能代替目标电路的电气及 KiCad 图面审查。
