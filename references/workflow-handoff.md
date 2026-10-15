@@ -97,7 +97,7 @@ ASG 自检或目检未通过/未完成时必须保留开放项。SR 封装必须
    并使用 `--require-revision-impact`。规则变更后可进行完整 first 审查，不能盲复用历史结论。
 5. supplied review_gate 必须与重跑结果一致，且 valid=true。NO_GO 的有效报告仍可交付，用于整改。
 6. schematic_freeze 再加 `--require-release`；GO/CONDITIONAL_GO 才进入 READY_FOR_FREEZE。
-   风险接受与下游接收只能来自 SR 要求的真实责任记录，控制器不代填。
+   风险接受只能来自 SR 要求的真实责任记录，控制器不代填；下游移交随图交出，不卡冻结。
 
 ASG 接收 SR 包后先运行 `import_review_feedback.py`（见 [读取 SR 审查结果](review-feedback.md)），再安排下一轮工作。
 
