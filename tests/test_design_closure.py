@@ -100,6 +100,52 @@ class DesignClosureTests(unittest.TestCase):
         self.assertEqual('INCOMPLETE', result['status'])
         self.assertTrue({'partial_review', 'calculation_scope_missing'} <= {x['code'] for x in result['pending']})
 
+    def test_convergence_keeps_independent_design_executable(self):
+        self.record['convergence_version'] = 1
+        self.record['work_items'][0].update(status='open', blocked_by=[], owner='engineering', action='Calculate remaining regulator bounds')
+        self.record['requirements'][0]['status'] = 'conditional'
+        result = self.run_audit()
+        self.assertEqual('INCOMPLETE', result['status'])
+        self.assertEqual(['W1'], result['convergence']['ready_design_actions'])
+        self.assertEqual('CONTINUE_DESIGN', result['convergence']['status'])
+
+    def test_convergence_rejects_malformed_external_fallback(self):
+        self.external()
+        self.record['convergence_version'] = 1
+        self.record['requirements'][0]['status'] = 'conditional'
+        self.record['work_items'][0].update(blocked_by=[], fallback_work=[], fallback_evidence=[{}])
+        self.assertIn('convergence_unassessed_fallback', self.codes())
+
+    def pcb_handoff(self):
+        self.record['work_items'].append(dict(id='PCB1', stage='pcb', status='handoff',
+            scope='footprint_library', electrical_preconditions=['W1'],
+            requirements=['R1'], evidence=['E1'], owner='PCB engineer',
+            action='Create and verify pads against the selected package drawing'))
+        self.record['requirements'][0]['depends_on'].append('PCB1')
+
+    def test_footprint_library_handoff_preserves_schematic_closure(self):
+        self.pcb_handoff()
+        result = self.run_audit()
+        self.assertEqual('PASS', result['status'])
+        self.assertEqual(['PCB1'], result['pcb_handoffs'])
+
+    def test_pcb_handoff_cannot_hide_open_electrical_selection(self):
+        self.pcb_handoff()
+        self.record['work_items'][0].update(status='open', owner='designer', action='Confirm pin map and ratings')
+        self.assertIn('pcb_electrical_precondition', self.codes())
+
+    def test_startup_cannot_be_reclassified_as_pcb_implementation(self):
+        self.pcb_handoff()
+        self.record['work_items'][-1]['scope'] = 'supply_startup'
+        self.assertIn('pcb_scope', self.codes())
+
+    def test_pcb_prerequisite_must_be_explicit_electrical_work(self):
+        self.pcb_handoff()
+        self.record['work_items'][-1]['electrical_preconditions'] = ['UNKNOWN']
+        self.assertIn('unknown_electrical_preconditions', self.codes())
+        self.record['work_items'][-1]['electrical_preconditions'] = []
+        self.assertIn('missing_electrical_preconditions', self.codes())
+
     def test_cli_malformed_record_fails_with_report(self):
         record = self.root / 'record.json'
         record.write_text('{bad json')

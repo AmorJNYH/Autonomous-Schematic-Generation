@@ -72,11 +72,10 @@ writer and preserves the stock geometry engine's existing coverage boundaries.
 
 ## Verify and deliver the exact revision
 
-Keep intended net partitions, identity/assembly, named interfaces, footprint-pad
-sets, raw ERC delta, geometry/grid and per-page native render review separate.
+Keep intended net partitions, identity/assembly, named interfaces, raw ERC delta, geometry/grid and per-page native render review separate.
 Add independent critical-pin contracts and fault cases that break the expected
 connection. Keep RF tuning, SI/PI, thermal, insulation/EMC and production tests
-separate from schematic checks.
+separate from schematic checks. Footprint library/pad-set and DFM validation belong to PCB implementation; exact ordered package variant and physical pin identities remain schematic obligations.
 
 Deliver the current full project/PDF, changed-page ledger, evidence and unresolved
 items. Label historical PDFs and partial extracts. Open the new `.kicad_pro` in

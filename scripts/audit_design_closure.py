@@ -8,6 +8,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+from design_frontier import frontier
 
 
 def sha256(path):
@@ -76,18 +77,26 @@ def audit(record, intent_path, artifact_root):
         affected = linked(row, 'requirements', requirements, True)
         linked(row, 'evidence', evidence, row.get('status') == 'closed')
         stage, state = row.get('stage'), row.get('status')
-        if stage not in ('design', 'external', 'validation') or state not in ('open', 'closed', 'handoff'):
+        if stage not in ('design', 'external', 'validation', 'pcb') or state not in ('open', 'closed', 'handoff'):
             error('schema', key + ':invalid stage/status')
-        if state == 'handoff' and stage != 'validation':
+        if state == 'handoff' and stage not in ('validation', 'pcb'):
             error('unfinished_design_handoff', key)
         if state != 'closed':
             for field in ('action', 'owner'):
                 if not isinstance(row.get(field), str) or not row[field].strip():
                     error('missing_' + field, key)
-            if stage == 'validation' and state == 'handoff':
+            if stage in ('validation', 'pcb') and state == 'handoff':
                 linked(row, 'evidence', evidence, True)
             else:
                 need('open_' + str(stage), key)
+        if stage == 'pcb':
+            if row.get('scope') not in ('footprint_library', 'layout_implementation', 'dfm'):
+                error('pcb_scope', key)
+            prerequisites = linked(row, 'electrical_preconditions', work, True)
+            for dep in prerequisites:
+                item = work.get(dep, {})
+                if item.get('stage') != 'design' or item.get('status') != 'closed':
+                    error('pcb_electrical_precondition', key + ':' + dep)
         if stage == 'external' and state != 'closed' and not row.get('fallback'):
             error('missing_fallback_assessment', key)
         for rid in affected:
@@ -107,7 +116,7 @@ def audit(record, intent_path, artifact_root):
             need('requirement_not_supported', key)
         for dep in deps:
             item = work.get(dep, {})
-            closed = item.get('status') == 'closed' or (item.get('stage') == 'validation' and item.get('status') == 'handoff')
+            closed = item.get('status') == 'closed' or (item.get('stage') in ('validation', 'pcb') and item.get('status') == 'handoff')
             if state == 'design_supported' and not closed:
                 error('unsupported_requirement_claim', key + ':' + dep)
 
@@ -136,6 +145,13 @@ def audit(record, intent_path, artifact_root):
         error('schema', 'coverage must be complete or partial')
     if record.get('coverage') != 'complete':
         need('partial_review', 'Not all requirements/design obligations reviewed')
+    convergence = {'status': 'NOT_ASSESSED'}
+    if 'convergence_version' in record:
+        if record['convergence_version'] != 1:
+            error('schema', 'convergence_version must be 1')
+        else:
+            convergence = frontier(work, evidence)
+            errors.extend(convergence['errors'])
     status = 'FAIL' if errors else 'INCOMPLETE' if pending else 'PASS'
     if record.get('claim') not in ('candidate', 'design_closed'):
         error('schema', 'claim must be candidate or design_closed')
@@ -145,8 +161,9 @@ def audit(record, intent_path, artifact_root):
         status = 'FAIL'
     return {'status': status, 'scope': 'Declared design evidence and dependency consistency; not physics, native ERC, visual approval or SR',
             'intent_sha256': sha256(intent_path), 'errors': errors, 'pending': pending,
-            'counts': {k: len(v) for k, v in tables.items()},
-            'downstream_handoffs': [k for k, v in work.items() if v.get('stage') == 'validation' and v.get('status') == 'handoff']}
+            'pcb_handoffs': [k for k, v in work.items() if v.get('stage') == 'pcb' and v.get('status') == 'handoff'],
+            'counts': {k: len(v) for k, v in tables.items()}, 'convergence': convergence,
+            'downstream_handoffs': [k for k, v in work.items() if v.get('stage') in ('validation', 'pcb') and v.get('status') == 'handoff']}
 
 
 def main():
