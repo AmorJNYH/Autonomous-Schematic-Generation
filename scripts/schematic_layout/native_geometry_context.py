@@ -114,7 +114,7 @@ def prepare_geometry_context(root, project, cli, workdir, pin_names=True):
         result.setdefault('exports',[]).append({'label':label,'input_sha256':before,
             'source_span':list(replacement[:2]) if replacement else None,
             'changed_file':rel,'svg_sha256':{p.name:sha(p) for p in (folder/'svg').glob('*.svg')}})
-        out={p.name:SVG(p.read_text()) for p in (folder/'svg').glob('*.svg')}
+        out={p.name:SVG(p.read_text(),scoped=True) for p in (folder/'svg').glob('*.svg')}
         if not out: raise ValueError('no native SVG pages')
         return out
     def assert_other_pages(base,new,target):
@@ -254,6 +254,9 @@ def prepare_geometry_context(root, project, cli, workdir, pin_names=True):
             stroke_upper=max(finite(o['style'].get('stroke-width','0')) for o in baseline[nativepage].objects.values())
             data['stroke_upper_mm']=stroke_upper
             data['page_mm']=baseline[nativepage].page
+            # Unsupported arc ink stays in equality; only its own page loses coverage.
+            for key,reason in sorted(baseline[nativepage].unsupported.items()):
+                data['gaps'].append('native arc ink unsupported: '+reason+': d='+baseline[nativepage].objects[key]['attrs'].get('d','')[:120])
             def unknown_display(n):
                 if isinstance(n,list):
                     if n and n[0]=='font' and first(n,'face') is not None: data['gaps'].append('native display: external font face remains unsupported')

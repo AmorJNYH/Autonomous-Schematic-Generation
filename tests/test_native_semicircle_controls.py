@@ -65,7 +65,7 @@ class ActualNativeArcControls(unittest.TestCase):
                 new=refine_wire_contacts(source,old,cli=cli,workdir=folder/'proof',expected_source_sha256=digest)
                 self.assertEqual(digest,sha(source));self.assertEqual('FAIL',new['status']);self.assertIn('wire_body',new['counts'])
                 self.assertEqual(old['coverage']['gaps'],new['coverage']['gaps'])
-                if case in ('foreign-arc','foreign-dash-arc'):
+                if case in ('foreign-arc','foreign-dash-arc','nonsemicircle-arc'):
                     self.assertEqual('QUALIFIED',new['native_contact_qualification']['status']);self.assertFalse(new['native_contact_qualification']['removed'])
                 elif case=='far-arc':
                     self.assertIn('hide measured',new['native_contact_qualification']['reason'])

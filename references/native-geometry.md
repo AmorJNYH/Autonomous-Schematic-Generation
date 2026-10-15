@@ -56,22 +56,27 @@ legitimately contain pin names; that does not exempt foreground strokes or other
 pins. Unknown foreground shapes keep a gap. Errors take precedence over gaps.
 
 The native path channel additionally accepts a finite circular `A` profile:
-absolute, unrotated, unfilled round strokes, equal positive radii and **exact
-diameter endpoints** in bounded fixed decimal coordinates. Both sweeps and
-large flags are retained; an exact diameter defines a half circle for either
-large flag. Ellipses, relative commands, non-diameter arcs, SVG radius
-correction, filled/curved glyphs and unknown paint/effects remain unsupported.
+absolute, unrotated, unfilled round strokes, equal positive radii and distinct
+endpoints whose **exact** fixed-decimal chord is at most one diameter. Centre
+side and extent follow SVG F.6.5: the large flag selects the minor or major
+arc and sweep its direction; an exact diameter is a half circle for either
+large flag. Ellipses, relative commands, chords beyond a diameter (SVG radius
+correction), filled/curved glyphs and unknown paint/effects remain unsupported.
+In the fresh geometry job such an arc does not abort the board: it stays in
+primitive equality, its own page records `native arc ink unsupported`, and any
+consumer that needs its ink still rejects it.
 Coordinates/radii are bounded to 10000 mm, at most ten decimal places; an arc
 path has a 4096-segment budget. This is limited coverage, not general SVG.
 
 Arc ink is represented by a union of chord capsules. Each capsule includes the
 actual stroke radius, its own sagitta upper bound, a native serialization
 envelope and a numerical margin. The envelope propagates 0.0002 mm per-axis
-endpoint/radius uncertainty through the near-diameter centre-height bound;
+endpoint/radius uncertainty through the centre-height bound (plus chord-normal
+rotation times the centre height for non-semicircles);
 centre displacement can grow as the square root of radius times uncertainty,
 so a fixed diameter-matching tolerance alone is insufficient. Midpoint, radius,
 axis and sweep-endpoint extension are conservatively included in every chord's
-effective width. Exact fixed-decimal diameter eligibility is a separate check.
+effective width. Exact fixed-decimal chord<=diameter eligibility is a separate check.
 Bounds and every ink-distance
 consumer use these inflated segments, including foreign foreground in passive
 ring contact checks; neither endpoint chords alone nor a box perimeter covers

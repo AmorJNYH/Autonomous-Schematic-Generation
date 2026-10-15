@@ -1,7 +1,7 @@
 """Finite native SVG ink and causal differences, never a nearest-object matcher.
 
 The supported geometry channel is mm, identity transform, MLZ round strokes
-and a finite unfilled absolute circular-A diameter-semicircle profile.
+and a finite unfilled absolute circular-A profile (chord at most a diameter).
 All visible primitives and hidden full-text companions participate in equality;
 unsupported containers/effects are rejected rather than discarded.
 """
@@ -47,17 +47,25 @@ ARC_SAGITTA_MM = .0002
 ARC_SERIALIZATION_MM = .0002
 ARC_SEGMENT_BUDGET = 4096
 
-def _arc_serialization_envelope(radius):
+def _arc_serialization_envelope(radius, half=None, height=0.):
     # A near-diameter circle is ill-conditioned: endpoint/radius rounding can
     # move its centre by sqrt(r*epsilon), not merely epsilon. Each endpoint's
     # two-axis error is bounded by sqrt(2)*epsilon; midpoint has that bound and
-    # the true half-chord is at least max(0,r-sqrt(2)*epsilon). Bound the possible
-    # centre height using a radius at most r+epsilon, avoiding cancellation.
+    # the true half-chord lies within half+-sqrt(2)*epsilon. The centre lies
+    # height=sqrt(r*r-half*half) off the chord midpoint; bound its possible
+    # change using radii r+-epsilon, avoiding cancellation. The chord normal
+    # also turns: |du|<=2|dc|/|c| with |dc|<=2*endpoint, |c|=2*half.
     eps=ARC_SERIALIZATION_MM
+    half=radius if half is None else half
     endpoint=math.nextafter(math.sqrt(2)*eps,math.inf)
     upper=math.nextafter(radius+eps,math.inf)
-    lower=max(0,math.nextafter(radius-endpoint,-math.inf))
-    height=math.nextafter(math.sqrt((upper-lower)*(upper+lower)),math.inf)
+    lower=max(0,math.nextafter(half-endpoint,-math.inf))
+    high=math.nextafter(math.sqrt((upper-lower)*(upper+lower)),math.inf)
+    small_r=max(0,math.nextafter(radius-eps,-math.inf))
+    wide=math.nextafter(half+endpoint,math.inf)
+    low=math.sqrt(max(0,(small_r-wide)*(small_r+wide)))
+    turn=min(2,math.nextafter(2*endpoint/half,math.inf)) if half>0 else 2
+    height=math.nextafter(max(high-height,height-low)+height*turn,math.inf)
     # Centre translation plus radial error protects corresponding circle
     # points. Sweep endpoint extension/axis rotation is also bounded: for a
     # diameter perturbation, r*asin(h/r) <= pi*h/2 (and similarly for endpoint
@@ -67,8 +75,8 @@ def _arc_serialization_envelope(radius):
 
 def _arc_decimal(raw):
     # Native fixed decimal coordinates only. Bounded exact rational arithmetic
-    # proves a diameter, avoiding an epsilon that silently accepts a different
-    # circle centre or SVG's radius-correction branch near a diameter.
+    # proves chord<=diameter, avoiding an epsilon that silently accepts SVG's
+    # radius-correction branch near a diameter.
     if (len(raw)>32 or not re.fullmatch(r'[-+]?(?:\d+(?:\.\d{0,10})?|\.\d{1,10})',raw)
             or abs(finite(raw))>10000):
         raise ValueError('unsupported circular-A numeric profile')
@@ -77,9 +85,10 @@ def _arc_decimal(raw):
 def stroke_path(d, width):
     """Conservative native ink capsules; never physical conductor identity.
 
-    Only absolute, unrotated, exact circular diameter semicircles qualify.
-    Both sweep/large flags are retained in primitive equality. A half circle
-    has the same pi extent for either large flag; sweep selects its side.
+    Only absolute, unrotated, circular arcs whose exact chord is nonzero and
+    at most one diameter qualify (no SVG radius correction). Centre side and
+    extent follow SVG F.6.5: large selects the minor or major arc, sweep its
+    direction; an exact diameter is a half circle for either large flag.
     Unsupported curves raise instead of disappearing from the foreground.
     """
     width=finite(width)
@@ -124,19 +133,26 @@ def stroke_path(d, width):
             r=_arc_decimal(rx)
             if _arc_decimal(ry)!=r: raise ValueError('not an exact circular-A radius')
             ax,ay=map(_arc_decimal,raw_current);bx,by=map(_arc_decimal,(x,y))
-            if (bx-ax)**2+(by-ay)**2!=4*r*r:
-                raise ValueError('circular-A endpoints must be an exact diameter')
-            radius=float(r);p=(values[5],values[6]);center=(float((ax+bx)/2),float((ay+by)/2))
-            n=max(1,math.ceil(math.pi*math.sqrt(radius/(8*ARC_SAGITTA_MM))))
+            chord2=(bx-ax)**2+(by-ay)**2
+            if chord2==0 or chord2>4*r*r:
+                raise ValueError('circular-A endpoints must be distinct and at most a diameter apart')
+            radius=float(r);p=(values[5],values[6]);half=math.sqrt(float(chord2))/2
+            height=math.sqrt(float(r*r-chord2/4))
+            # SVG F.6.5.2 centre: sign + when large!=sweep, along (-uy,ux).
+            ux,uy=float(bx-ax)/(2*half),float(by-ay)/(2*half);side=1 if large!=sweep else -1
+            center=(float((ax+bx)/2)-side*height*uy,float((ay+by)/2)+side*height*ux)
+            minor=math.pi if height==0 else 2*math.atan2(half,height)
+            extent=minor if large=='0' else 2*math.pi-minor
+            n=max(1,math.ceil(extent*math.sqrt(radius/(8*ARC_SAGITTA_MM))))
             if len(out)+n>ARC_SEGMENT_BUDGET: raise ValueError('circular-A segment budget exceeded')
-            step=math.pi/n;direction=1 if sweep=='1' else -1
+            step=extent/n;direction=1 if sweep=='1' else -1
             theta=math.atan2(current[1]-center[1],current[0]-center[0])
             # 1-cos(t/2) <= t*t/8 avoids cancellation and underestimating
             # sagitta. Floating evaluation is padded well beyond binary ulps
             # over this bounded native coordinate/radius profile. The same
             # margin includes four-decimal native serialization uncertainty.
             numeric=64*math.ulp(max(1.,radius,*map(abs,center),*map(abs,current),*map(abs,p)))
-            error=math.nextafter(radius*step*step/8+_arc_serialization_envelope(radius)+numeric,math.inf)
+            error=math.nextafter(radius*step*step/8+_arc_serialization_envelope(radius,half,height)+numeric,math.inf)
             effective_width=math.nextafter(width+2*error,math.inf)
             finite(effective_width)
             previous=current
@@ -151,8 +167,12 @@ def stroke_path(d, width):
     return out
 
 class SVG:
-    def __init__(self, text):
+    def __init__(self, text, scoped=False):
+        # scoped=True keeps an unsupported circular-A object in equality but
+        # records it in self.unsupported instead of rejecting the whole SVG.
+        # Every ink consumer re-runs stroke_path/paint checks and still raises.
         root=ET.fromstring(text); self.primitives=Counter(); self.texts=Counter(); self.objects={}
+        self.unsupported={}
         vb=[finite(n) for n in root.attrib.get('viewBox','').split()]
         if len(vb)!=4 or vb[:2]!=[0,0] or min(vb[2:])<=0: raise ValueError('unsupported native viewport')
         for attr,n in zip(('width','height'),vb[2:]):
@@ -200,19 +220,24 @@ class SVG:
                 if tt: raise ValueError('unsupported visible native transform')
                 if tag=='path':
                     d=attrs.get('d','')
-                    if 'A' in d and (st.get('fill','none')!='none' or 'stroked-text' in cc):
-                        raise ValueError('filled/curved glyph circular-A profile unsupported')
-                    if 'A' in d:
-                        if (opacity!=1 or finite(st.get('stroke-opacity','1'))!=1 or st['fill-opacity']!=1
-                                or width<=0 or st.get('stroke','none')=='none'
-                                or st.get('stroke-linecap')!='round' or st.get('stroke-linejoin')!='round'):
-                            raise ValueError('unsupported circular-A paint')
-                        dash=st.get('stroke-dasharray','none')
-                        if dash!='none':
-                            if not re.fullmatch(r'[\d.eE+\-\s,]+',dash): raise ValueError('unsupported circular-A dash')
-                            values=[finite(v) for v in re.split(r'[\s,]+',dash.strip())]
-                            if len(values)<2 or any(v<=0 for v in values): raise ValueError('unsupported circular-A dash')
-                    stroke_path(d,width)
+                    try:
+                        if 'A' in d and (st.get('fill','none')!='none' or 'stroked-text' in cc):
+                            raise ValueError('filled/curved glyph circular-A profile unsupported')
+                        if 'A' in d:
+                            if (opacity!=1 or finite(st.get('stroke-opacity','1'))!=1 or st['fill-opacity']!=1
+                                    or width<=0 or st.get('stroke','none')=='none'
+                                    or st.get('stroke-linecap')!='round' or st.get('stroke-linejoin')!='round'):
+                                raise ValueError('unsupported circular-A paint')
+                            dash=st.get('stroke-dasharray','none')
+                            if dash!='none':
+                                if not re.fullmatch(r'[\d.eE+\-\s,]+',dash): raise ValueError('unsupported circular-A dash')
+                                values=[finite(v) for v in re.split(r'[\s,]+',dash.strip())]
+                                if len(values)<2 or any(v<=0 for v in values): raise ValueError('unsupported circular-A dash')
+                        stroke_path(d,width)
+                    except ValueError as exc:
+                        if not (scoped and 'A' in d): raise
+                        key=json.dumps(obj,sort_keys=True,ensure_ascii=False)
+                        self.unsupported[key]=str(exc)
                 for k in ('x','y','x1','x2','y1','y2','r','rx','ry','cx','cy','width','height'):
                     if k in attrs: finite(attrs[k])
                 if tag in ('polyline','polygon'):
