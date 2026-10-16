@@ -385,3 +385,36 @@ class RepeatedNameTests(unittest.TestCase):
         s.name('LOW_JOIN', at=end)
         with self.assertRaisesRegex(ValueError, 'repeats a label'):
             s.build('repeat')
+
+
+class RailBodyClearanceTests(unittest.TestCase):
+    """Bodies closer than 1.27 mm (the geometry gate's REVIEW) are fixed while drawing."""
+
+    def sheet(self, dx):
+        try:
+            Libraries(library_dirs()).load('Device:R')
+        except ValueError:
+            self.skipTest('KiCad symbol libraries are not installed')
+        intent = {'schema_version': 1, 'design_id': 'clear', 'title': 'clear', 'components': [
+            {'ref': 'R1', 'lib_id': 'Device:R', 'value': '10k', 'footprint': ''},
+            {'ref': 'R2', 'lib_id': 'Device:R', 'value': '1k', 'footprint': ''}],
+            'nets': [{'name': 'A', 'pins': ['R1.1']}, {'name': 'GND', 'pins': ['R1.2', 'R2.2']},
+                     {'name': 'B', 'pins': ['R2.1']}], 'no_connect': []}
+        s = Sheet(intent, rails={'GND': 'power:GND'}, external=['A', 'B'])
+        for ref, x in (('R1', 50.8), ('R2', 50.8 + dx)):
+            s.put(ref, '1', (x, 50.8), DOWN)
+            s.justify(ref, 'side-by-side shunts')
+            s.label(ref + '.1', 'global', length=2)
+            s.power(ref + '.2')
+        return s
+
+    def test_close_rail_symbols_fail_the_build(self):
+        with self.assertRaisesRegex(ValueError, 'closer than 1.27 mm on the built page'):
+            self.sheet(3.81).build('clear')
+
+    def test_draft_records_it_and_wider_pitch_passes(self):
+        _, report = self.sheet(3.81).build('clear', draft=True)
+        self.assertTrue(any('closer than 1.27 mm' in f for f in report['draft_failures']))
+        root, report = self.sheet(5.08).build('clear')
+        scene = read_scene(parse(dump(root)))
+        self.assertFalse([f for f in check_scene(scene)['findings'] if f['code'] == 'body_clearance'])

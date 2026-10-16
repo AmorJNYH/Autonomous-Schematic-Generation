@@ -972,6 +972,18 @@ class Sheet:
                 if first(effects, "justify"):
                     effects.remove(first(effects, "justify"))
                 obstacles.append(box)
+        # The page geometry gate flags bodies (parts and rail symbols) closer
+        # than 1.27 mm as REVIEW. Fix it here, while drawing, instead of
+        # handing a human a review item: the same check, on the built page.
+        from .qa import check_scene
+        close = [f["objects"] for f in check_scene(read_scene(root), reserved=reserved or None)["findings"]
+                 if f["code"] in ("body_clearance", "body_overlap")]
+        if close:
+            message = (f"Bodies closer than 1.27 mm on the built page: {close}; lengthen the rail/part stub, "
+                       "flip its direction or widen the gap (O8), do not leave it for review")
+            if not draft:
+                raise ValueError(message)
+            failures.append(message)
         metrics = measure(root)
         nets = {n: {"mode": "power", "symbol": s} for n, s, _ in self.powers}
         nets.update({l["net"]: {"label": True} for l in labels})

@@ -70,7 +70,7 @@ class DesignReportTests(unittest.TestCase):
         lines = [l for l in text.splitlines() if l.strip()]
         self.assertEqual(lines[1], '## 结论')
         self.assertEqual(lines[2], '- **规模**：器件 2 个，图纸 2 页。')
-        self.assertEqual(lines[3], '- **自动检查**：共 3 项。通过（PASS） 2 项，没通过（FAIL） 0 项，资料不足（INSUFFICIENT） 1 项。')
+        self.assertEqual(lines[3], '- **自动检查**：共 3 项。通过（PASS） 2 项，没通过（FAIL） 0 项，资料不足（INSUFFICIENT） 1 项，没通过：要改图（REVIEW） 0 项。')
         self.assertIn('- **需求**：共 1 条。有设计依据 0 条，有条件成立 1 条，还没有设计 0 条。', text)
         self.assertIn('- **设计是否完成**：还没完成。还差：', text)
         self.assertIn('1 项自动检查资料不足或没做：图面几何（重叠、穿线）', text)

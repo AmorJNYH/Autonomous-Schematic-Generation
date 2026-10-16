@@ -30,7 +30,8 @@ GATES = OrderedDict([
     ('design_change', '改动与预期一致'),
 ])
 GATE_RESULTS = OrderedDict([('PASS', '通过（PASS）'), ('FAIL', '没通过（FAIL）'),
-                            ('INSUFFICIENT', '资料不足（INSUFFICIENT）'), ('CONDITIONAL', '有条件通过')])
+                            ('INSUFFICIENT', '资料不足（INSUFFICIENT）'), ('CONDITIONAL', '有条件通过'),
+                            ('REVIEW', '没通过：要改图（REVIEW）')])
 VISUAL = {'REVIEWED': '已完成', 'REVIEW_PENDING': '还没做完', 'REWORK_REQUIRED': '发现要返工的地方'}
 STAGES = {'requirement': '等用户定需求', 'design': '设计没做完', 'external': '缺外部资料', 'validation': '样机或试验验证', 'pcb': 'PCB 实现'}
 REQUIREMENTS = OrderedDict([('design_supported', '有设计依据'), ('conditional', '有条件成立'), ('open', '还没有设计')])

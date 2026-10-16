@@ -252,3 +252,9 @@ Problems found reviewing the 100 W PD R1 delivery, traced to skill rules:
   `Connector:USB_C_Receptacle_USB2.0_16P`. Filled paths in the qualified
   circular-A profile are now covered by their bounding box (fill inside the
   boundary hull); curved glyphs and translucent fills stay unsupported.
+- R2 geometry stayed REVIEW on two rail symbols within 1.27 mm of IC bodies,
+  "dispositioned" in the visual review. That is a drawing defect ASG can
+  close itself: `Sheet.build()` now runs the page gate's body_clearance /
+  body_overlap check on the built page and fails (draft: records it), and
+  SKILL.md forbids handing geometry REVIEW to a human. The report shows
+  REVIEW as 没通过：要改图.
