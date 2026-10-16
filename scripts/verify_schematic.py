@@ -70,7 +70,7 @@ def main():
     ap.add_argument("--change-contract", type=Path)
     ap.add_argument("--preflight", type=Path, help="design-preflight.json for an electrical change")
     ap.add_argument("--design-closure", type=Path, help="Evidence-bound end-to-end design review record")
-    ap.add_argument("--artifact-root", type=Path, help="Evidence base for --design-closure and reviewed_circuit_supply; defaults to root parent")
+    ap.add_argument("--artifact-root", type=Path, help="Evidence base for --design-closure, --preflight artifact bindings and reviewed_circuit_supply; defaults to root parent")
     ap.add_argument("--project", help="native project annotation name; defaults to the root file stem")
     ap.add_argument("--cli", help="kicad-cli path")
     ap.add_argument("--native-geometry", action="store_true", help="Also qualify native pin-name geometry on a standalone page; hierarchy roots enable the finite native channel automatically")
@@ -216,7 +216,7 @@ def main():
 
     if args.change_contract:
         report = out / "design-change.json"
-        extra = ["--preflight", args.preflight, "--artifact-root", args.root.resolve().parent] if args.preflight else []
+        extra = ["--preflight", args.preflight, "--artifact-root", args.artifact_root or args.root.resolve().parent] if args.preflight else []
         if roles:
             extra += ["--source-root", args.root, *roles, *project]
         if args.baseline_source_root:
