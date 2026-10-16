@@ -74,6 +74,8 @@ ASG 负责需求到电路的方案可行性、选型依据、设计计算和功�
 ### 2. 选型、外围电路要求与计算
 
 - 每个核心器件对应确切 MPN/封装的物理引脚表、典型应用、必需外围和装配状态，记录实际阅读的手册页码。
+  分立器件的**符号含义**也按确切料号选：TVS 单向/双向、MOS N/P 沟道、NPN/PNP，脚名按手册（单向二极管用 K/A）。
+  KiCad `Device:D_TVS` 只表示双向 TVS，不能用于单向器件。
   见 [symbol-and-peripheral-contracts.md](references/symbol-and-peripheral-contracts.md)。
 - 数值计算按 [calculation-preflight.md](references/calculation-preflight.md) 写明保证条件；上电/热插拔、关断/掉电、
   全温角点和引脚应力四类按 [requirements-to-intent.md](references/requirements-to-intent.md) 第 4 节清单逐项核。
@@ -152,7 +154,7 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
 
 它一次完成：KiCad ERC / XML 网表 / PDF 导出，网表分区与器件身份逐脚对比设计要求表（图上画出的网名须等于设计要求表里同一组引脚的网名，
 只允许页路径前缀；KiCad 自动网名不比），层次与 PDF 页数，
-符号引脚完整性，可读性自动检查，以及每个有效页面的几何检查，汇总到 `summary.json`。
+符号引脚完整性，分立器件符号含义与手册/型号后缀是否一致（`discrete_semantics`），可读性自动检查，以及每个有效页面的几何检查，汇总到 `summary.json`。
 只有全部自动检查为 PASS 时结果才是 `AUTOMATED_PASS`。
 
 - 新设计提供 `--design-closure`，核对需求实现、外部依赖、计算覆盖和证据是否最新；格式与边界见 [设计待办记录](references/design-closure.md)。未提供时明确为 NOT_CHECKED，不能据此声明全流程完成。

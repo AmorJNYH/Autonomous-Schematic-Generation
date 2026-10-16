@@ -3,7 +3,8 @@
 
 Exports native ERC, KiCad XML netlist and PDF from the root sheet, then runs:
 intent partitions and component identity, hierarchy/PDF audit, symbol
-integrity, the readability gate and geometry QA on every active sheet, the
+integrity, discrete symbol semantics (TVS direction, MOSFET channel, BJT type)
+against the part's datasheet or MPN suffix, the readability gate and geometry QA on every active sheet, the
 declared external-supply/PWR_FLAG check when the intent declares one or a flag
 is drawn, and optionally a reference contract and an electrical change contract. All reports
 and ``summary.json`` go into a fresh output directory.
@@ -23,6 +24,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 from schematic_layout.external_supply import audit_external_supply  # noqa: E402
+from schematic_layout.discrete_semantics import audit_discrete_semantics  # noqa: E402
 from schematic_layout.native import compare_netlist, compare_source_netlist, find_cli  # noqa: E402
 from schematic_layout.pages import normalize  # noqa: E402
 from schematic_layout.native_geometry_context import prepare_geometry_context, page_context_from_job  # noqa: E402
@@ -138,6 +140,15 @@ def main():
     extra = ["--exceptions", args.symbol_exceptions] if args.symbol_exceptions else []
     tool("audit_symbol_integrity.py", args.root, "--netlist", xml, *extra, *project, *roles, "--out", symbols)
     gates["symbol_integrity"] = {"status": status_of(symbols)}
+
+    try:
+        semantics = audit_discrete_semantics(sheets, json.loads(args.intent.read_text(encoding="utf-8")),
+                                             [args.artifact_root or args.root.resolve().parent, args.intent.resolve().parent])
+    except (ValueError, OSError, KeyError) as exc:
+        semantics = {"status": "INSUFFICIENT", "reason": str(exc)}
+    if semantics["status"] != "NOT_APPLICABLE":
+        write(out / "discrete-semantics.json", semantics)
+        gates["discrete_semantics"] = {"status": semantics["status"], "errors": len(semantics.get("errors", []))}
 
     readability = out / "readability.json"
     extra = ["--waivers", args.readability_waivers] if args.readability_waivers else []

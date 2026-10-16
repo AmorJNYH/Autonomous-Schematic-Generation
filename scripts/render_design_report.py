@@ -22,6 +22,7 @@ GATES = OrderedDict([
     ('intent_netlist', '网表与设计要求表逐脚对照'),
     ('hierarchy', '图纸层次与页数'),
     ('symbol_integrity', '符号引脚完整'),
+    ('discrete_semantics', '分立器件符号与手册一致（TVS单/双向、MOS沟道、NPN/PNP）'),
     ('readability', '图面可读性'),
     ('geometry', '图面几何（重叠、穿线）'),
     ('external_supply', '外部供电声明'),

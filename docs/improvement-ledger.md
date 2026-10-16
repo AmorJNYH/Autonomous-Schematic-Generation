@@ -242,3 +242,9 @@ Problems found reviewing the 100 W PD R1 delivery, traced to skill rules:
   USB-C symbol); pin-text items about 520 → 93.
 - Calculation assumptions were English: record prose shown in the report must
   be Chinese; `render_design_report.py` reports English sentences as problems.
+- D702–D706 (unidirectional PESD5V0L1UA, SMBJ24A) were drawn with KiCad
+  `Device:D_TVS`, which is bidirectional only (A1/A2). Connectivity matched the
+  intent, so no gate saw it. New `discrete_semantics` gate compares each
+  symbol's cached description/pin names with the datasheet's first pages and
+  standard TVS MPN suffixes (TVS direction, MOSFET channel, BJT type); on R1
+  it fails all five and passes Q302/Q501/Q701.

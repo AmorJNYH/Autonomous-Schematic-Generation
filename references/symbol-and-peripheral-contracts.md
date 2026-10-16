@@ -52,6 +52,22 @@ library `BCX56` (SOT-89) numbers pins 1=B 2=C 3=E, while Nexperia BCX56-16TX (BC
 series) is 1=E 2=C 3=B, so the generic symbol would swap base and emitter. Record the
 MPN-bound pin table in the device contract before placing the part.
 
+The symbol's **meaning** must match the part, not only its pin numbers. Choose
+the symbol from the exact part's datasheet: unidirectional or bidirectional
+TVS/ESD diode, Zener vs TVS, N- or P-channel MOSFET, NPN or PNP, Schottky vs
+standard rectifier. Pin names follow the datasheet (`K`/`A`, not `A1`/`A2`, for a
+polarized diode). KiCad `Device:D_TVS` is **bidirectional only** (description
+"Bidirectional transient-voltage-suppression diode", pins A1/A2); a
+unidirectional TVS such as PESD5V0L1UA (1=K, 2=A) or SMBJ24A ("A" suffix; "CA" is
+bidirectional) needs a unidirectional symbol: a `Diode` library TVS with K/A
+pins (e.g. the SMAJxxA family, after checking 1=K 2=A) or a project symbol.
+Do not pick a symbol by part category name alone in a project script.
+`verify_schematic.py` runs `discrete_semantics`: it compares each placed
+symbol's cached description/pin names with the datasheet's first pages and
+standard TVS MPN suffixes, and fails on a contradiction. Project symbols
+without a description are not classified, so give custom discrete symbols a
+`Description` that states the polarity/channel/type.
+
 When footprints are assigned, check footprint pad-number sets, then
 independently check manufacturer package drawing, pitch, exposed pad, pad
 dimensions and orientation. Matching pad-number sets do not validate mechanical
