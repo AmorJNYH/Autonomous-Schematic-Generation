@@ -22,7 +22,7 @@ import xml.etree.ElementTree as ET
 
 from .scratch import scratch_base
 from .native import find_cli
-from .native_geometry import SVG, finite, linear_path, stroke_path, distance, point_segment
+from .native_geometry import SVG, finite, linear_path, stroke_path, distance, point_segment, filled_arc_box
 from .native_geometry_context import configuration_hashes, context_files, spans, paths, sha
 from .native_hierarchy import NativeHierarchy
 from .scene import read_scene, transform, is_hidden
@@ -178,6 +178,16 @@ def _geometry(o):
     if tag=='rect' and finite(a.get('rx',0))==0:return ('rect',*[round(finite(a[k]),4) for k in ('x','y','width','height')])
     raise ValueError('not target native geometry')
 
+def filled_arc(o):
+    """A filled path in the qualified circular-A profile (never a filled glyph)."""
+    if 'A' not in o['attrs'].get('d','') or 'stroked-text' in o['classes']:
+        return False
+    try:
+        filled_arc_box(o['attrs']['d'],finite(o['style'].get('stroke-width',0)),o['style'],o['opacity'])
+    except ValueError:
+        return False
+    return True
+
 def _hits(o,a,b,wire_width):
     st=o['style'];attrs=o['attrs'];tag=o['tag'];w=finite(st.get('stroke-width',0));radius=(wire_width+w)/2+EPS
     if tag=='circle':return point_segment((finite(attrs['cx']),finite(attrs['cy'])),a,b)<=finite(attrs['r'])+radius
@@ -189,6 +199,11 @@ def _hits(o,a,b,wire_width):
             return _round_stroke_hits_box(a,b,Box(x,y,x+ww,y+hh),radius)
         pts=[(x,y),(x+ww,y),(x+ww,y+hh),(x,y+hh),(x,y)]
         return any(distance(a,b,c,d)<=radius for c,d in zip(pts,pts[1:]))
+    if tag=='path' and st.get('fill','none')!='none' and filled_arc(o):
+        # Filled circular-A region: its conservative bounding box (native_geometry.filled_arc_box).
+        from .qa import _round_stroke_hits_box
+        from .geometry import Box
+        return _round_stroke_hits_box(a,b,Box(*filled_arc_box(attrs['d'],w,st,o['opacity'])),(wire_width)/2+EPS)
     if tag=='path' and st.get('fill','none')=='none':
         # Arc capsules already include their own sagitta/serialization/numeric
         # envelope. Physical pin caps/legs and source-wire identity below still
@@ -204,7 +219,7 @@ def _validate_foreground(native):
         if o['tag'] not in ('path','rect','circle'):raise ValueError('unsupported foreground shape')
         if st.get('stroke','none')!='none':_paint(o,foreign=True)
         if st.get('fill','none')!='none':
-            if o['tag']=='path' or not re.fullmatch(r'#[0-9a-fA-F]{6}',st['fill']):raise ValueError('filled font or unknown foreground paint')
+            if (o['tag']=='path' and not filled_arc(o)) or not re.fullmatch(r'#[0-9a-fA-F]{6}',st['fill']):raise ValueError('filled font or unknown foreground paint')
         if o['tag']=='rect' and finite(o['attrs'].get('rx',0))!=0:raise ValueError('rounded foreground rectangle')
 
 def refine_wire_contacts(schematic,report,cli=None,workdir=None,expected_source_sha256=None):

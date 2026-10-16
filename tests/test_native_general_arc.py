@@ -111,3 +111,60 @@ class OneUnsupportedArcDoesNotBlankBoard(unittest.TestCase):
             self.assertFalse(any('arc ink' in g for g in reports['native.kicad_sch']['coverage']['gaps']))
 
 if __name__=='__main__':unittest.main()
+
+
+class FilledCircularArc(unittest.TestCase):
+    """A filled circular-A region (e.g. KiCad's USB-C receptacle) is covered by its bounding box."""
+    STYLE = 'fill:#000000;stroke:#000000;stroke-width:.254;stroke-linecap:round;stroke-linejoin:round'
+    # The exact path KiCad 10 exported for Connector:USB_C_Receptacle_USB2.0_16P on the 100 W PD page.
+    D = 'M303.5300 173.9899 A0.6350 0.6350 0.0 0 0 304.8000 173.9899 L 304.1650 173.9872 Z'
+
+    def page(self, style=None, cls=''):
+        return ('<svg width="420mm" height="297mm" viewBox="0 0 420 297">'
+                f'<path {cls}d="{self.D}" style="{style or self.STYLE}"/></svg>')
+
+    def region(self):
+        """Independent true filled half disc plus its stroke, from SVG F.6.5 (true_arc)."""
+        c, _, pts = true_arc((303.53, 173.9899), (304.8, 173.9899), .635, 0, 0)
+        half = .127
+        out = []
+        for q in pts:
+            ux, uy = q[0] - c[0], q[1] - c[1]
+            n = math.hypot(ux, uy)
+            for k in (0, .5, 1, 1 + half / n):
+                out.append((c[0] + k * ux, c[1] + k * uy))
+        return c, pts, out
+
+    def test_filled_arc_is_supported_and_box_covers_true_region(self):
+        native = SVG(self.page())
+        self.assertEqual({}, native.unsupported)
+        (key, box), = native.filled.items()
+        for x, y in self.region()[2]:
+            self.assertTrue(box[0] <= x <= box[2] and box[1] <= y <= box[3], (x, y, box))
+        ink = native.segments()
+        self.assertEqual(1, len(ink))
+        for x, y in self.region()[2]:
+            self.assertLessEqual(ink_gap(ink, [[[x, y], [x, y], .0001]]), 0)
+
+    def test_filled_arc_box_is_conservative_but_finite(self):
+        native = SVG(self.page())
+        box = next(iter(native.filled.values()))
+        self.assertLess(box[2] - box[0], 1.27 + .5)
+        self.assertLess(box[3] - box[1], .635 + .5)
+
+    def test_curved_glyph_and_translucent_fill_stay_unsupported(self):
+        with self.assertRaises(ValueError):
+            SVG(self.page(cls='class="stroked-text" '))
+        with self.assertRaises(ValueError):
+            SVG(self.page(style=self.STYLE + ';fill-opacity:.5'))
+        native = SVG(self.page(cls='class="stroked-text" '), scoped=True)
+        self.assertEqual(1, len(native.unsupported))
+        self.assertEqual({}, native.filled)
+
+    def test_wire_contact_refinement_sees_filled_box(self):
+        native = SVG(self.page())
+        obj = next(iter(native.objects.values()))
+        c, pts, _ = self.region()
+        inside = (c[0] + .5 * (pts[100][0] - c[0]), c[1] + .5 * (pts[100][1] - c[1]))
+        self.assertTrue(_hits(obj, inside, inside, .01))
+        self.assertFalse(_hits(obj, (310, 160), (311, 160), .01))

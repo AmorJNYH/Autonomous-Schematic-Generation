@@ -2,6 +2,8 @@
 
 The supported geometry channel is mm, identity transform, MLZ round strokes
 and a finite unfilled absolute circular-A profile (chord at most a diameter).
+A filled path in that circular-A profile is covered by its bounding box: the
+fill lies inside the convex hull of its boundary ink, hence inside that box.
 All visible primitives and hidden full-text companions participate in equality;
 unsupported containers/effects are rejected rather than discarded.
 """
@@ -173,6 +175,7 @@ class SVG:
         # Every ink consumer re-runs stroke_path/paint checks and still raises.
         root=ET.fromstring(text); self.primitives=Counter(); self.texts=Counter(); self.objects={}
         self.unsupported={}
+        self.filled={}  # key -> conservative bounding box of a filled circular-A path
         vb=[finite(n) for n in root.attrib.get('viewBox','').split()]
         if len(vb)!=4 or vb[:2]!=[0,0] or min(vb[2:])<=0: raise ValueError('unsupported native viewport')
         for attr,n in zip(('width','height'),vb[2:]):
@@ -220,10 +223,13 @@ class SVG:
                 if tt: raise ValueError('unsupported visible native transform')
                 if tag=='path':
                     d=attrs.get('d','')
+                    box=None
                     try:
-                        if 'A' in d and (st.get('fill','none')!='none' or 'stroked-text' in cc):
-                            raise ValueError('filled/curved glyph circular-A profile unsupported')
-                        if 'A' in d:
+                        if 'A' in d and 'stroked-text' in cc:
+                            raise ValueError('curved glyph circular-A profile unsupported')
+                        if 'A' in d and st.get('fill','none')!='none':
+                            box=filled_arc_box(d,width,st,opacity)
+                        elif 'A' in d:
                             if (opacity!=1 or finite(st.get('stroke-opacity','1'))!=1 or st['fill-opacity']!=1
                                     or width<=0 or st.get('stroke','none')=='none'
                                     or st.get('stroke-linecap')!='round' or st.get('stroke-linejoin')!='round'):
@@ -233,7 +239,7 @@ class SVG:
                                 if not re.fullmatch(r'[\d.eE+\-\s,]+',dash): raise ValueError('unsupported circular-A dash')
                                 values=[finite(v) for v in re.split(r'[\s,]+',dash.strip())]
                                 if len(values)<2 or any(v<=0 for v in values): raise ValueError('unsupported circular-A dash')
-                        stroke_path(d,width)
+                        if box is None: stroke_path(d,width)
                     except ValueError as exc:
                         if not (scoped and 'A' in d): raise
                         key=json.dumps(obj,sort_keys=True,ensure_ascii=False)
@@ -247,6 +253,7 @@ class SVG:
                     for n in tokens: finite(n)
                 key=json.dumps(obj,sort_keys=True,ensure_ascii=False)
                 self.primitives[key]+=1; self.objects[key]=obj
+                if tag=='path' and box is not None and key not in self.unsupported: self.filled[key]=box
             for child in e: visit(child,st,opacity,cc,tt)
         visit(root,{},1,[],[])
 
@@ -254,6 +261,10 @@ class SVG:
         out=[]
         for k,count in (self.primitives if keys is None else keys).items():
             o=self.objects[k]; st=o['style']; a=o['attrs']; width=finite(st.get('stroke-width','0'))
+            if k in self.filled:
+                if glyph: raise ValueError('deleted primitive not stroked text')
+                out += [box_capsule(self.filled[k])]*count
+                continue
             if st.get('fill','none')!='none' or width<=0 or st.get('stroke-dasharray','none')!='none':
                 raise ValueError('not unfilled solid stroke')
             if st.get('stroke-linecap')!='round' or st.get('stroke-linejoin')!='round':
@@ -274,6 +285,29 @@ class SVG:
             out += [[list(a),list(b),width] for a,b in pairs]*count
         if not out: raise ValueError('empty target ink')
         return out
+
+def filled_arc_box(d, width, st, opacity):
+    """Bounding box of a filled path in the supported circular-A profile.
+
+    The boundary is qualified exactly like a stroked arc (absolute, unrotated,
+    chord at most a diameter), with its sagitta/serialization envelope; the
+    fill is inside the boundary's convex hull, so inside this box.
+    """
+    if (opacity!=1 or st['fill-opacity']!=1 or finite(st.get('stroke-opacity','1'))!=1
+            or st.get('stroke-dasharray','none')!='none'):
+        raise ValueError('unsupported filled circular-A paint')
+    if st.get('stroke','none')!='none' and width>0 and (
+            st.get('stroke-linecap')!='round' or st.get('stroke-linejoin')!='round'):
+        raise ValueError('unsupported filled circular-A paint')
+    return bounds(stroke_path(d, width if st.get('stroke','none')!='none' else 0))
+
+
+def box_capsule(box):
+    """One capsule containing an axis-aligned box (over-covers by its round caps)."""
+    x0,y0,x1,y1=box; w,h=x1-x0,y1-y0
+    if w>=h: return [[x0,(y0+y1)/2],[x1,(y0+y1)/2],h]
+    return [[(x0+x1)/2,y0],[(x0+x1)/2,y1],w]
+
 
 def bounds(segments):
     if not segments: raise ValueError('empty ink')

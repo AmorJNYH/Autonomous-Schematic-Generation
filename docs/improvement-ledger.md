@@ -248,3 +248,7 @@ Problems found reviewing the 100 W PD R1 delivery, traced to skill rules:
   symbol's cached description/pin names with the datasheet's first pages and
   standard TVS MPN suffixes (TVS direction, MOSFET channel, BJT type); on R1
   it fails all five and passes Q302/Q501/Q701.
+- The last R2 geometry gap was two filled half discs in KiCad's
+  `Connector:USB_C_Receptacle_USB2.0_16P`. Filled paths in the qualified
+  circular-A profile are now covered by their bounding box (fill inside the
+  boundary hull); curved glyphs and translucent fills stay unsupported.

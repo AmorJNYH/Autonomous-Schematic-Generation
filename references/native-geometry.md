@@ -67,8 +67,14 @@ absolute, unrotated, unfilled round strokes, equal positive radii and distinct
 endpoints whose **exact** fixed-decimal chord is at most one diameter. Centre
 side and extent follow SVG F.6.5: the large flag selects the minor or major
 arc and sweep its direction; an exact diameter is a half circle for either
-large flag. Ellipses, relative commands, chords beyond a diameter (SVG radius
-correction), filled/curved glyphs and unknown paint/effects remain unsupported.
+large flag. A **filled** path in this same profile (opaque solid fill, round or
+no stroke, not a glyph), such as the half discs in KiCad's USB-C receptacle
+symbol, is covered by its bounding box: the boundary is qualified like a
+stroked arc with its envelope, and the fill lies inside the boundary's convex
+hull, hence inside that box. Its ink is one capsule containing the box, and the
+wire-contact refinement uses the same box; both over-cover and never under-cover.
+Ellipses, relative commands, chords beyond a diameter (SVG radius correction),
+curved glyphs, translucent fills and unknown paint/effects remain unsupported.
 In the fresh geometry job such an arc does not abort the board: it stays in
 primitive equality, its own page records `native arc ink unsupported`, and any
 consumer that needs its ink still rejects it.

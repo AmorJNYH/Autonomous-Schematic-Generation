@@ -65,10 +65,12 @@ class ActualNativeArcControls(unittest.TestCase):
                 new=refine_wire_contacts(source,old,cli=cli,workdir=folder/'proof',expected_source_sha256=digest)
                 self.assertEqual(digest,sha(source));self.assertEqual('FAIL',new['status']);self.assertIn('wire_body',new['counts'])
                 self.assertEqual(old['coverage']['gaps'],new['coverage']['gaps'])
-                if case in ('foreign-arc','foreign-dash-arc','nonsemicircle-arc'):
+                # A filled arc is covered by its bounding box (native_geometry.filled_arc_box): the
+                # contact is qualified, and the measured wire_body finding is still not removed.
+                if case in ('foreign-arc','foreign-dash-arc','nonsemicircle-arc','filled-arc'):
                     self.assertEqual('QUALIFIED',new['native_contact_qualification']['status']);self.assertFalse(new['native_contact_qualification']['removed'])
                 elif case=='far-arc':
                     self.assertIn('hide measured',new['native_contact_qualification']['reason'])
-                else:self.assertEqual('FALLBACK',new['native_contact_qualification']['status'])
+                else:self.fail('unexpected case '+case)
 
 if __name__=='__main__':unittest.main()

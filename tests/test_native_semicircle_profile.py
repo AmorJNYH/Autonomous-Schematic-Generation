@@ -30,9 +30,12 @@ class SemicircleRejectFirst(unittest.TestCase):
         for d in paths:
             with self.subTest(d=d),self.assertRaises(ValueError):ng.SVG(svg(d))
         d='M9 10 A1 1 0 0 0 11 10'
-        for style,extra in ((STYLE.replace('fill:none','fill:#000000'),''),(STYLE,'transform="translate(1 1)"'),(STYLE,'class="stroked-text"'),(STYLE+';stroke-dasharray:1,nan','')):
+        for style,extra in ((STYLE.replace('fill:none','fill:#000000')+';fill-opacity:.5',''),(STYLE,'transform="translate(1 1)"'),(STYLE,'class="stroked-text"'),(STYLE+';stroke-dasharray:1,nan','')):
             with self.subTest(style=style,extra=extra),self.assertRaises(ValueError):
                 native=ng.SVG(svg(d,style,extra));_validate_foreground(native)
+        # An opaque filled arc in the profile is covered by its bounding box, not rejected.
+        native=ng.SVG(svg(d,STYLE.replace('fill:none','fill:#000000')));_validate_foreground(native)
+        self.assertEqual(1,len(native.filled));self.assertEqual({},native.unsupported)
 
     def test_true_arc_interior_hits_even_when_endpoint_chord_and_bbox_perimeter_miss(self):
         native=ng.SVG(svg('M9 10 A1 1 0 0 0 11 10'));o=next(iter(native.objects.values()))
