@@ -168,6 +168,7 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
 - 几何检查的 REVIEW（如器件/电源符号外框间距不足 1.27 mm）是**画图缺陷，ASG 自己改图关闭**，不能在
   visual-review.json 里写“已目视复核、保留提示”交给人。`Sheet.build()` 已对同一检查硬拦截；交付前每页
   几何必须是 PASS，只有检查器确实覆盖不到的对象（INSUFFICIENT 缺口）才保留并在看图检查里核对。
+  `render_design_report.py` 把任何 REVIEW 列为问题，`pack_design.py` 因此拒绝打包，所以带 REVIEW 的版本交不出去。
 - 板级 `Net-(...)` 式网名须有来源证据，仅有 XML 时保持 INSUFFICIENT，见
   [project-verification.md](references/project-verification.md#automatic-looking-names-need-source-evidence)；
   编码斜杠层次字段只用 [schematic-drawing-standards.md](references/schematic-drawing-standards.md) 的有限回退，不推广。

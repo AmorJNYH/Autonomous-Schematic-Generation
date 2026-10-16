@@ -202,6 +202,12 @@ def render(root, notes=None, title=None):
     gates = summary.get('gates') or {}
     shown = [(key, label, (gates.get(key) or {}).get('status')) for key, label in GATES.items() if key in gates]
     gate_counts = Counter(status for _, _, status in shown)
+    # REVIEW is a drawing defect ASG closes by redrawing; a delivery cannot hand
+    # it to a person. Listing it as a problem also makes pack_design.py fail.
+    for key, label, status in shown:
+        if status == 'REVIEW':
+            problems.append('自动检查“%s”是 REVIEW：这是画图缺陷，要改图直到 PASS 再重新验证，'
+                            '不能在看图检查里写“已复核、保留提示”交给人' % label)
     open_work = [w for w in work.values() if w.get('status') == 'open']
     handoffs = [w for w in work.values() if w.get('status') == 'handoff']
     req_counts = Counter(r.get('status') for r in requirements)

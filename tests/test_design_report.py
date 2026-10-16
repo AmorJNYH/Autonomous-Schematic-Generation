@@ -139,6 +139,13 @@ class DesignReportTests(unittest.TestCase):
         self.assertFalse(english_sentence('Kelvin回路按TDK ETD39 p2-4核对'))
         self.assertTrue(english_sentence('Only NCP1343 remains on VCC after auxiliary dies'))
 
+    def test_geometry_review_is_a_problem_that_blocks_delivery(self):
+        self.d.write('summary.json', {'status': 'INCOMPLETE', 'sheets': ['a', 'b'], 'gates': {
+            'erc': {'status': 'PASS', 'violations': 0}, 'geometry': {'status': 'REVIEW'}}})
+        text, problems = self.d.report()
+        self.assertTrue(any('REVIEW' in p and '改图' in p for p in problems), problems)
+        self.assertIn('没通过：要改图（REVIEW） 1 项', text)
+
     def test_geometry_detail_counts_gaps_and_render_review_items(self):
         self.d.write('summary.json', {'status': 'INCOMPLETE', 'sheets': ['a', 'b'], 'gates': {
             'erc': {'status': 'PASS', 'violations': 0},
@@ -189,6 +196,14 @@ class PackDesignTests(unittest.TestCase):
 
     def run_pack(self):
         return pack(self.d.root, {'requirements': str(self.inputs)})
+
+    def test_geometry_review_cannot_be_packed(self):
+        self.d.write('summary.json', {'status': 'INCOMPLETE', 'sheets': ['a', 'b'], 'gates': {
+            'erc': {'status': 'PASS', 'violations': 0}, 'geometry': {'status': 'REVIEW'}}})
+        text, _ = self.d.report()
+        (self.d.root / REPORT).write_text(text)
+        errors, _ = self.run_pack()
+        self.assertTrue(any('REVIEW' in e for e in errors), errors)
 
     def test_clean_delivery_packs_with_manifest(self):
         errors, manifest = self.run_pack()
