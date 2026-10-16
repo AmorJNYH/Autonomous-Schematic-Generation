@@ -415,6 +415,7 @@ def check_scene(scene, grid=1.27, reserved=None, body_clearance=1.27, pin_nets=N
             "native_pin_names": len(scene.native_pin_texts),
             "native_owner_outlines": len(scene.native_owner_outlines),
             "gaps": sorted(set(gaps)),
+            "render_review_items": sorted(set(scene.review)),
             "checks": [
                 "body_overlap",
                 "body_clearance",

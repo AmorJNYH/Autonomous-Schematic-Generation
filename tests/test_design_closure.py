@@ -26,8 +26,9 @@ class DesignClosureTests(unittest.TestCase):
             'requirements': [{'id': 'R1', 'status': 'design_supported', 'refs': ['U1'], 'evidence': ['E1'],
                               'implementation': 'Regulator output path; rated operating envelope in E1', 'depends_on': ['W1']}],
             'work_items': [{'id': 'W1', 'stage': 'design', 'status': 'closed', 'requirements': ['R1'], 'evidence': ['E1']}],
-            'calculations': [{'id': 'C1', 'requirements': ['R1'], 'evidence': ['E1'],
-                              'coverage': 'bounded', 'conclusion': 'supported', 'omitted_terms': []}]}
+            'calculations': [{'id': 'C1', 'requirements': ['R1'], 'evidence': ['E1'], 'refs': ['U1'],
+                              'coverage': 'bounded', 'conclusion': 'supported', 'omitted_terms': [],
+                              'checks': [{'name': 'output ripple', 'value': 18, 'operator': '<=', 'limit': 30, 'unit': 'mV'}]}]}
 
     def run_audit(self):
         return audit(self.record, self.intent, self.root)
@@ -87,6 +88,7 @@ class DesignClosureTests(unittest.TestCase):
 
     def test_failed_calculation_blocks_and_cannot_support_requirement(self):
         self.record['calculations'][0]['conclusion'] = 'failed'
+        self.record['calculations'][0]['checks'][0]['value'] = 45
         self.assertIn('unsupported_calculation_dependency', self.codes())
         self.record['requirements'][0]['status'] = 'conditional'
         result = self.run_audit()
@@ -202,3 +204,58 @@ class DesignClosureTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class CalculationChecksTests(unittest.TestCase):
+    """Conclusions follow from computed margins; thresholds need both sides."""
+    setUp = DesignClosureTests.setUp
+    run_audit = DesignClosureTests.run_audit
+    codes = DesignClosureTests.codes
+
+    def zener_board(self):
+        self.intent.write_text(json.dumps({'components': [{'ref': 'U1'}, {'ref': 'D1', 'lib_id': 'Device:D_Zener'}]}))
+        self.record['intent_sha256'] = sha256(self.intent)
+
+    def test_calculation_needs_checks_and_refs(self):
+        del self.record['calculations'][0]['checks']
+        self.record['calculations'][0]['refs'] = []
+        self.assertTrue({'missing_checks', 'missing_refs'} <= self.codes())
+
+    def test_failed_check_cannot_be_called_conditional(self):
+        self.record['calculations'][0].update(coverage='partial', conclusion='conditional', assumptions=['typ Vf'])
+        self.record['calculations'][0]['checks'][0]['value'] = 45
+        self.assertIn('conclusion_contradicts_checks', self.codes())
+
+    def test_passing_checks_cannot_be_called_failed(self):
+        self.record['calculations'][0]['conclusion'] = 'failed'
+        self.assertIn('conclusion_contradicts_checks', self.codes())
+
+    def test_malformed_check_is_schema_error(self):
+        self.record['calculations'][0]['checks'][0]['operator'] = 'about'
+        self.assertIn('schema', self.codes())
+
+    def test_threshold_part_without_calculation_is_rejected(self):
+        self.zener_board()
+        self.assertIn('threshold_part_uncalculated', self.codes())
+        self.record['calculations'][0]['refs'].append('D1')
+        self.assertNotIn('threshold_part_uncalculated', self.codes())
+
+    def test_threshold_window_needs_both_sides(self):
+        self.zener_board()
+        calc = self.record['calculations'][0]
+        calc.update(kind='threshold', refs=['U1', 'D1'], checks=[
+            {'name': 'aux at 21 V output incl. leakage peak vs Vz min + Vfault min', 'side': 'no_false_trip',
+             'value': 66.0, 'operator': '<', 'limit': 69.4, 'unit': 'V'}])
+        self.assertIn('threshold_window_incomplete', self.codes())
+        calc['checks'].append({'name': 'output at max trip vs output capacitor rating', 'side': 'protection',
+                               'value': 25.0, 'operator': '<=', 'limit': 35.0, 'unit': 'V'})
+        self.assertEqual('PASS', self.run_audit()['status'], self.run_audit())
+
+    def test_threshold_false_trip_margin_failure_must_be_failed(self):
+        self.zener_board()
+        calc = self.record['calculations'][0]
+        calc.update(kind='threshold', refs=['D1'], coverage='partial', conclusion='conditional',
+                    assumptions=['leakage peak 10 %'], checks=[
+            {'name': 'no false trip', 'side': 'no_false_trip', 'value': 71.0, 'operator': '<', 'limit': 69.4, 'unit': 'V'},
+            {'name': 'protects', 'side': 'protection', 'value': 25.0, 'operator': '<=', 'limit': 35.0, 'unit': 'V'}])
+        self.assertIn('conclusion_contradicts_checks', self.codes())

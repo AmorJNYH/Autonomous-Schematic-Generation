@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from schematic_layout.scratch import scratch_base
 from schematic_layout.native import find_cli
-from schematic_layout.native_geometry_context import prepare_geometry_context,load_page_context,page_context_from_job,sha,spans
+from schematic_layout.native_geometry_context import prepare_geometry_context,load_page_context,page_context_from_job,sha,spans,hidden,visible_name
 from schematic_layout.sexpr import form as f,Atom as A,dump,parse,first,all_nodes
 from schematic_layout.scene import read_scene
 from schematic_layout.qa import check_scene
@@ -41,6 +41,10 @@ def fixture(kind):
         if kind.startswith('rotate'): first(prop,'at')[3]=float(kind[6:])
         if kind=='bold': first(first(prop,'effects'),'font').append(A('bold'))
         if kind=='filledfont': first(first(prop,'effects'),'font').append(f('face','Arial'))
+    if kind=='cachevar':
+        # A library cache definition is not page ink, even with a variable in it.
+        first(root,'lib_symbols').append(f('symbol','Cache:Part',f('property','Sim.Library','${KICAD9_SYMBOL_DIR}/x.sp',
+            f('at',0,0,0),f('effects',f('font',f('size',1.27,1.27)),f('hide',A('yes'))))))
     root.append(f('sheet_instances',f('path','/',f('page','1'))))
     child=f('kicad_sch',f('version',20250114),f('generator','eeschema'),f('uuid',uid('child')),f('paper','A4'),f('lib_symbols'))
     return root,child
@@ -53,6 +57,23 @@ class SpanTests(unittest.TestCase):
         changed=src[:start]+src[start:end-1]+' (hide yes))'+src[end:]
         self.assertEqual(src[:start],changed[:start]);self.assertEqual('\n',changed[-1])
 
+class HiddenTextTests(unittest.TestCase):
+    """Hidden pin text and properties draw no ink, in old and new KiCad syntax."""
+    def test_hidden_flags(self):
+        self.assertTrue(hidden(parse('(pin_numbers (hide yes))')))
+        self.assertTrue(hidden(parse('(pin_names (offset 0) hide)')))
+        self.assertTrue(hidden(parse('(property "Intersheetrefs" "${INTERSHEET_REFS}" (at 0 0 0) (effects (font (size 1 1)) (hide yes)))')))
+        self.assertTrue(hidden(parse('(property "Intersheetrefs" "${INTERSHEET_REFS}" (at 0 0 0) (hide yes) (effects (font (size 1 1))))')))
+        self.assertFalse(hidden(parse('(pin_names (offset 1.016))')))
+        self.assertFalse(hidden(parse('(property "Value" "10k" (at 0 0 0) (effects (font (size 1 1))))')))
+        self.assertFalse(hidden(parse('(pin_numbers (hide no))')))
+    def test_visible_pin_names(self):
+        pin=lambda body: parse('(pin passive line (at 0 0 0) (length 2.54) '+body+' (number "1" (effects (font (size 1 1)))))')
+        self.assertTrue(visible_name(pin('(name "FAULT" (effects (font (size 1 1))))')))
+        self.assertFalse(visible_name(pin('(name "~" (effects (font (size 1 1))))')))
+        self.assertFalse(visible_name(pin('(name "" (effects (font (size 1 1))))')))
+        self.assertFalse(visible_name(pin('(hide yes) (name "VCC" (effects (font (size 1 1))))')))
+
 class NativeContextTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -60,7 +81,7 @@ class NativeContextTests(unittest.TestCase):
         if not cls.cli: raise unittest.SkipTest('KiCad native tool missing')
         tempbase=scratch_base()/'native-geometry-tests';tempbase.mkdir(parents=True,exist_ok=True)
         cls.temp=tempfile.TemporaryDirectory(prefix='asg-native-geometry-',dir=tempbase);cls.base=Path(cls.temp.name);cls.rows={}
-        for kind in ('clear','wire','overlay','offpage','pins','variable'):
+        for kind in ('clear','wire','overlay','offpage','pins','variable','cachevar'):
             folder=cls.base/kind;folder.mkdir();a,b=fixture(kind)
             (folder/'native.kicad_sch').write_text(dump(a)+'\n');(folder/'child.kicad_sch').write_text(dump(b)+'\n')
             (folder/'native.kicad_pro').write_text(json.dumps({'meta':{'filename':'native.kicad_pro','version':1},'text_variables':{'NAME':'NativeVariable'}}))
@@ -86,6 +107,10 @@ class NativeContextTests(unittest.TestCase):
         for kind in ('pins','variable'):
             self.assertEqual('INSUFFICIENT',self.rows[kind][1]['status'])
             self.assertIn('Unsupported sheet object: sheet',self.rows[kind][1]['coverage']['gaps'])
+    def test_cached_or_hidden_variable_is_not_a_display_gap(self):
+        ctx,report=self.rows['cachevar']
+        self.assertFalse([g for g in report['coverage']['gaps'] if 'source variable' in g],report['coverage']['gaps'])
+        self.assertEqual('PASS',report['status'],report)
     def test_sidecar_sha_and_original_input_drift_rejected(self):
         folder=self.base/'clear';p=folder/'context/context.json'
         with self.assertRaises(ValueError):load_page_context(p,folder/'native.kicad_sch','wrong')
@@ -111,3 +136,13 @@ class NativeContextTests(unittest.TestCase):
         page['texts']=original
 
 if __name__=='__main__': unittest.main()
+
+class RenderReviewItemTests(unittest.TestCase):
+    """Unqualified visible pin text is listed for render review; it is not a coverage gap."""
+    def test_review_items_do_not_make_page_insufficient(self):
+        root=f('kicad_sch',f('version',20250114),f('generator','eeschema'),f('uuid',uid('review')),f('paper','A4'),f('lib_symbols'))
+        scene=read_scene(root,{'gaps':[],'review':['pin-number:x: physical pin numbers need native render review']})
+        report=check_scene(scene,reserved=[])
+        self.assertEqual('PASS',report['status'],report)
+        self.assertEqual(['pin-number:x: physical pin numbers need native render review'],report['coverage']['render_review_items'])
+        self.assertEqual([],report['coverage']['gaps'])

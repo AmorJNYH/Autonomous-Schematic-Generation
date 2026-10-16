@@ -89,7 +89,7 @@ on the rendered page before calling the page readable.
 | `power(target, symbol, net, length)` | Rail/return symbol whose Value is the net name (declared symbol by default); a perpendicular pin is left sideways far enough to clear the part body. |
 | `label(target, kind, length, outward, net, reason)` | Global label where the net leaves the sheet, or a local join with `reason`. Extends along the pin direction or `outward`: left, right, up or down. |
 | `name_run_steps(net, font=1.0)` | Read-only necessary straight-run budget: the existing local `label_geometry` width for this declared raw logical net/font plus two grid steps, rounded up to grid steps. No placement or label is added. |
-| `name(net, at, font=1.0)` | Small local name on the net's own wire, mid-segment and clear of pins and dots: above a horizontal wire, else beside a vertical one. |
+| `name(net, at, font=1.0)` | Small local name on the net's own wire, mid-segment and clear of pins and dots: above a horizontal wire, else beside a vertical one. Only on a connected piece that has no label or rail symbol of that net yet; when every piece already shows the name, `build()` skips it (`report["names_skipped_already_labelled"]`), and an explicit `at` on such a piece is an error. |
 | `select_local_names(intent, external, rails)` | Default selection: page-local nets touching a part with three or more pins. |
 | `text(text, at, font)` | Block title or note. |
 

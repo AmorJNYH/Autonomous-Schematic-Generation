@@ -144,7 +144,7 @@ def main():
     tool("check_schematic_readability.py", *sheets, *extra, "--out", readability)
     gates["readability"] = {"status": status_of(readability)}
 
-    geometry, gaps = {}, {}
+    geometry, gaps, review = {}, {}, {}
     native = None
     if args.native_geometry or all_nodes(parse(args.root.read_text()), "sheet"):
         native = prepare_geometry_context(args.root, args.project, cli, out / "native-geometry")
@@ -174,10 +174,19 @@ def main():
             found = []
         if found:
             gaps[sheet.name] = found
+        try:
+            items = json.loads(report.read_text())["coverage"].get("render_review_items", [])
+        except (OSError, ValueError, KeyError):
+            items = []
+        if items:
+            review[sheet.name] = items
     worst = [s for s in ("FAIL", "INSUFFICIENT", "REVIEW") if s in geometry.values()]
     gates["geometry"] = {"status": worst[0] if worst else "PASS", "sheets": geometry}
     if gaps:
         gates["geometry"]["coverage_gaps"] = gaps
+    if review:
+        # Pin text the native channel cannot qualify; the render review must cover it.
+        gates["geometry"]["render_review_items"] = review
 
     if xml.is_file():
         try:
@@ -226,7 +235,8 @@ def main():
         "sheets": [str(s) for s in sheets],
         "render": str(pdf) if pdf.is_file() else None,
         "design_closure": "checked" if args.design_closure else "NOT_CHECKED",
-        "pending": (["End-to-end design closure not checked"] if not args.design_closure else []) + ["Native render review: trace each declared reading task on every page"],
+        "pending": (["End-to-end design closure not checked"] if not args.design_closure else []) + ["Native render review: trace each declared reading task on every page"]
+                   + ([f"Native render review: check {sum(map(len, review.values()))} pin-text items listed in geometry.render_review_items"] if review else []),
         "commands": commands,
     }
     write(out / "summary.json", summary)

@@ -7,6 +7,7 @@ Records that are missing or inconsistent are reported at the top instead of gues
 """
 import argparse
 import json
+import re
 import sys
 from collections import Counter, OrderedDict
 from pathlib import Path
@@ -44,6 +45,63 @@ REQUIRED = ('electrical-intent.json', 'design-closure.json', 'design-closure-aud
 
 def text(value):
     return isinstance(value, str) and bool(value.strip())
+
+
+OPERATOR_SIGNS = {'<=': '≤', '<': '<', '>=': '≥', '>': '>'}
+SIDE_WORDS = {'no_false_trip': '不误动作', 'protection': '能保护'}
+
+
+def english_sentence(value):
+    """Prose written in English rather than Chinese. Part numbers, units and
+    all-caps acronyms (PFC, OVP, NTC) are allowed inside Chinese text."""
+    if not text(value):
+        return False
+    words = [w for w in re.findall(r'(?<![A-Za-z0-9])[A-Za-z]{3,}(?![A-Za-z0-9])', value) if not w.isupper()]
+    cjk = len(re.findall(r'[\u4e00-\u9fff]', value))
+    return len(words) >= 4 and cjk < 2 * len(words)
+
+
+def check_language(closure, notes):
+    """Everything the report shows to engineers is written in Chinese."""
+    found = []
+    def scan(where, value):
+        if english_sentence(value):
+            found.append('%s：“%s”' % (where, value.strip()[:40] + ('…' if len(value.strip()) > 40 else '')))
+    for c in closure.get('calculations') or []:
+        if not isinstance(c, dict):
+            continue
+        for field, word in (('assumptions', '假设'), ('omitted_terms', '没算进去的项')):
+            for i, v in enumerate(c.get(field) or []):
+                scan('计算 %s %s %d' % (c.get('id'), word, i + 1), v)
+        for i, chk in enumerate(c.get('checks') or []):
+            if isinstance(chk, dict):
+                scan('计算 %s 核对项 %d' % (c.get('id'), i + 1), chk.get('name'))
+    for w in closure.get('work_items') or []:
+        if isinstance(w, dict):
+            for field in ('action', 'owner', 'fallback', 'assumption'):
+                scan('待办 %s %s' % (w.get('id'), field), w.get(field))
+    for r in closure.get('requirements') or []:
+        if isinstance(r, dict):
+            scan('需求 %s 实现说明' % r.get('id'), r.get('implementation'))
+    for field in ('summary', 'changes'):
+        scan('notes %s' % field, notes.get(field))
+    for key, v in (notes.get('items') or {}).items():
+        scan('notes 待办 %s' % key, v)
+    for i, v in enumerate(notes.get('highlights') or []):
+        scan('notes 关键依据 %d' % (i + 1), v)
+    if not found:
+        return []
+    return ['下列给人看的文字是英文，要改成中文（器件型号、单位和缩写可以保留）：' + '；'.join(found[:6])
+            + ('；等共 %d 处' % len(found) if len(found) > 6 else '')]
+
+
+def check_text(chk):
+    if not isinstance(chk, dict):
+        return ''
+    side = SIDE_WORDS.get(chk.get('side'))
+    return '%s%s：%s %s %s %s' % ('[%s] ' % side if side else '', chk.get('name'), chk.get('value'),
+                                 OPERATOR_SIGNS.get(chk.get('operator'), chk.get('operator')),
+                                 chk.get('limit'), chk.get('unit') or '')
 
 
 def cell(value):
@@ -137,6 +195,7 @@ def render(root, notes=None, title=None):
         problems.append('visual-review.json 的 status 必须是 %s 之一' % '/'.join(VISUAL))
     if responses is not None:
         problems += check_responses(responses, work)
+    problems += check_language(closure, notes)
 
     gates = summary.get('gates') or {}
     shown = [(key, label, (gates.get(key) or {}).get('status')) for key, label in GATES.items() if key in gates]
@@ -245,9 +304,10 @@ def render(root, notes=None, title=None):
         out += ['## 有条件成立的计算', '',
                 '这些计算按设计用途已经够用，不阻塞出图；结论建立在下面写明的假设或没算进去的项上，'
                 '按最坏情况逐条证明留给独立审查。', '',
-                '| 计算 | 涉及的需求 | 假设或没算进去的项 |', '|---|---|---|']
+                '| 计算 | 涉及的需求 | 算出的值与门槛 | 假设或没算进去的项 |', '|---|---|---|---|']
         for c in conditional:
-            out.append('| %s | %s | %s |' % (c.get('id'), '、'.join(c.get('requirements') or []),
+            out.append('| %s | %s | %s | %s |' % (c.get('id'), '、'.join(c.get('requirements') or []),
+                                            cell('；'.join(check_text(k) for k in c.get('checks') or [])),
                                             cell('；'.join((c.get('assumptions') or []) + (c.get('omitted_terms') or [])))))
         out.append('')
 
@@ -256,6 +316,11 @@ def render(root, notes=None, title=None):
         for key, label, status in shown:
             detail = gates[key]
             extra = '，'.join('%s %s' % (k, v) for k, v in detail.items() if k in ('violations', 'errors') and v)
+            if key == 'geometry':
+                gaps = sum(len(v) for v in (detail.get('coverage_gaps') or {}).values())
+                pins = sum(len(v) for v in (detail.get('render_review_items') or {}).values())
+                extra = '，'.join(x for x in (extra, '没覆盖的对象 %d 项' % gaps if gaps else '',
+                                              '%d 个引脚文字交看图检查' % pins if pins else '') if x)
             out.append('| %s | %s%s |' % (label, GATE_RESULTS.get(status, status), ('（%s）' % extra) if extra else ''))
         out.append('')
 

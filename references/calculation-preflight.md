@@ -2,6 +2,8 @@
 
 `scripts/design_preflight.py` 自成一体，独立运行，不依赖其他技能；修改后运行 `test_calculation_preflight.py`。
 在 ASG 里它用来记录设计计算的依据：CONDITIONAL 写明假设即可，不阻塞出图（见 [设计待办记录](design-closure.md)）。
+但结论必须由 acceptance 比较得出，写进 design-closure 的 `checks`；不满足门槛的只能是 FAIL/`failed`。
+`model`、`assumptions` 等说明文字用中文写。
 它验证声明的条件、有限算术及门槛；不自动选择电路模型、证明极值方向或做量纲代数。
 
 每个 calculation 要有 id、model、expression、inputs、output_unit、acceptance、

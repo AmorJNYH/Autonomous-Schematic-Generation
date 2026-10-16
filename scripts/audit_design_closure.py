@@ -7,11 +7,23 @@ is closed; native checks and visual review remain separate.
 import argparse
 import hashlib
 import json
+import math
+import re
 from pathlib import Path
 from design_frontier import frontier
 
 
 SEVERITIES = ('P0', 'P1', 'P2', 'P3')
+OPERATORS = {'<=': lambda v, l: v <= l, '<': lambda v, l: v < l,
+             '>=': lambda v, l: v >= l, '>': lambda v, l: v > l}
+# Parts whose job is to set or clamp a voltage. Each one needs a calculation
+# naming it, so a protection threshold cannot ship as prose only.
+THRESHOLD_PART = re.compile(r'zener|tvs|tl431|atl431|lm4040|shunt.?ref|voltage.?ref|^power:vref', re.I)
+WINDOW_SIDES = ('no_false_trip', 'protection')
+
+
+def finite(x):
+    return isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x)
 
 
 def sha256(path):
@@ -45,6 +57,8 @@ def audit(record, intent_path, artifact_root, inputs=None):
         error('stale_intent', intent_path.name)
     intent = json.loads(intent_path.read_text(encoding='utf-8'))
     refs = {c['ref'] for c in intent['components']}
+    threshold_parts = sorted(c['ref'] for c in intent['components']
+                             if THRESHOLD_PART.search(str(c.get('lib_id', ''))))
     root = artifact_root.resolve()
     tables = {}
     for key in ('evidence', 'requirements', 'work_items', 'calculations'):
@@ -165,11 +179,48 @@ def audit(record, intent_path, artifact_root, inputs=None):
         # draw the schematic; proving it under every guaranteed condition belongs to independent review.
         if conclusion == 'conditional' and not (omitted or assumptions):
             error('conditional_without_assumptions', key)
+        linked(row, 'refs', refs, True)
+        # The conclusion follows from the numbers: each check compares a computed
+        # value with the limit it must meet. A failed check cannot be called
+        # conditional, and a calculation without any check proves nothing.
+        checks = row.get('checks')
+        if not isinstance(checks, list) or not checks:
+            error('missing_checks', key)
+            checks = []
+        results, sides = [], set()
+        for i, c in enumerate(checks):
+            where = key + ':checks[' + str(i) + ']'
+            if (not isinstance(c, dict) or not isinstance(c.get('name'), str) or not c['name'].strip()
+                    or not finite(c.get('value')) or not finite(c.get('limit'))
+                    or c.get('operator') not in OPERATORS or not isinstance(c.get('unit'), str)):
+                error('schema', where + ' needs name, finite value/limit, operator (<=, <, >=, >) and unit')
+                continue
+            results.append(OPERATORS[c['operator']](c['value'], c['limit']))
+            if c.get('side') is not None:
+                if c['side'] not in WINDOW_SIDES:
+                    error('schema', where + ':side must be no_false_trip or protection')
+                sides.add(c['side'])
+        if results and conclusion in ('supported', 'conditional') and not all(results):
+            error('conclusion_contradicts_checks', key)
+        if results and conclusion == 'failed' and all(results):
+            error('conclusion_contradicts_checks', key)
+        # A threshold has two sides: normal operation must stay clear of the
+        # minimum trip point, and the maximum trip point must still protect.
+        if row.get('kind') == 'threshold':
+            for side in WINDOW_SIDES:
+                if side not in sides:
+                    error('threshold_window_incomplete', key + ':' + side)
+        elif row.get('kind') is not None:
+            error('schema', key + ':kind must be threshold when present')
         if conclusion == 'failed':
             need('calculation_failed', key)
             for rid in row.get('requirements', []):
                 if rid in requirements and requirements[rid].get('status') == 'design_supported':
                     error('unsupported_calculation_dependency', rid + ':' + key)
+    covered = {r for row in calculations.values() if isinstance(row.get('refs'), list) for r in row['refs']}
+    for ref in threshold_parts:
+        if ref not in covered:
+            error('threshold_part_uncalculated', ref)
     if not calculations and not record.get('no_calculations_reason'):
         need('calculation_scope_missing', 'Declare necessary calculations or explain why none apply')
     if record.get('coverage') not in ('complete', 'partial'):

@@ -350,3 +350,38 @@ class RecipeRejectionTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class RepeatedNameTests(unittest.TestCase):
+    """A label or rail already shows the net name; a local name must not repeat it."""
+
+    def sheet(self):
+        try:
+            Libraries(library_dirs()).load('Device:R')
+        except ValueError:
+            self.skipTest('KiCad symbol libraries are not installed')
+        intent = {'schema_version': 1, 'design_id': 'repeat', 'title': 'repeat', 'components': [
+            {'ref': 'R1', 'lib_id': 'Device:R', 'value': '10k', 'footprint': ''},
+            {'ref': 'R2', 'lib_id': 'Device:R', 'value': '1k', 'footprint': ''}],
+            'nets': [{'name': 'TOP_OUT', 'pins': ['R1.1']}, {'name': 'MID', 'pins': ['R1.2', 'R2.1']},
+                     {'name': 'LOW_JOIN', 'pins': ['R2.2']}], 'no_connect': []}
+        s = Sheet(intent, rails={}, external=['TOP_OUT'])
+        s.put('R1', '1', (50.8, 50.8), DOWN)
+        s.justify('R1', 'first part of a vertical chain')
+        s.label('R1.1', 'global', length=2)
+        s.series('R1.2', ['R2'], DOWN, gap=8)
+        end = s.label('R2.2', 'local', length=8, reason='joins the sense block')
+        return s, end
+
+    def test_name_on_labelled_piece_is_skipped(self):
+        s, _ = self.sheet()
+        s.name('LOW_JOIN')
+        root, report = s.build('repeat')
+        self.assertEqual(['LOW_JOIN'], report['names_skipped_already_labelled'])
+        self.assertEqual(1, sum(1 for n in all_nodes(root, 'label') if n[1] == 'LOW_JOIN'))
+
+    def test_explicit_name_on_labelled_piece_is_rejected(self):
+        s, end = self.sheet()
+        s.name('LOW_JOIN', at=end)
+        with self.assertRaisesRegex(ValueError, 'repeats a label'):
+            s.build('repeat')

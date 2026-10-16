@@ -822,18 +822,43 @@ class Sheet:
                 raise ValueError(f"{l['net']} label at {l['at']} collides; move its anchor or increase label pitch")
             obstacles.append(box.expanded(0.2))
             labels.append(dict(l))
+        def marked_runs(net):
+            """Runs of ``net`` on a connected piece that already shows its name
+            through a label or rail symbol; a second name there only repeats it."""
+            lines = wires[net]
+            ends = ([l["at"] for l in self.labels if l["net"] == net]
+                    + [e for m, _, e in self.powers if m == net])
+            marked = {i for i, (a, b) in enumerate(lines) if any(on_segment(q, a, b) for q in ends)}
+            grew = True
+            while grew:
+                grew = False
+                for i, (a, b) in enumerate(lines):
+                    if i not in marked and any({a, b} & {lines[j][0], lines[j][1]} for j in marked):
+                        marked.add(i)
+                        grew = True
+            return {lines[i] for i in marked}
+
+        skipped_names = []
         for spec in self.names:
             net = spec["net"]
             if net not in wires:
                 raise ValueError(f"{net} has no wire to carry its name")
+            marked = marked_runs(net)
             candidates = []
             if spec["at"]:
+                if any(on_segment(spec["at"], a, b) for a, b in marked):
+                    raise ValueError(f"{net}: the name at {spec['at']} repeats a label or rail symbol "
+                                     "on the same connected wire; drop the name or move it to an unlabelled piece")
                 horizontal = any(a[1] == b[1] and on_segment(spec["at"], a, b) for a, b in wires[net])
                 candidates = [(spec["at"], RIGHT if horizontal else UP)]
+            elif all(w in marked for w in wires[net]):
+                # Every piece already shows the name; placing another only duplicates text.
+                skipped_names.append(net)
+                continue
             else:
                 # Horizontal wires first (text above), then vertical (text beside);
                 # longest segment and mid-segment first, clear of pins and dots.
-                for a, b in sorted(wires[net], key=lambda w: (w[0][1] != w[1][1], -abs(w[1][0] - w[0][0])
+                for a, b in sorted((w for w in wires[net] if w not in marked), key=lambda w: (w[0][1] != w[1][1], -abs(w[1][0] - w[0][0])
                                                              - abs(w[1][1] - w[0][1]))):
                     axis = 0 if a[1] == b[1] else 1
                     steps = round(abs(b[axis] - a[axis]) / G)
@@ -953,6 +978,7 @@ class Sheet:
         report = {
             "schema_version": 1,
             "draft_failures": failures,
+            "names_skipped_already_labelled": sorted(set(skipped_names)),
             "decisions": self.decisions,
             "crossings": crossings,
             "labels": {k: sorted({l["net"] for l in labels if l["kind"] == k}) for k in ("global", "local")},

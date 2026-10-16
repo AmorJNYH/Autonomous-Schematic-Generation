@@ -41,8 +41,9 @@ class Delivery:
                  'evidence': [], 'owner': '固件供应方', 'action': '取得过压保护配置表', 'fallback': '评估独立硬件过压关断'},
                 {'id': 'W-TEST', 'stage': 'validation', 'status': 'handoff', 'requirements': ['R-OUT'],
                  'evidence': ['E1'], 'owner': '样机验证', 'action': '满载温升测试'}],
-            'calculations': [{'id': 'C1', 'requirements': ['R-OUT'], 'evidence': ['E1'],
-                              'coverage': 'partial', 'conclusion': 'conditional', 'omitted_terms': ['ripple']}]}
+            'calculations': [{'id': 'C1', 'requirements': ['R-OUT'], 'evidence': ['E1'], 'refs': ['U1'],
+                              'coverage': 'partial', 'conclusion': 'conditional', 'omitted_terms': ['ripple'],
+                              'checks': [{'name': '输出纹波', 'value': 18, 'operator': '<=', 'limit': 30, 'unit': 'mV'}]}]}
         self.write('design-closure.json', self.closure)
         self.write('design-closure-audit.json', audit(self.closure, self.record / 'electrical-intent.json', self.root))
         self.write('summary.json', {'status': 'INCOMPLETE', 'sheets': ['a', 'b'], 'gates': {
@@ -121,8 +122,29 @@ class DesignReportTests(unittest.TestCase):
     def test_conditional_calculations_listed_with_assumptions(self):
         text, _ = self.d.report()
         section = text.split('## 有条件成立的计算')[1].split('## ')[0]
-        self.assertIn('| C1 | R-OUT | ripple |', section)
+        self.assertIn('| C1 | R-OUT | 输出纹波：18 ≤ 30 mV | ripple |', section)
         self.assertIn('不阻塞出图', section)
+
+    def test_english_prose_in_records_is_a_problem(self):
+        self.d.closure['calculations'][0]['assumptions'] = [
+            'Transformer temperature, fringing and leakage require construction verification.']
+        self.d.write('design-closure.json', self.d.closure)
+        self.d.write('design-closure-audit.json', audit(self.d.closure, self.d.record / 'electrical-intent.json', self.d.root))
+        _, problems = self.d.report()
+        self.assertTrue(any('要改成中文' in p and 'C1' in p for p in problems), problems)
+
+    def test_chinese_prose_with_part_numbers_and_acronyms_is_fine(self):
+        from render_design_report import english_sentence
+        self.assertFalse(english_sentence('NCP1343的FAULT脚经BZT52H-B68检测辅助绕组过压，PFC关断后VCC由HV维持'))
+        self.assertFalse(english_sentence('Kelvin回路按TDK ETD39 p2-4核对'))
+        self.assertTrue(english_sentence('Only NCP1343 remains on VCC after auxiliary dies'))
+
+    def test_geometry_detail_counts_gaps_and_render_review_items(self):
+        self.d.write('summary.json', {'status': 'INCOMPLETE', 'sheets': ['a', 'b'], 'gates': {
+            'erc': {'status': 'PASS', 'violations': 0},
+            'geometry': {'status': 'PASS', 'render_review_items': {'a': ['x', 'y']}}}})
+        text, _ = self.d.report()
+        self.assertIn('2 个引脚文字交看图检查', text)
 
     def test_handoffs_listed_apart(self):
         text, _ = self.d.report()

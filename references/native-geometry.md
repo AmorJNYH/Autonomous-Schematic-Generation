@@ -48,8 +48,15 @@ The limited pin-name channel binds one placed symbol, used unit/convert, unique
 physical pin and original cache source span. It requires a unique active cache
 instance and an exclusive raw-name-empty render difference. Reused definitions,
 multiunit/convert variations, inheritance, hidden/empty names, power-symbol
-behavior and formatting remain gaps. **Pin numbers are never changed**; their
+behavior and formatting are not qualified. **Pin numbers are never changed**; their
 geometry remains native-review coverage rather than a falsely qualified channel.
+Pin text the library hides (`pin_numbers`/`pin_names` hide, hidden or empty
+`~` names) draws no ink and is not listed. Visible pin text this channel cannot
+qualify goes to `render_review_items`, not to gaps: the page report already
+requires native render review of pin names/numbers, so listing it as a gap only
+made every page with a symbol INSUFFICIENT. The render review must cover those
+items. Library caches and hidden properties (e.g. KiCad's `${INTERSHEET_REFS}`)
+are not checked for text variables; a visible `${...}` remains a gap.
 Different pin names, foreign fields/wires/bodies, and qualified actual symbol
 foreground outlines protect collisions. Own rectangular background fill can
 legitimately contain pin names; that does not exempt foreground strokes or other

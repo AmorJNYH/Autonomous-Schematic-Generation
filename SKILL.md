@@ -83,6 +83,9 @@ ASG 负责需求到电路的方案可行性、选型依据、设计计算和功�
 - **计算门槛按设计用途**：计算的目的是把值选对、留出裕量，让图一次出对。手册保证条件覆盖不到时，
   写明假设、余量和没算进去的项，结论记为有条件成立（`conditional`），不阻塞出图；只有算出不满足（`failed`）
   才是必须先解决的设计缺口。按最坏情况逐条证明属于独立审查，不在 ASG 内重复。
+- 每条计算给出位号（`refs`）和算出的值对门槛（`checks`），结论由数字决定；保护/检测/钳位阈值两侧都算
+  （不误动作 + 保护有效），稳压管/TVS/基准源都要有计算。见 [设计待办记录](references/design-closure.md)。
+- 器件热可行性（功耗→结温）属于选型，在本步算；散热实现才交 PCB。见 requirements-to-intent.md 第 4 节。
 - 外围电路要求中的每个数值上/下界也须逐项核原表：确切变体、版本、页/表/参数行、单位、MIN/TYP/MAX 列、脚注及测试条件。
   不能只核计算输入；TYP 或所需限值列的空白/破折号不能写成保证的 `≤`/`≥`，依赖它的负载/时序结论继续保留未知。
 - 核实决定架构的确切型号/固件能力；未证实的依赖保持条件状态，并评估替代实现。损耗预算列出主要遗漏项及有依据的边界，不能用子总和证明达标。
@@ -158,6 +161,8 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
   不凭位号或网名文字猜问题对象。无法对应时保留原违规与待核边界，见 [project-verification.md](references/project-verification.md#erc-summary-object-binding)。
 - 几何检查只覆盖本次 KiCad 导出中已合格的对象，范围与未支持对象见 [native-geometry.md](references/native-geometry.md)；
   外部 JSON 回执不能授权放行。`geometry` 为 INSUFFICIENT 时保留缺口并在 KiCad 渲染图上核对，有限 PASS 不等于整案通过。
+  库里隐藏的引脚号/脚名不计；可见但无法原生核对的引脚文字列在 `geometry.render_review_items`，
+  不算缺口，第 7 步看图检查必须逐页覆盖这些对象并在 visual-review.json 里写明。
 - 板级 `Net-(...)` 式网名须有来源证据，仅有 XML 时保持 INSUFFICIENT，见
   [project-verification.md](references/project-verification.md#automatic-looking-names-need-source-evidence)；
   编码斜杠层次字段只用 [schematic-drawing-standards.md](references/schematic-drawing-standards.md) 的有限回退，不推广。
@@ -220,6 +225,8 @@ python3 <skill>/scripts/pack_design.py <交付目录> --input requirements=<需�
 - DNP 器件保留连线和焊盘，它不等于 IC 的 NC 引脚。
 - 不得静默拍平已有层次工程；草稿图生成在新目录，确认基线未变后才写回原工程。
 - `AUTOMATED_PASS` 只代表脚本自动检查通过；数据手册审查和看图检查另行完成。如实报告缺口。
+- 给人看的文字一律用中文：`design-closure.json` 的假设、没算进去的项、核对项名称、待办、实现说明和 notes 都会原样进报告；
+  器件型号、单位和缩写（PFC、OVP）可以保留。计算脚本里写的说明也按此写。`render_design_report.py` 发现英文句子会报问题。
 
 ## 参考文件
 

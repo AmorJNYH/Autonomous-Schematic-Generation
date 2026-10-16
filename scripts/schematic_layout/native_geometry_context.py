@@ -87,7 +87,7 @@ def prepare_geometry_context(root, project, cli, workdir, pin_names=True):
     h=NativeHierarchy(root,project)
     for page in h.pages:
         result['pages'].setdefault(page['path'],{'source_sha256':h.file_sha256.get(page['path']),
-            'frames':[],'texts':[],'pin_texts':[],'owner_outlines':[],'gaps':[], 'instance':page['instance']})
+            'frames':[],'texts':[],'pin_texts':[],'owner_outlines':[],'gaps':[],'review':[], 'instance':page['instance']})
     source_files={}; env=dict(os.environ,TMPDIR=str(work/'tmp'),PYTHONDONTWRITEBYTECODE='1')
     def run(argv):
         before=configuration_hashes(); start=now()
@@ -259,6 +259,9 @@ def prepare_geometry_context(root, project, cli, workdir, pin_names=True):
                 data['gaps'].append('native arc ink unsupported: '+reason+': d='+baseline[nativepage].objects[key]['attrs'].get('d','')[:120])
             def unknown_display(n):
                 if isinstance(n,list):
+                    # Library caches are definitions, and hidden properties
+                    # (e.g. KiCad's Intersheetrefs) produce no page ink.
+                    if n and (n[0]=='lib_symbols' or (n[0]=='property' and hidden(n))): return
                     if n and n[0]=='font' and first(n,'face') is not None: data['gaps'].append('native display: external font face remains unsupported')
                     for child in n: unknown_display(child)
                 elif isinstance(n,str) and '${' in n and n!='${KIPRJMOD}':
@@ -296,7 +299,13 @@ def prepare_geometry_context(root, project, cli, workdir, pin_names=True):
                     match=re.search(r'_(\d+)_(\d+)$',str(sub[1]))
                     if match and match[1] in ('0',unit) and match[2]=='1': active+=all_nodes(sub,'pin')
                 if not active: continue
-                data['gaps'].append('pin-text:'+str(uid)+': physical pin-number native render review remains unqualified')
+                # Pin text the library hides draws no ink. Visible pin text that
+                # this channel cannot qualify is a render-review item: the page
+                # report already requires native review of pin names/numbers, so
+                # it does not also make the page INSUFFICIENT.
+                if not hidden(first(lib,'pin_numbers',[])):
+                    data['review'].append('pin-number:'+str(uid)+': physical pin numbers need native render review')
+                if hidden(first(lib,'pin_names',[])) or not any(visible_name(p) for p in active): continue
                 nums=[str(value(p,'number','')) for p in active]
                 if (not uid or first(lib,'extends') or first(lib,'power') is not None
                     or str(value(symbol,'dnp','no'))!='no'
@@ -305,7 +314,7 @@ def prepare_geometry_context(root, project, cli, workdir, pin_names=True):
                     or sum(value(s,'lib_id')==libid for s in symbols)!=1
                     or len(set(nums))!=len(nums) or '' in nums
                     or any(str(value(s,'lib_id'))==libid for path,t in h.trees.items() if path!=root.parent/rel for s in all_nodes(t,'symbol'))):
-                    data['gaps'].append('pin-name:'+str(uid)+': ambiguous/shared/unsupported cache identity'); continue
+                    data['review'].append('pin-name:'+str(uid)+': ambiguous/shared/unsupported cache identity'); continue
                 try:
                     graphics=[]
                     for sub in all_nodes(lib,'symbol'):
@@ -318,11 +327,11 @@ def prepare_geometry_context(root, project, cli, workdir, pin_names=True):
                         outline.update({'id':str(uid)+':outline:'+str(oi),'symbol_uuid':str(uid)})
                         data['owner_outlines'].append(outline)
                 except (ValueError,KeyError,TypeError,IndexError) as exc:
-                    data['gaps'].append('pin-text:'+str(uid)+': own foreground outline incomplete: '+str(exc))
+                    data['review'].append('pin-name:'+str(uid)+': own foreground outline incomplete: '+str(exc))
                 for pin in active:
                     number=str(value(pin,'number')); name=first(pin,'name')
+                    if not visible_name(pin): continue
                     try:
-                        if not name or len(name)<2 or not name[1] or name[1]=='~' or first(pin,'hide') is not None or 'hide' in pin: raise ValueError('hidden/empty pin name')
                         if first(first(first(name,'effects',[]),'font',[]),'face') is not None: raise ValueError('external pin font unsupported')
                         if any(c in str(name[1]) for c in ('${','~{','^{','_{','\\')): raise ValueError('formatted/variable pin name')
                         nodepath=nodepaths[id(name)]+(1,)
@@ -334,7 +343,7 @@ def prepare_geometry_context(root, project, cli, workdir, pin_names=True):
                             'page_stroke_upper_mm':stroke_upper,'witness':'mask-%04d'%counter})
                         data['pin_texts'].append(ink)
                     except (ValueError,KeyError,IndexError,TypeError) as exc:
-                        data['gaps'].append('pin-name:'+str(uid)+':'+number+': '+str(exc))
+                        data['review'].append('pin-name:'+str(uid)+':'+number+': '+str(exc))
         if result['source_sha256']!={name:sha(p) for name,p in source_files.items()}: raise ValueError('original source changed during job')
         configs=[c['config_before'] for c in result['commands']]
         if any(c!=configs[0] for c in configs): raise ValueError('renderer configuration changed between exports')
@@ -349,6 +358,22 @@ def prepare_geometry_context(root, project, cli, workdir, pin_names=True):
     result._workdir=str(work.resolve())
     result._sealed_sha256=result.digest()
     return result
+
+def hidden(node):
+    """True when a property/pin_names/pin_numbers node is hidden (KiCad 6-10 syntaxes)."""
+    if not isinstance(node,list): return False
+    for n in [node]+all_nodes(node,'effects'):
+        if any(str(x)=='hide' for x in n[1:] if not isinstance(x,list)): return True
+        h=first(n,'hide')
+        if h is not None and (len(h)==1 or str(h[1])=='yes'): return True
+    return False
+
+
+def visible_name(pin):
+    name=first(pin,'name')
+    return bool(name and len(name)>1 and str(name[1]) not in ('','~')
+                and not hidden(name) and not hidden(pin))
+
 
 def load_page_context(path, schematic, expected_sha256):
     # Serialized evidence cannot authorize coverage, even with a matching SHA.

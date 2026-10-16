@@ -215,3 +215,30 @@
   readability PASS; the eight inherited `power_pin_not_driven` ERC findings;
   root `System_block` geometry INSUFFICIENT for sheet/polyline objects).
 
+
+## 100 W PD R1 review follow-up (2026-10-16)
+
+Problems found reviewing the 100 W PD R1 delivery, traced to skill rules:
+
+- D403 aux-OVP zener shipped with prose only ("30 V envelope"); by estimate the circuit
+  trips near 24 V output and no calculation covered it. Calculations now carry
+  `refs` and numeric `checks`; `kind: "threshold"` needs both a
+  `no_false_trip` and a `protection` side; every zener/TVS/reference in the
+  intent must be named by a calculation (`threshold_part_uncalculated`).
+- All 16 calculations were `conditional` because the project script hardcoded
+  it. The conclusion must now agree with the checks
+  (`conclusion_contradicts_checks`); a calculation without checks is rejected.
+- LDO dissipation (0.73 W, MSOP) was left as "verify": device thermal
+  feasibility (power → junction temperature) is now part of selection; only
+  heat-sinking implementation goes to PCB.
+- Repeated net text (`PFC_DRV PFC_DRV`): `Sheet.name()` no longer places a
+  name on a connected piece that already has a label or rail symbol of that net.
+- Geometry was INSUFFICIENT on every page with a symbol: pin numbers were
+  appended as gaps unconditionally, shared-cache pin names too, and hidden
+  `${INTERSHEET_REFS}`/cached `${KICAD9_SYMBOL_DIR}` counted as display
+  variables. Library-hidden pin text is ignored; visible unqualified pin text
+  is `render_review_items` for the render review. On R1: 5 pages PASS, 2 REVIEW
+  (the two dispositioned clearance warnings), 1 INSUFFICIENT (filled arc in the
+  USB-C symbol); pin-text items about 520 → 93.
+- Calculation assumptions were English: record prose shown in the report must
+  be Chinese; `render_design_report.py` reports English sentences as problems.

@@ -160,6 +160,9 @@ class Scene:
     junctions: list[Point] = field(default_factory=list)
     no_connects: list[Point] = field(default_factory=list)
     gaps: list[str] = field(default_factory=list)
+    # Visible native text this checker cannot qualify; covered by render review,
+    # so it does not make the page INSUFFICIENT.
+    review: list[str] = field(default_factory=list)
     sheet_pins: list[tuple[str, Point]] = field(default_factory=list)
     # Annotation ink is never an electrical wire or a connectivity anchor.
     graphic_segments: list[tuple[str, Point, Point, float]] = field(default_factory=list)
@@ -630,6 +633,7 @@ def read_scene(root, native_context=None):
             width,height=native_context["page_mm"]
             scene.page=Box(0,0,min(scene.page.x_max,width),min(scene.page.y_max,height))
         scene.gaps.extend(native_context.get("gaps", []))
+        scene.review.extend(native_context.get("review", []))
         scene.native_frames = native_context.get("frames", [])
         scene.native_pin_texts = native_context.get("pin_texts", [])
         scene.native_owner_outlines = native_context.get("owner_outlines", [])
