@@ -70,4 +70,4 @@ python3 <skill>/scripts/pack_design.py <交付目录> --input requirements=<需�
 `设计资料/` 里的表格（有位号列的 CSV）和装配文件（JSON 的 `ref`/`refs`/`fit`/`dnp`）提到的位号都在设计要求表里，
 表格给出的型号（mpn）和值（value）与设计要求表一致——说明文字里提到的位号和描述不在自动检查范围，改版时要人工清理；
 `record/` 只有允许的子目录；没有日志和超大文件；`design-closure.json` 在交付目录内重新审核不出错；
-报告用到的记录没有问题——其中任何一项自动检查是 REVIEW 都算问题（画图缺陷要改图到 PASS，不能交给人复核），打包失败。通过后写 `record/manifest.json`。
+报告用到的记录没有问题——可读性或几何检查 FAIL 也算问题（画图问题要改图到 PASS），打包失败。通过后写 `record/manifest.json`。

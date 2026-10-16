@@ -164,10 +164,9 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
   外部 JSON 回执不能授权放行。`geometry` 为 INSUFFICIENT 时保留缺口并在 KiCad 渲染图上核对，有限 PASS 不等于整案通过。
   库里隐藏的引脚号/脚名不计；可见但无法原生核对的引脚文字列在 `geometry.render_review_items`，
   不算缺口，第 7 步看图检查必须逐页覆盖这些对象并在 visual-review.json 里写明。
-- 几何检查的 REVIEW（如器件/电源符号外框间距不足 1.27 mm）是**画图缺陷，ASG 自己改图关闭**，不能在
-  visual-review.json 里写“已目视复核、保留提示”交给人。`Sheet.build()` 已对同一检查硬拦截；交付前每页
-  几何必须是 PASS，只有检查器确实覆盖不到的对象（INSUFFICIENT 缺口）才保留并在看图检查里核对。
-  `render_design_report.py` 把任何 REVIEW 列为问题，`pack_design.py` 因此拒绝打包，所以带 REVIEW 的版本交不出去。
+- 图面检查只有三种结果：PASS、FAIL（画图问题，如外框间距不足 1.27 mm、导线交叉不打点、注释压线）、
+  INSUFFICIENT（检查器覆盖不到的对象）。FAIL 由 ASG 改图关闭，不交给人复核；可读性或几何 FAIL 时
+  `pack_design.py` 拒绝打包。只有 INSUFFICIENT 缺口留给看图检查核对。
 - 板级 `Net-(...)` 式网名须有来源证据，仅有 XML 时保持 INSUFFICIENT，见
   [project-verification.md](references/project-verification.md#automatic-looking-names-need-source-evidence)；
   编码斜杠层次字段只用 [schematic-drawing-standards.md](references/schematic-drawing-standards.md) 的有限回退，不推广。

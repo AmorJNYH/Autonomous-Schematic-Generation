@@ -67,14 +67,14 @@ class SheetPolyline(unittest.TestCase):
         for extras in ['(stroke (width 0.254) (type default))','(pts (xy 20 20) (xy 60 20))']:
             with self.subTest(extras=extras):
                 self.assertEqual(report(scene(extras=extras))['status'],'INSUFFICIENT')
-    def test_graphic_crossing_is_review_warning_without_connectivity(self):
+    def test_graphic_crossing_fails_without_connectivity(self):
         s=scene();s.wires=[((40,10),(40,30))]
         r=report(s);hits=[f for f in r['findings']if f['code']=='graphic_wire']
-        self.assertEqual([f['severity']for f in hits],['warning'])
-    def test_conservative_text_collision_requires_review_not_pass(self):
+        self.assertEqual([f['severity']for f in hits],['error'])
+    def test_conservative_text_collision_fails_not_pass(self):
         s=scene();s.labels=[('text',TextField('LABEL',40,20))]
-        r=report(s);self.assertEqual(r['status'],'REVIEW')
-        self.assertEqual([(f['code'],f['severity'])for f in r['findings']],[('graphic_text','warning')])
+        r=report(s);self.assertEqual(r['status'],'FAIL')
+        self.assertEqual([(f['code'],f['severity'])for f in r['findings']],[('graphic_text','error')])
     def test_round_cap_clear_of_symbol_corner(self):
         s=scene('(xy 20 40) (xy 40 40)')
         s.symbols=[Symbol('U1','Test:X',1,[],Box(40.1,40.1,45,45),[],[])]

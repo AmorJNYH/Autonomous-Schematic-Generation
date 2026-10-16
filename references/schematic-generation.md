@@ -167,19 +167,17 @@ Checks follow each ink segment and half-width round-cap envelope, not the
 empty interior of an outline or a diagonal's enclosing box. Text/body and
 page/title collisions are findings within the conservative bounds model.
 Text envelopes are conservative estimates: a candidate ink/text intersection
-is a warning with `REVIEW`, never an automatic claim that native glyphs collide.
-Inspect each candidate in the actual render, recording real obstruction as
-REWORK_REQUIRED and a clear glyph gap as an individual false positive. A
-warning does not become automated PASS through manual classification.
-Crossing an electrical wire or pin leg is a visual warning requiring native
-inspection; annotation ink never creates a net contact or electrical anchor.
+is a FAIL to redraw away, not a claim that native glyphs collide and not an
+item for manual classification. Annotation ink crossing an electrical wire or
+pin leg is also a FAIL to redraw; it never creates a net contact or anchor.
 Unknown properties, fills, dash styles, implicit/zero widths and malformed
 points retain coverage gaps. Hierarchical frames and other unsupported sheet
 graphics remain separate gaps.
 
 `PASS` means no finding within the model. `FAIL` is a detected defect;
-`INSUFFICIENT` is unsupported geometry or missing cached symbols; `REVIEW` is a
-remaining warning such as an undotted crossing. Never erase the coverage gaps
+`INSUFFICIENT` is unsupported geometry or missing cached symbols. There is no
+warning state: close clearance, undotted crossings and annotation overlaps are
+drawing defects ASG fixes by redrawing. Never erase the coverage gaps
 to force a passing report. Pin names/numbers, custom drawings and exact font
 metrics require native rendering. Arc bounds are conservative full-circle boxes.
 Existing rotated/mirrored non-centred fields and other local-label spins are

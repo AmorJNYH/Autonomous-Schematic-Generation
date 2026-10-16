@@ -30,8 +30,7 @@ GATES = OrderedDict([
     ('design_change', '改动与预期一致'),
 ])
 GATE_RESULTS = OrderedDict([('PASS', '通过（PASS）'), ('FAIL', '没通过（FAIL）'),
-                            ('INSUFFICIENT', '资料不足（INSUFFICIENT）'), ('CONDITIONAL', '有条件通过'),
-                            ('REVIEW', '没通过：要改图（REVIEW）')])
+                            ('INSUFFICIENT', '资料不足（INSUFFICIENT）'), ('CONDITIONAL', '有条件通过')])
 VISUAL = {'REVIEWED': '已完成', 'REVIEW_PENDING': '还没做完', 'REWORK_REQUIRED': '发现要返工的地方'}
 STAGES = {'requirement': '等用户定需求', 'design': '设计没做完', 'external': '缺外部资料', 'validation': '样机或试验验证', 'pcb': 'PCB 实现'}
 REQUIREMENTS = OrderedDict([('design_supported', '有设计依据'), ('conditional', '有条件成立'), ('open', '还没有设计')])
@@ -202,12 +201,11 @@ def render(root, notes=None, title=None):
     gates = summary.get('gates') or {}
     shown = [(key, label, (gates.get(key) or {}).get('status')) for key, label in GATES.items() if key in gates]
     gate_counts = Counter(status for _, _, status in shown)
-    # REVIEW is a drawing defect ASG closes by redrawing; a delivery cannot hand
-    # it to a person. Listing it as a problem also makes pack_design.py fail.
+    # Drawing gates are ASG's own work: a failed one is redrawn, never delivered.
+    # Listing it as a problem also makes pack_design.py refuse the delivery.
     for key, label, status in shown:
-        if status == 'REVIEW':
-            problems.append('自动检查“%s”是 REVIEW：这是画图缺陷，要改图直到 PASS 再重新验证，'
-                            '不能在看图检查里写“已复核、保留提示”交给人' % label)
+        if key in ('readability', 'geometry') and status == 'FAIL':
+            problems.append('“%s”没通过：这是画图问题，改图到 PASS 再重新验证后才能交付' % label)
     open_work = [w for w in work.values() if w.get('status') == 'open']
     handoffs = [w for w in work.values() if w.get('status') == 'handoff']
     req_counts = Counter(r.get('status') for r in requirements)

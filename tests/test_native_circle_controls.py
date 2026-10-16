@@ -109,12 +109,19 @@ class NativeCircleControls(unittest.TestCase):
                 self.assertEqual(pins(initial),pins(tree))
 
     def test_existing_gap_cannot_turn_a_measured_rejection_into_missing(self):
-        for name in ('gap-only','warning-only'):
-            _,old,new=self.rows[name]
-            self.assertEqual(old['status'],new['status'])
-            self.assertEqual(old['findings'],new['findings'])
-            self.assertEqual(old['coverage']['gaps'],new['coverage']['gaps'])
-            self.assertIn('hide measured',new['native_contact_qualification']['reason'])
+        _,old,new=self.rows['gap-only']
+        self.assertEqual(old['status'],new['status'])
+        self.assertEqual(old['findings'],new['findings'])
+        self.assertEqual(old['coverage']['gaps'],new['coverage']['gaps'])
+        self.assertIn('hide measured',new['native_contact_qualification']['reason'])
+
+    def test_removed_contact_never_turns_a_failing_page_into_pass(self):
+        # The annotation crossing is itself a drawing failure, so the page stays FAIL
+        # even when the false wire_body contact is qualified away.
+        _,old,new=self.rows['warning-only']
+        self.assertEqual('FAIL',old['status']);self.assertEqual('FAIL',new['status'])
+        self.assertIn('graphic_text',new['counts'])
+        self.assertEqual(old['coverage']['gaps'],new['coverage']['gaps'])
 
 class WholeWireGlyphTests(unittest.TestCase):
     def test_visible_literal_hide_outside_the_corridor_still_blocks_release(self):

@@ -128,7 +128,7 @@ def check_scene(scene, grid=1.27, reserved=None, body_clearance=1.27, pin_nets=N
             elif box.overlaps(other, gap_mm=body_clearance - 1e-6):
                 findings.append({"code": "body_clearance", "objects": [a, b],
                                  "detail": f"Separated bodies have less than {body_clearance:g} mm clearance; inspect in native render",
-                                 "severity": "warning"})
+                                 "severity": "error"})
     for i, (a, box) in enumerate(fields):
         # Reference and Value on the SAME component are checked as well.
         for b, other in fields[i + 1 :]:
@@ -181,7 +181,7 @@ def check_scene(scene, grid=1.27, reserved=None, body_clearance=1.27, pin_nets=N
             if _round_stroke_hits_box(a, b, box, radius):
                 findings.append({"code": "graphic_text", "objects": [name, target],
                                  "detail": "Annotation ink intersects conservative text bounds; inspect actual glyphs in native render",
-                                 "severity": "warning"})
+                                 "severity": "error"})
         for target, box in bodies:
             if _round_stroke_hits_box(a, b, box, radius):
                 add("graphic_body", [name, target], "Annotation ink crosses symbol body bounds")
@@ -193,7 +193,7 @@ def check_scene(scene, grid=1.27, reserved=None, body_clearance=1.27, pin_nets=N
                 findings.append({"code": "graphic_wire" if target.startswith("wire:") else "graphic_pin",
                                  "objects": [name, target],
                                  "detail": "Annotation ink crosses a conductor; inspect native render, no electrical contact inferred",
-                                 "severity": "warning"})
+                                 "severity": "error"})
     for i, (a, b) in enumerate(scene.wires):
         if a == b:
             add("zero_wire", [f"wire:{i}"], "Zero-length wire")
@@ -320,7 +320,7 @@ def check_scene(scene, grid=1.27, reserved=None, body_clearance=1.27, pin_nets=N
                         "code": "wire_crossing",
                         "objects": [f"wire:{i}", f"wire:{j}"],
                         "detail": "Undotted crossing: inspect in native render",
-                        "severity": "warning",
+                        "severity": "error",
                     }
                 )
     # Native channels are independent of Sheet.build's existing estimates.
@@ -396,7 +396,7 @@ def check_scene(scene, grid=1.27, reserved=None, body_clearance=1.27, pin_nets=N
     status = (
         "FAIL"
         if any(f["severity"] == "error" for f in findings)
-        else ("INSUFFICIENT" if gaps else ("REVIEW" if findings else "PASS"))
+        else ("INSUFFICIENT" if gaps else "PASS")
     )
     return {
         "status": status,

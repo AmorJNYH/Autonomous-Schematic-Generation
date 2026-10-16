@@ -70,7 +70,7 @@ class DesignReportTests(unittest.TestCase):
         lines = [l for l in text.splitlines() if l.strip()]
         self.assertEqual(lines[1], '## 结论')
         self.assertEqual(lines[2], '- **规模**：器件 2 个，图纸 2 页。')
-        self.assertEqual(lines[3], '- **自动检查**：共 3 项。通过（PASS） 2 项，没通过（FAIL） 0 项，资料不足（INSUFFICIENT） 1 项，没通过：要改图（REVIEW） 0 项。')
+        self.assertEqual(lines[3], '- **自动检查**：共 3 项。通过（PASS） 2 项，没通过（FAIL） 0 项，资料不足（INSUFFICIENT） 1 项。')
         self.assertIn('- **需求**：共 1 条。有设计依据 0 条，有条件成立 1 条，还没有设计 0 条。', text)
         self.assertIn('- **设计是否完成**：还没完成。还差：', text)
         self.assertIn('1 项自动检查资料不足或没做：图面几何（重叠、穿线）', text)
@@ -139,12 +139,13 @@ class DesignReportTests(unittest.TestCase):
         self.assertFalse(english_sentence('Kelvin回路按TDK ETD39 p2-4核对'))
         self.assertTrue(english_sentence('Only NCP1343 remains on VCC after auxiliary dies'))
 
-    def test_geometry_review_is_a_problem_that_blocks_delivery(self):
-        self.d.write('summary.json', {'status': 'INCOMPLETE', 'sheets': ['a', 'b'], 'gates': {
-            'erc': {'status': 'PASS', 'violations': 0}, 'geometry': {'status': 'REVIEW'}}})
+    def test_failed_drawing_gate_is_a_problem(self):
+        self.d.write('summary.json', {'status': 'FAIL', 'sheets': ['a', 'b'], 'gates': {
+            'erc': {'status': 'PASS', 'violations': 0}, 'geometry': {'status': 'FAIL'}}})
         text, problems = self.d.report()
-        self.assertTrue(any('REVIEW' in p and '改图' in p for p in problems), problems)
-        self.assertIn('没通过：要改图（REVIEW） 1 项', text)
+        self.assertTrue(any('图面几何' in p and '改图' in p for p in problems), problems)
+        self.assertIn('没通过（FAIL） 1 项', text)
+        self.assertNotIn('REVIEW', text)
 
     def test_geometry_detail_counts_gaps_and_render_review_items(self):
         self.d.write('summary.json', {'status': 'INCOMPLETE', 'sheets': ['a', 'b'], 'gates': {
@@ -197,13 +198,13 @@ class PackDesignTests(unittest.TestCase):
     def run_pack(self):
         return pack(self.d.root, {'requirements': str(self.inputs)})
 
-    def test_geometry_review_cannot_be_packed(self):
-        self.d.write('summary.json', {'status': 'INCOMPLETE', 'sheets': ['a', 'b'], 'gates': {
-            'erc': {'status': 'PASS', 'violations': 0}, 'geometry': {'status': 'REVIEW'}}})
+    def test_failed_drawing_gate_cannot_be_packed(self):
+        self.d.write('summary.json', {'status': 'FAIL', 'sheets': ['a', 'b'], 'gates': {
+            'erc': {'status': 'PASS', 'violations': 0}, 'geometry': {'status': 'FAIL'}}})
         text, _ = self.d.report()
         (self.d.root / REPORT).write_text(text)
         errors, _ = self.run_pack()
-        self.assertTrue(any('REVIEW' in e for e in errors), errors)
+        self.assertTrue(any('图面几何' in e for e in errors), errors)
 
     def test_clean_delivery_packs_with_manifest(self):
         errors, manifest = self.run_pack()

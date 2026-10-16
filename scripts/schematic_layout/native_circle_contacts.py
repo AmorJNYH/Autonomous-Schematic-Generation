@@ -410,7 +410,7 @@ def refine_wire_contacts(schematic,report,cli=None,workdir=None,expected_source_
             folder=work/record['label']
             if any(sha(folder/'source'/n)!=v for n,v in record['input_sha256'].items()) or any(sha(folder/'svg'/n)!=v for n,v in record['svg_sha256'].items()):raise ValueError('fresh raw witness binding drift')
         out['findings']=kept;out['counts']=dict(Counter(f['code'] for f in kept))
-        out['status']='FAIL' if any(f['severity']=='error' for f in kept) else 'INSUFFICIENT' if out['coverage']['gaps'] else 'REVIEW' if kept else 'PASS'
+        out['status']='FAIL' if kept else 'INSUFFICIENT' if out['coverage']['gaps'] else 'PASS'
         evidence['status']='QUALIFIED';evidence['removed']=[{'code':f['code'],'objects':f['objects']} for f in removable]
     except (ValueError,OSError,KeyError,TypeError,IndexError,StopIteration,subprocess.SubprocessError) as exc:
         evidence['reason']=str(exc)

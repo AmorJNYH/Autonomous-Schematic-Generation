@@ -258,3 +258,7 @@ Problems found reviewing the 100 W PD R1 delivery, traced to skill rules:
   body_overlap check on the built page and fails (draft: records it), and
   SKILL.md forbids handing geometry REVIEW to a human. The report shows
   REVIEW as 没通过：要改图.
+- Simplified: the geometry gate has no REVIEW state any more. Its four former
+  warnings (body_clearance, graphic_text, graphic_wire/pin, wire_crossing) are
+  errors, so a page is PASS, FAIL or INSUFFICIENT; a readability/geometry FAIL
+  is a report problem and blocks packing.

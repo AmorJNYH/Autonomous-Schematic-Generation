@@ -191,7 +191,7 @@ def main():
             items = []
         if items:
             review[sheet.name] = items
-    worst = [s for s in ("FAIL", "INSUFFICIENT", "REVIEW") if s in geometry.values()]
+    worst = [s for s in ("FAIL", "INSUFFICIENT") if s in geometry.values()]
     gates["geometry"] = {"status": worst[0] if worst else "PASS", "sheets": geometry}
     if gaps:
         gates["geometry"]["coverage_gaps"] = gaps
