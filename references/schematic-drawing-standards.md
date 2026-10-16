@@ -142,10 +142,9 @@ Keep exact failing inputs and findings, adjust the relevant layout block, and
 regenerate into a new output directory. Repeat affected native/geometry/render
 checks after edits. Do not make untracked coordinate patches bypassing intent.
 
-For EasyEDA Pro, hand off to `easyeda-schematic-draw` with the same electrical
-mapping and readability criteria. For unsupported native KiCad authoring, use
-a scoped project writer; preserve multi-unit/hierarchy information and apply
-the same gates instead of flattening the input.
+For unsupported native KiCad authoring, use a scoped project writer; preserve
+multi-unit/hierarchy information and apply the same gates instead of
+flattening the input.
 
 Encoded-slash hierarchical label text retains its conservative raw-text extent
 and native-review coverage gaps. Only the default scalar fallback with strict
