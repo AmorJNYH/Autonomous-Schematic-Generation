@@ -1,0 +1,72 @@
+{
+  "generated": "2026-10-19",
+  "boards": {
+    "100W-PD-R1": {
+      "report_problems": 4,
+      "pack_errors": 8,
+      "gates": {
+        "erc": "PASS",
+        "intent_netlist": "PASS",
+        "hierarchy": "PASS",
+        "symbol_integrity": "PASS",
+        "readability": "PASS",
+        "geometry": "INSUFFICIENT",
+        "external_supply": "PASS",
+        "reference_contract": "PASS"
+      },
+      "open_work": 2
+    },
+    "100W-PD-R2": {
+      "report_problems": 4,
+      "pack_errors": 7,
+      "gates": {
+        "erc": "PASS",
+        "intent_netlist": "PASS",
+        "hierarchy": "PASS",
+        "symbol_integrity": "PASS",
+        "discrete_semantics": "PASS",
+        "readability": "PASS",
+        "geometry": "PASS",
+        "external_supply": "PASS",
+        "reference_contract": "PASS",
+        "design_change": "CONDITIONAL"
+      },
+      "open_work": 2
+    },
+    "100W-PD-R3": {
+      "report_problems": 28,
+      "pack_errors": 31,
+      "gates": {
+        "erc": "PASS",
+        "intent_netlist": "PASS",
+        "hierarchy": "PASS",
+        "symbol_integrity": "PASS",
+        "discrete_semantics": "PASS",
+        "readability": "PASS",
+        "geometry": "PASS",
+        "external_supply": "PASS",
+        "reference_contract": "PASS",
+        "design_change": "CONDITIONAL"
+      },
+      "open_work": 15
+    },
+    "100W-PD-R4": {
+      "report_problems": 14,
+      "pack_errors": 14,
+      "gates": {
+        "erc": "PASS",
+        "intent_netlist": "PASS",
+        "hierarchy": "PASS",
+        "system_block": "PASS",
+        "symbol_integrity": "PASS",
+        "discrete_semantics": "PASS",
+        "readability": "PASS",
+        "geometry": "PASS",
+        "external_supply": "PASS",
+        "reference_contract": "PASS",
+        "design_change": "CONDITIONAL"
+      },
+      "open_work": 20
+    }
+  }
+}

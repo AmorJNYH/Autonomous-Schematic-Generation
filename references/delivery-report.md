@@ -21,6 +21,7 @@
 | `summary.json` | `verify_schematic.py` 的自动检查结果，原样复制 |
 | `page-plan.json` | 页面方案表：`{"schema_version": 1, "pages": [{"file", "reader_tasks": [...], "blocks": {块名: [位号]}}]}`；本页每个器件属于一个功能块 |
 | `selection.json` | 核心器件选型：每个角色的位号、决定性条件、候选来源、≥2 个候选（选中/淘汰理由、相对知识库的手册路径）；每个 U/Q/T 器件都要属于一个角色，格式见 [核心器件选型](core-part-selection.md) |
+| `lessons.json` | 本版学到的东西：`{"schema_version": 1, "events": [{"source", "cause", "change" 或 "why_none", "why_not_rule"}]}`；来源只能是 `review:<审查目录>/<待办编号>`、`datasheet:<库内路径>#p<页>`、`test:<记录>`、`user:<日期>`；归因与改动位置的要求见 [处理审查意见](review-comments.md) |
 | `visual-review.json` | 看图检查：`{"status": "REVIEWED/REVIEW_PENDING/REWORK_REQUIRED", "pages": [{"page", "file", "paths", "problems", "render_review_items": [{"item", "disposition"}]}]}`；每页 `paths` 不少于读者任务数，每条引脚文字处置点名器件并写出看到了什么，同一句不能套用到不同器件 |
 | `delivery-evidence.json` | 导出后有没有再改过的核对记录 |
 | `review-responses.json` | 收到审查意见时必有，格式见 [处理审查意见](review-comments.md) |

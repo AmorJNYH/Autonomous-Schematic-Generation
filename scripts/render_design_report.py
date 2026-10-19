@@ -50,7 +50,16 @@ PAGE_PATTERN = re.compile(r'(?<![A-Za-z0-9])\d{2}_[A-Za-z][A-Za-z0-9_]*|System_b
 # Words that describe the review process, not a design basis.
 PROCESS_WORDS = ('审查', '第一轮', '第二轮', '下一轮', '下一版', '核销', '复审')
 REQUIRED = ('electrical-intent.json', 'design-closure.json', 'design-closure-audit.json',
-            'summary.json', 'visual-review.json', 'page-plan.json', 'selection.json')
+            'summary.json', 'visual-review.json', 'page-plan.json', 'selection.json', 'lessons.json')
+CAUSES = ('rule_missing', 'rule_not_enforced', 'knowledge_missing', 'knowledge_wrong', 'judgment')
+CAUSE_WORDS = {'rule_missing': '缺规则', 'rule_not_enforced': '规则没执行', 'knowledge_missing': '缺知识',
+               'knowledge_wrong': '知识有错', 'judgment': '判断失误', 'none': '无需改'}
+# Where a change for each cause class must land: rules become gates, knowledge goes to references or the library.
+CAUSE_TARGETS = {'rule_missing': ('scripts/',), 'rule_not_enforced': ('scripts/',),
+                 'knowledge_missing': ('references/', 'wiki/', 'raw/'), 'knowledge_wrong': ('references/', 'wiki/', 'raw/'),
+                 'judgment': ('SKILL.md', 'references/')}
+SOURCE_PATTERN = re.compile(r'^(review:[^/\s]+/\S+|datasheet:.+#p\d+|test:\S+|user:\d{4}-\d{2}-\d{2})$')
+PAGE_REF = re.compile(r'(p\.?\s?\d+|第\s?\d+\s?页|W-[A-Z0-9-]+)')
 SELECTION_STATUS = ('selected', 'rejected', 'alternate')
 CORE_REF = re.compile(r'^[UQT]\d')
 
@@ -247,6 +256,38 @@ def check_selection(data, intent, root):
     return problems
 
 
+def check_lessons(data):
+    """What this version taught the skill: each event has a source, a cause class and a concrete change."""
+    events = data.get('events') if isinstance(data, dict) else None
+    if not isinstance(events, list) or not events:
+        return ['lessons.json 没有 events：每次设计至少登记一条学到的东西，没有就登记 cause=none 并写明核对了什么'], {}
+    problems, by_source = [], {}
+    for i, e in enumerate(events, 1):
+        if not isinstance(e, dict):
+            problems.append('lessons.json 第 %d 条不是对象' % i)
+            continue
+        source = e.get('source') if text(e.get('source')) else ''
+        if not SOURCE_PATTERN.match(source):
+            problems.append('lessons.json 第 %d 条的 source 要写成 review:<审查目录>/<待办编号>、datasheet:<库内路径>#p<页>、test:<记录> 或 user:<日期>' % i)
+        else:
+            by_source[source] = e
+        cause = e.get('cause')
+        if cause not in CAUSES and cause != 'none':
+            problems.append('lessons.json 第 %d 条的 cause 必须是 %s 或 none' % (i, '/'.join(CAUSES)))
+            continue
+        if cause == 'none':
+            why = e.get('why_none') if text(e.get('why_none')) else ''
+            if not PAGE_REF.search(why):
+                problems.append('lessons.json 第 %d 条 cause=none 要在 why_none 里引用核对过的页码或待办编号' % i)
+            continue
+        change = e.get('change') if text(e.get('change')) else ''
+        if not any(t in change for t in CAUSE_TARGETS[cause]):
+            problems.append('lessons.json 第 %d 条归因 %s，change 要指向 %s 下的具体文件' % (i, cause, '/'.join(CAUSE_TARGETS[cause])))
+        if cause == 'judgment' and not text(e.get('why_not_rule')):
+            problems.append('lessons.json 第 %d 条归因 judgment 要写 why_not_rule：为什么规则和知识都拦不住' % i)
+    return problems, by_source
+
+
 def num(value):
     """A number with three significant digits; integers and non-numbers unchanged."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
@@ -279,7 +320,7 @@ def load(path):
         return None, 'record/%s 读不出来：%s' % (path.name, error)
 
 
-def check_responses(data, work, intent=None, closure=None, root=None):
+def check_responses(data, work, intent=None, closure=None, root=None, lessons=None):
     """Each review comment has one allowed response and what that response requires.
 
     A response is work done this version, not a transcription of the comment:
@@ -315,6 +356,16 @@ def check_responses(data, work, intent=None, closure=None, root=None):
             errors.append('%s：要写明来源、在原文中的位置和意见内容' % key)
         if not text(item.get('detail')):
             errors.append('%s：要说明怎么处理、为什么' % key)
+        if lessons is not None:
+            cause = item.get('cause')
+            if cause not in CAUSES and cause != 'none':
+                errors.append('%s：要归因（cause）：%s 或 none' % (key, '/'.join(CAUSES)))
+            elif cause != 'none':
+                event = next((e for src, e in lessons.items() if src.startswith('review:') and src.endswith('/' + key)), None)
+                if event is None:
+                    errors.append('%s：归因 %s，lessons.json 里要有 source 以 /%s 结尾的事件写明改了什么' % (key, cause, key))
+                elif event.get('cause') != cause:
+                    errors.append('%s：review-responses 归因 %s，lessons.json 同一事件归因 %s，要一致' % (key, cause, event.get('cause')))
         field = RESPONSES[response][1]
         if field != 'detail' and not (isinstance(item.get(field), list) and item[field]):
             errors.append('%s：处理方式为“%s”时必须填 %s' % (key, RESPONSES[response][0], field))
@@ -381,11 +432,16 @@ def render(root, notes=None, title=None):
     if data['page-plan.json'] is not None:
         problems += check_page_plan(data['page-plan.json'], intent, visual)
     problems += check_visual_items(root, visual)
+    lessons, events = {}, None
+    if data['lessons.json'] is not None:
+        lesson_problems, events = check_lessons(data['lessons.json'])
+        problems += lesson_problems
+        lessons = data['lessons.json']
     selection = data['selection.json'] or {}
     if data['selection.json'] is not None:
         problems += check_selection(selection, intent, root)
     if responses is not None:
-        problems += check_responses(responses, work, intent, closure, root)
+        problems += check_responses(responses, work, intent, closure, root, events)
     problems += check_language(closure, notes)
     for i, h in enumerate(notes.get('highlights') or []):
         if text(h) and any(w in h for w in PROCESS_WORDS):
@@ -483,6 +539,14 @@ def render(root, notes=None, title=None):
             label = RESPONSES.get(i.get('response'), ('?',))[0]
             out.append('| %s | %s | %s | %s |' % (cell(i.get('id', '')), cell(i.get('comment', '')), label,
                                                    cell(i.get('detail', ''))))
+        out.append('')
+
+    events_list = [e for e in (lessons.get('events') or []) if isinstance(e, dict)]
+    if events_list:
+        out += ['## 本版学到的东西', '', '| 来源 | 归因 | 改了什么 |', '|---|---|---|']
+        for e in events_list:
+            out.append('| %s | %s | %s |' % (cell(e.get('source', '')), CAUSE_WORDS.get(e.get('cause'), cell(e.get('cause', ''))),
+                                            cell(e.get('change') or e.get('why_none') or '')))
         out.append('')
 
     if open_work:

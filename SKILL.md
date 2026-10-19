@@ -218,6 +218,13 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
   `scripts/check_delivery_freshness.py`；任何导出后的修改都会使旧结果作废。
 - 还有可独立完成的设计项就继续，不以列出缺口代替完成。`pack_design.py --input previous=` 会对比上一版：
   设计阶段待办变多或有依据的需求变少，必须在 notes.json 的 `regression_reason` 写明原因。
+- **写本版学到的东西** `record/lessons.json`：每条审查意见、每份改变了认识的手册页、每次用户纠正都是一个事件，
+  写来源（`review:<审查目录>/<待办编号>`、`datasheet:<库内路径>#p<页>`、`test:…`、`user:<日期>`）、归因
+  （`rule_missing`/`rule_not_enforced` 改 `scripts/`，`knowledge_missing`/`knowledge_wrong` 改 `references/` 或知识库，
+  `judgment` 写 `why_not_rule`）和改了哪个文件的哪一行；确实没学到的写 `cause: none` 并引用核对过的页码。
+  泛泛的总结不算，报告会拒绝。审查意见的归因同时写进 `review-responses.json` 的 `cause`，见 [处理审查意见](references/review-comments.md)。
+  技能或知识库改完后，在 `docs/improvement-ledger.md` 加条目（Event/Causes/Changed 三行，`scripts/check_ledger.py` 检查），
+  再跑 `scripts/run_regression.py` 确认已登记的板子没有变差。
 - 交付目录只有下面四样，由 [交付与设计报告](references/delivery-report.md) 规定，`pack_design.py` 检查：
 
 ```
@@ -265,6 +272,7 @@ python3 <skill>/scripts/pack_design.py <交付目录> --input requirements=<需�
 | 从需求写设计要求表 | [requirements-to-intent.md](references/requirements-to-intent.md) |
 | 架构页、参考设计外围、学习工程师图面 | [reference-driven-board-design.md](references/reference-driven-board-design.md) |
 | 核心器件从哪找候选、怎么比较、`selection.json` | [core-part-selection.md](references/core-part-selection.md) |
+| 技能怎样持续改进：事件、归因、台账、回归 | [docs/improvement-plan.md](docs/improvement-plan.md) |
 | 每类器件干什么、选它看什么参数（按知识库分类） | [part-roles.md](references/part-roles.md) |
 | 选符号、引脚表、外围电路要求 | [symbol-and-peripheral-contracts.md](references/symbol-and-peripheral-contracts.md) |
 | 计算条件记录 | [calculation-preflight.md](references/calculation-preflight.md) |

@@ -43,6 +43,19 @@
 - 意见指出的是审查工具自身的限制时，用 `DECLINE` 并说明设计本身已有的依据。
 - `detail` 写这一条意见本版做了什么；同一句话用在两条以上意见会被报告拒绝。
   “本次未宣称关闭，保留原任务”不是处理，是没处理。
+- 每条意见还要**归因**（`cause`）：这条意见为什么没有被技能自己拦住。只能取下面一种：
+
+  | cause | 含义 | 必须随之发生的事 |
+  |---|---|---|
+  | `rule_missing` | 没有规则或门禁检查这件事 | 在 `scripts/` 加检查，`lessons.json` 写明文件 |
+  | `rule_not_enforced` | 规则有，但没有脚本强制，被跳过了 | 把规则做成门禁，`lessons.json` 写明文件 |
+  | `knowledge_missing` | 技能和知识库都没有这条知识 | 补 `references/` 或知识库，`lessons.json` 写明文件和行 |
+  | `knowledge_wrong` | 有这条知识但是错的 | 改正并记来源，`lessons.json` 写明文件和行 |
+  | `judgment` | 规则和知识都在，判断还是错了 | `lessons.json` 写 `why_not_rule`：为什么规则和知识拦不住 |
+  | `none` | 意见不反映技能缺口（需求取舍、审查方自身限制） | 无 |
+
+  `cause` 不是 `none` 时，`record/lessons.json` 里必须有 `source` 为 `review:<审查目录>/<意见编号>` 的事件，归因一致，
+  `change` 指向对应目录下的具体文件；报告会核对。归因先于修改：归因错了，修的就是错的地方。
 
 ## 2. 意见附带的改法
 

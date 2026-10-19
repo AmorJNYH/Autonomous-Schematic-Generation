@@ -1,5 +1,43 @@
 # 此前问题点的改造闭环
 
+Every entry from here on ends with three lines the test suite checks
+(`scripts/check_ledger.py`): `Event:` the review item, datasheet page, test
+record or user correction that caused the change; `Causes:` how many items
+fell in each cause class (rule_missing, rule_not_enforced, knowledge_missing,
+knowledge_wrong, judgment); `Changed:` the files touched.
+
+## Regression skeleton and the feedback channel (2026-10-19)
+
+Improvement plan stages 0 and 1 (`docs/improvement-plan.md`). Until now a
+review's findings became skill changes only when someone read the report and
+decided what to change, and a rule change was verified only on synthetic
+fixtures.
+
+- `scripts/run_regression.py` re-runs the report and packing checks on the
+  real deliveries listed in `tests/regression/boards.json` (100 W PD R1–R4;
+  missing folders are skipped) and fails when a board's report problems,
+  packing errors or gate statuses get worse than `baseline.json`. Nothing in
+  a delivery is written.
+- `record/lessons.json` is a required delivery record: one event per review
+  item, datasheet page, test record or user correction, with a cause class
+  and the file the change landed in (rules go to `scripts/`, knowledge to
+  `references/` or the library, `judgment` must say why no rule could catch
+  it, `none` must cite what was checked). The report lists them under
+  本版学到的东西.
+- Every review response carries `cause`; a cause other than `none` must have
+  a matching event in `lessons.json` with the same class.
+- `scripts/check_ledger.py` checks this ledger's newest entry for the three
+  lines below; `tests/test_ledger.py` runs it on the real ledger.
+- The 23 R4 review items were attributed: 14 rule_not_enforced (calculations
+  the skill asked for but never enforced until d86e397's missing_guarantee
+  and progress checks), 1 rule_missing (System_block gate, 20c7011), 7
+  knowledge_missing (selection decisive conditions and part-roles rows), 1
+  judgment (calibration budget).
+
+- Event: review:SR-20261019-R3-改版前独立审查-41f4ad3/W-AC … W-DRAW (23 items, see the R4 delivery's lessons.json), user:2026-10-19
+- Causes: rule_not_enforced 14, rule_missing 1, knowledge_missing 7, judgment 1
+- Changed: scripts/run_regression.py, scripts/check_ledger.py, scripts/render_design_report.py, tests/regression/boards.json, tests/test_regression.py, tests/test_ledger.py, tests/test_design_report.py, SKILL.md, references/review-comments.md, references/delivery-report.md, README.md
+
 ## Core part selection (2026-10-19)
 
 Asked how ASG decides which core parts to use, the honest answer was that it
