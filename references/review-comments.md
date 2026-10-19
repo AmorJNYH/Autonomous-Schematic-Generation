@@ -57,6 +57,15 @@
   `cause` 不是 `none` 时，`record/lessons.json` 里必须有 `source` 为 `review:<审查目录>/<意见编号>` 的事件，归因一致，
   `change` 指向对应目录下的具体文件；报告会核对。归因先于修改：归因错了，修的就是错的地方。
 
+### 审查方对选型与归因的复核
+
+SR 按其 `references/selection-review.md` 独立复核 `selection.json` 和上一轮的归因，结果以待办编号回到报告里：
+
+- 角色 `DISAGREE` 并给出候选之外的型号：按 `DESIGN` 登记，把该型号加进候选、按决定性条件判定后再定；改了选定型号的记 `REDESIGN`。
+- `DISAGREE` 指出淘汰理由有误：改 `selection.json` 里该候选的 `values`/`reason`，`cause` 多为 `knowledge_wrong`。
+- `conditions_complete: false`：缺的决定性条件补进 `references/core-part-selection.md` 或 `part-roles.md`，`cause` 为 `knowledge_missing`。
+- 归因不同意：改 `lessons.json` 与 `review-responses.json` 的 `cause`，按新的归因改对应文件；同一条意见复发而上一轮归因为 `judgment` 的，本轮不能再归 `judgment`。
+
 ## 2. 意见附带的改法
 
 审查意见可能附带建议的电路改法。它是候选方案，不是改图指令：

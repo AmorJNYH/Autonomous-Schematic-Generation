@@ -6,6 +6,23 @@ record or user correction that caused the change; `Causes:` how many items
 fell in each cause class (rule_missing, rule_not_enforced, knowledge_missing,
 knowledge_wrong, judgment); `Changed:` the files touched.
 
+## Reviewer side of selection and attribution (2026-10-19)
+
+Improvement plan stage 5, done in the schematic-review repository
+(`scripts/review_selection.py`, `references/selection-review.md`, its own
+`docs/improvement-ledger.md` and `check_ledger.py`). SR now re-judges every
+selection role and every attributed comment independently. On this side
+review-comments.md says how those verdicts come back: a DISAGREE with an
+alternative part is a DESIGN/REDESIGN item, a wrong rejection reason is
+knowledge_wrong, a missing decisive condition is knowledge_missing, and a
+comment that recurs after a judgment attribution may not be judgment again.
+Left open: SR's own regression set over the same deliveries, which needs
+reproducible review runs.
+
+- Event: user:2026-10-19 (accepted improvement plan, stage 5)
+- Causes: rule_missing 1
+- Changed: references/review-comments.md
+
 ## Circuit pattern library, first batch (2026-10-19)
 
 Improvement plan stage 4. part-roles.md says what a kind of part does;
