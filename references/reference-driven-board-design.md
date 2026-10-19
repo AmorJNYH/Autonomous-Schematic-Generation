@@ -19,7 +19,24 @@ or unselected module into a supposedly completed circuit. Keep a block-to-page
 and requirement mapping with the project.
 
 Use native editable graphics/text for functional arrows; they must not create
-electrical wires or merge separate board netlists. Show the physical harness
+electrical wires or merge separate board netlists. Concretely, and checked by
+`scripts/audit_system_block.py` (run inside `verify_schematic.py` as the
+`system_block` gate whenever the root holds sheet blocks):
+
+- Every flow line carries a text within 6 mm naming what it stands for: the
+  rail (RECT, BULK, VRAW, VBUS) or the signals (FB/FAULT optocouplers,
+  PFC_EN_N, FLY_DRV). An arrow between two boxes without a name explains nothing.
+- Both ends of a flow line land on a block edge, an arrowhead or another
+  flow line (within one grid step). A line that stops in the void is a defect.
+- The isolation boundary is a straight line (one bend at most) with a text
+  containing 隔离 next to it; primary blocks sit on one side, secondary on the
+  other, and the line crosses no block. Arrange the blocks so that it can be
+  straight; do not snake it around a block placed on the wrong side.
+- No flow line runs through a block, and every block is reached by at least
+  one flow line.
+- Keep energy flow and control links visually distinct (stroke width or
+  direction), and use the title block's own fields: page title in `title`, the
+  project name in `company`; do not put requirement notes there. Show the physical harness
 pin mapping and control direction separately, including direct hardware fault
 paths that must not appear to depend on MCU software. Keep hierarchy navigation
 links usable. Check the final page title/order, complete page coverage, exact

@@ -31,6 +31,10 @@ UP, DOWN, LEFT, RIGHT = (0, -1), (0, 1), (-1, 0), (1, 0)
 ORIENTATIONS = [(0, ""), (90, ""), (180, ""), (270, ""), (0, "y"), (90, "y"), (180, "y"), (270, "y")]
 UPRIGHT = [(0, ""), (0, "y")]
 FLAG_SYMBOL = "power:PWR_FLAG"
+# O7: a recipe gap, stub, pitch, lead or rail/label length beyond this many grid
+# steps (15.24 mm) is reported by the structure audit unless the script records
+# why; widening a gap is the first repair, not a resting state.
+MAX_SPACING_STEPS = 12
 
 
 def flag_value(symbol, net):
@@ -139,11 +143,22 @@ class Sheet:
     structure audit in the build report.
     """
 
-    def __init__(self, intent, rails=None, external=(), paper="A4", dirs=(), power_ref_start=1):
+    def __init__(self, intent, rails=None, external=(), paper="A4", dirs=(), power_ref_start=1, blocks=None):
         validate_net_roles(intent, rails or ())
         self.intent = intent
         self.nets = pin_net_map(intent)
         self.components = {c["ref"]: c for c in intent["components"]}
+        self.blocks = {str(k): list(v) for k, v in (blocks or {}).items()}
+        seen = {}
+        for name, refs in self.blocks.items():
+            for ref in refs:
+                if ref not in self.components:
+                    raise ValueError(f"Block {name!r} names unknown part {ref}")
+                if ref in seen:
+                    raise ValueError(f"{ref} is in blocks {seen[ref]!r} and {name!r}")
+                seen[ref] = name
+        self.spacing = []
+        self.label_parts = {}
         self.libraries = Libraries(library_dirs(dirs))
         self.dirs = tuple(dirs)
         self.paper = paper
@@ -167,6 +182,12 @@ class Sheet:
         self.plan = self._suggest() if rails is not None else None
 
     # ----- outline rules --------------------------------------------------
+    def _spacing(self, subject, kind, steps, limit=None):
+        """Record a gap, pitch, stub or lead longer than O7 allows without a reason."""
+        limit = MAX_SPACING_STEPS if limit is None else limit
+        if steps > limit and (subject, kind, steps) not in self.spacing:
+            self.spacing.append((subject, kind, steps))
+
     def _is_anchor(self, ref):
         return len(self._shape(ref)[0]) >= 3 or is_connector(self.components[ref])
 
@@ -385,6 +406,7 @@ class Sheet:
 
     def stub(self, pid, n=2):
         """Leave a pin along its outward direction; returns the stub end."""
+        self._spacing(pid, "stub", n)
         end = add(self.point(pid), self.pins[pid][1], n)
         return self.wire(pid, end)
 
@@ -421,6 +443,7 @@ class Sheet:
         cur, net = self._origin(start, toward, net)
         nodes = []
         for ref in refs:
+            self._spacing(ref, "gap", gap)
             near, far = self._pair(ref, net)
             target = add(cur, toward, gap)
             self._put(ref, near, target, toward)
@@ -440,6 +463,7 @@ class Sheet:
         """Two-pin part branching off a node; its far pin gets its rail symbol (``rail=False``: returned)."""
         p, net = self._origin(node, toward)
         near, far = self._pair(ref, net)
+        self._spacing(ref, "gap", gap)
         target = add(p, toward, gap)
         self._put(ref, near, target, toward)
         self.wire(p, target, net=net)
@@ -469,7 +493,16 @@ class Sheet:
         puts it at ``start``, e.g. inline with a pin). Returns the spine end.
         """
         p, net = self._origin(start, toward)
-        pitch = pitch or self.pitch_for(refs)
+        measured = self.pitch_for(refs)
+        for ref in refs:
+            if pitch:
+                self._spacing(ref, "pitch", pitch, max(MAX_SPACING_STEPS, measured))
+            self._spacing(ref, "gap", gap)
+            if lead is not None:
+                self._spacing(ref, "lead", lead)
+            if depth is not None:
+                self._spacing(ref, "depth", depth)
+        pitch = pitch or measured
         lead = pitch if lead is None else lead
         nodes = [add(p, toward, lead + i * pitch) for i in range(len(refs))]
         if nodes[-1] != p:
@@ -529,6 +562,7 @@ class Sheet:
         Without ``symbol`` the declared rail symbol for the net is used.
         """
         net = net or self._net(target)
+        self._spacing(target if isinstance(target, str) else net, "length", length)
         symbol = symbol or self.rails.get(net) or "power:GND"
         if not symbol.startswith("power:"):
             raise ValueError(
@@ -596,6 +630,7 @@ class Sheet:
             net = net or self.net_at(p)
         if tuple(outward or ()) not in (LEFT, RIGHT, UP, DOWN):
             raise ValueError(f"{net}: a label needs an outward unit direction")
+        self._spacing(target if isinstance(target, str) else net, "length", length)
         font = font or (1.27 if kind == "global" else 1.0)
         self.labels.append({"net": net, "kind": kind, "at": p, "outward": tuple(outward), "font": font})
         if reason:
@@ -716,6 +751,31 @@ class Sheet:
                                      f"unmarked pieces={locations(n, s - marked)}. "
                                      "Join intended endpoints or name each piece with its net label/rail.")
 
+    def _label_parts(self, segments):
+        """Parts wired to each local join label's own piece of its net."""
+        parent = list(range(len(segments)))
+
+        def find(i):
+            while parent[i] != i:
+                parent[i] = parent[parent[i]]
+                i = parent[i]
+            return i
+
+        for i, (n, a, b) in enumerate(segments):
+            for j, (m, c, d) in enumerate(segments[:i]):
+                if n == m and {a, b} & {c, d}:
+                    parent[find(i)] = find(j)
+        result = {}
+        for l in self.labels:
+            if l["kind"] != "local":
+                continue
+            roots = {find(i) for i, (n, a, b) in enumerate(segments) if n == l["net"] and on_segment(l["at"], a, b)}
+            lines = [(a, b) for i, (n, a, b) in enumerate(segments) if n == l["net"] and find(i) in roots]
+            parts = {pid.rsplit(".", 1)[0] for pid, (q, _) in self.pins.items()
+                     if self.nets.get(pid) == l["net"] and any(on_segment(q, a, b) for a, b in lines)}
+            result.setdefault(l["net"], set()).update(parts)
+        return result
+
     def build(self, name="sheet", draft=False):
         """Native sheet root and a report (decisions, crossings, readability).
 
@@ -738,6 +798,7 @@ class Sheet:
         root, meta, uid, reserved = make_root(self.intent, layout, name, self.dirs)
         segments, crossings = self._segments()
         self._check_connected(segments)
+        self.label_parts = self._label_parts(segments)
         scene = read_scene(root)
         page = scene.page.expanded(-12.0)  # inside the drawing-sheet frame
         bodies = {s.ref: pin_clipped_body(s.body, [p for p in s.pins if p.point != p.inner]) for s in scene.symbols}
@@ -1022,6 +1083,19 @@ class Sheet:
             return {"status": "UNPLANNED", "findings": [], "deviations": [],
                     "note": "Declare rails and external nets to enable the outline audit."}
         found = []
+        for subject, kind, steps in self.spacing:
+            found.append({"rule": "spacing", "subject": subject, "detail":
+                          f"{kind} of {steps} grid steps exceeds {MAX_SPACING_STEPS} (O7): "
+                          "shrink it once the build passes, or record why it is needed"})
+        if self.blocks:
+            block_of = {r: n for n, rs in self.blocks.items() for r in rs}
+            for net in sorted({l["net"] for l in self.labels if l["kind"] == "local"}):
+                parts = self.label_parts.get(net, set())
+                names = {block_of.get(r) for r in parts}
+                if parts and len(names) == 1:
+                    found.append({"rule": "label", "subject": net, "detail":
+                                  f"local join label joins parts of block {names.pop()!r} only; "
+                                  "draw that connection as a wire (HR-01)"})
         used = {}
         for d in self.decisions:
             for r in d["parts"]:
@@ -1064,4 +1138,4 @@ class Sheet:
         findings = [f for f in found if f["subject"] not in self.reasons]
         deviations = [{**f, "reason": self.reasons[f["subject"]]} for f in found if f["subject"] in self.reasons]
         return {"status": "FAIL" if findings else "PASS", "findings": findings, "deviations": deviations,
-                "plan": self.plan}
+                "plan": self.plan, "blocks": self.blocks}

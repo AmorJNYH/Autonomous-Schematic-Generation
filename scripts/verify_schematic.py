@@ -32,6 +32,7 @@ from schematic_layout.native_circle_contacts import refine_wire_contacts  # noqa
 from schematic_layout.sexpr import parse, all_nodes  # noqa: E402
 from schematic_layout.scene import read_scene  # noqa: E402
 from schematic_layout.qa import check_scene  # noqa: E402
+from schematic_layout.system_block import audit_system_block  # noqa: E402
 
 
 def write(path, data):
@@ -135,6 +136,14 @@ def main():
         sheets = [args.root.resolve().parent / f for f in files if f.endswith(".kicad_sch")]
     except (OSError, ValueError, KeyError):
         sheets = [args.root]
+
+    root_node = parse(args.root.read_text(encoding="utf-8"))
+    if all_nodes(root_node, "sheet"):
+        # The cover page is graphics: flow lines must be labelled and attached, the
+        # isolation boundary visible, no block left unconnected.
+        block = audit_system_block(root_node)
+        write(out / "system-block.json", block)
+        gates["system_block"] = {"status": block["status"], "findings": len(block["findings"])}
 
     symbols = out / "symbol-integrity.json"
     extra = ["--exceptions", args.symbol_exceptions] if args.symbol_exceptions else []

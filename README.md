@@ -9,7 +9,7 @@ ASG 只做出图自检；严格的电气审查交给 `schematic-review`。
 
 流程与规则见 [SKILL.md](SKILL.md)。主要工具：
 
-- `verify_schematic.py`：一键出图门禁（ERC、网表对意图、层次、符号完整性、可读性、几何，可选参考合同与改版合同）。
+- `verify_schematic.py`：一键出图门禁（ERC、网表对意图、层次、系统框图、符号完整性、可读性与纸张、几何，可选参考合同与改版合同）；`audit_system_block.py` 单独检查架构页。
 - `build_circuit.py` / `generate_schematic.py`：Circuit IR 编译、自动布局和原生生成，见 [circuit-ir.md](references/circuit-ir.md)、[schematic-generation.md](references/schematic-generation.md)。
 - `verify_design_change.py`、`audit_project.py`、`verify_reference_contract.py`：改版合同、多页工程交付核对、器件与外围合同，见 [project-verification.md](references/project-verification.md)。
 - `patch_schematic_values.py`：保持连线与图面的 Value 修改，见 [value-patch.md](references/value-patch.md)。

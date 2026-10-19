@@ -1,5 +1,43 @@
 # 此前问题点的改造闭环
 
+## 100 W PD R3 drawing review (2026-10-19)
+
+Reading the eight rendered pages of the R3 delivery against the drawing rules,
+with every automated gate at PASS:
+
+- All seven circuit pages were A3 with the drawing in 25–38 % of the 25.4 mm
+  cells; 02_Input fitted A4 with its frame margin. The page scripts reached
+  passing builds by widening gaps (C407 at 38 steps, R404 at 25, stubs of 24–25,
+  pitches of 35) and never shrank them, which HR-11 forbids but nothing
+  measured. `readability.measure` now reports `paper`, `content_size_mm`,
+  `fits_paper`, `occupancy`, `cell_coverage`, `part_groups` and
+  `longest_segment_mm`; a sheet whose content fits a smaller paper fails the
+  gate (`oversized_paper`, waivable with a reason). Recipes record any gap,
+  stub, explicit pitch, lead or rail/label length beyond `MAX_SPACING_STEPS`
+  (12) and the structure audit lists them until `justify` names them. O7/O8
+  say to shrink back after the build passes and to choose the paper afterwards.
+- 03_PFC joined the FB divider to U201 and the drive to the power stage with
+  13 local labels justified as "block boundary"; 06_Secondary was three islands
+  (SR driver, output bank, shunt) joined only by rail symbols. `Sheet` takes
+  the page plan's `blocks={name: [refs]}` and the audit rejects a local join
+  label whose wired parts all belong to one block (HR-01); `part_groups`
+  shows islands against the declared blocks.
+- The System_block page had eight unnamed arrows, a control polyline ending in
+  the void and a solid "isolation boundary" that looked like a wire and ended
+  twice in the void; 06_Secondary sat on the primary row so the boundary had
+  to snake. `schematic_layout.system_block` audits the cover: flow lines need
+  a text within 6 mm, both ends on a block/arrowhead/line, a 隔离-labelled
+  straight boundary that crosses no block, every block reached. It runs as the
+  `system_block` gate in `verify_schematic.py` when the root holds sheets, and
+  as `scripts/audit_system_block.py` alone. On R3 it lists 10 findings.
+- The visual review dispositioned all 84 pin-text items with one copied
+  sentence per page and cited "pixel-identical to the previously reviewed
+  PDF" as its basis; the step-4 page plan was never saved. `page-plan.json`
+  is now a required record (file, reader tasks, blocks covering every part on
+  the page); `render_design_report.py` checks that each page's review traced
+  at least one path per reader task and that each `render_review_items`
+  disposition names its own symbol and is not reused across symbols.
+
 ## Finite native diameter semicircles, 2026-10-13
 
 - A subsequent independent audit found terminal `Z` could append a 4097th

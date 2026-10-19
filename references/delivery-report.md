@@ -19,7 +19,8 @@
 | `design-closure.json` | 需求、待办、计算的处理情况；证据路径相对交付目录，所引证据必须在本目录内；需求、原厂资料可留在 `--input` 登记的位置（按文件名找到并核对 SHA-256） |
 | `design-closure-audit.json` | `audit_design_closure.py` 的输出（`verify_schematic.py` 输出目录里的 `design-closure.json`，改名放入） |
 | `summary.json` | `verify_schematic.py` 的自动检查结果，原样复制 |
-| `visual-review.json` | 看图检查：`{"status": "REVIEWED/REVIEW_PENDING/REWORK_REQUIRED", "pages": [{"page", "paths", "problems"}]}` |
+| `page-plan.json` | 页面方案表：`{"schema_version": 1, "pages": [{"file", "reader_tasks": [...], "blocks": {块名: [位号]}}]}`；本页每个器件属于一个功能块 |
+| `visual-review.json` | 看图检查：`{"status": "REVIEWED/REVIEW_PENDING/REWORK_REQUIRED", "pages": [{"page", "file", "paths", "problems", "render_review_items": [{"item", "disposition"}]}]}`；每页 `paths` 不少于读者任务数，每条引脚文字处置点名器件并写出看到了什么，同一句不能套用到不同器件 |
 | `delivery-evidence.json` | 导出后有没有再改过的核对记录 |
 | `review-responses.json` | 收到审查意见时必有，格式见 [处理审查意见](review-comments.md) |
 | `design-change.json` 等 | 改版时的改动核对与动手前检查 |

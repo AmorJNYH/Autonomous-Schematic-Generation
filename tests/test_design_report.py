@@ -49,7 +49,10 @@ class Delivery:
         self.write('summary.json', {'status': 'INCOMPLETE', 'sheets': ['a', 'b'], 'gates': {
             'erc': {'status': 'PASS', 'violations': 0}, 'intent_netlist': {'status': 'PASS', 'errors': 0},
             'geometry': {'status': 'INSUFFICIENT'}, 'design_closure': {'status': 'INCOMPLETE'}}})
-        self.write('visual-review.json', {'status': 'REVIEWED', 'pages': [{'page': 1, 'paths': ['VIN to VOUT'], 'problems': []}]})
+        self.write('visual-review.json', {'status': 'REVIEWED', 'pages': [
+            {'page': 1, 'file': 'board.kicad_sch', 'paths': ['VIN to VOUT'], 'problems': []}]})
+        self.write('page-plan.json', {'schema_version': 1, 'pages': [
+            {'file': 'board.kicad_sch', 'reader_tasks': ['跟随 VIN 到 VOUT 的能量流'], 'blocks': {'稳压': ['U1', 'R1']}}]})
         self.write('delivery-evidence.json', {'schema_version': 1})
 
     def write(self, name, value):
@@ -153,6 +156,54 @@ class DesignReportTests(unittest.TestCase):
             'geometry': {'status': 'PASS', 'render_review_items': {'a': ['x', 'y']}}}})
         text, _ = self.d.report()
         self.assertIn('2 个引脚文字交看图检查', text)
+
+    def test_page_plan_is_required_and_checked(self):
+        (self.d.record / 'page-plan.json').unlink()
+        _, problems = self.d.report()
+        self.assertIn('缺少 record/page-plan.json', problems)
+        self.d.write('page-plan.json', {'schema_version': 1, 'pages': [
+            {'file': 'board.kicad_sch', 'reader_tasks': ['任务一', '任务二'], 'blocks': {'a': ['U1', 'R9'], 'b': ['U1']}},
+            {'file': 'other.kicad_sch', 'reader_tasks': [], 'blocks': {}}]})
+        _, problems = self.d.report()
+        self.assertIn('board.kicad_sch：功能块“a”里的 R9 不在设计要求表里', problems)
+        self.assertIn('board.kicad_sch：U1 同时在功能块“a”和“b”里', problems)
+        self.assertIn('board.kicad_sch：读者任务 2 条，看图检查只追了 1 条路径', problems)
+        self.assertIn('other.kicad_sch：要写明读者任务（reader_tasks）', problems)
+        self.assertIn('other.kicad_sch：要按功能块列出器件（blocks）', problems)
+
+    def test_parts_on_a_page_must_belong_to_a_block(self):
+        self.d.write('electrical-intent.json', {'components': [
+            {'ref': 'U1', 'fields': {'Circuit': 'board'}}, {'ref': 'R1', 'fields': {'Circuit': 'board'}},
+            {'ref': 'C1', 'fields': {'Circuit': 'board'}}]})
+        _, problems = self.d.report()
+        self.assertIn('board.kicad_sch：这些器件不属于任何功能块：C1', problems)
+
+    def test_render_review_items_are_dispositioned_per_symbol(self):
+        (self.d.root / '原理图' / 'board.kicad_sch').write_text(
+            '(kicad_sch (version 20250114) (generator "t") (uuid "r") (paper "A4") (lib_symbols)\n'
+            '(symbol (lib_id "Device:R") (at 0 0 0) (uuid "aaa") (property "Reference" "R1" (at 0 0 0)))\n'
+            '(symbol (lib_id "Device:R") (at 0 10 0) (uuid "bbb") (property "Reference" "U1" (at 0 0 0))))\n')
+        same = '已在本页原生PDF核对可见引脚号/脚名，无遮挡。'
+        self.d.write('visual-review.json', {'status': 'REVIEWED', 'pages': [
+            {'page': 1, 'file': 'board.kicad_sch', 'paths': ['VIN to VOUT'], 'problems': [], 'render_review_items': [
+                {'item': 'pin-number:aaa: physical pin numbers need native render review', 'disposition': same},
+                {'item': 'pin-name:bbb:1: nonunique/noncausal text removal', 'disposition': same},
+                {'item': 'pin-name:ccc:1: x', 'disposition': 'C9 看过'}]}]})
+        _, problems = self.d.report()
+        self.assertIn('board.kicad_sch：R1 的引脚文字处置要写明在图上看到了什么，并点名 R1', problems)
+        self.assertIn('board.kicad_sch：条目“pin-name:ccc:1: x”的符号在图里找不到', problems)
+        self.d.write('visual-review.json', {'status': 'REVIEWED', 'pages': [
+            {'page': 1, 'file': 'board.kicad_sch', 'paths': ['VIN to VOUT'], 'problems': [], 'render_review_items': [
+                {'item': 'pin-number:aaa: physical pin numbers need native render review', 'disposition': 'R1 脚号 1、2 可见，在引脚外侧'},
+                {'item': 'pin-name:bbb:1: nonunique/noncausal text removal', 'disposition': 'U1 脚名 VIN 在体内，未被导线压住'}]}]})
+        _, problems = self.d.report()
+        self.assertEqual([], problems)
+        self.d.write('visual-review.json', {'status': 'REVIEWED', 'pages': [
+            {'page': 1, 'file': 'board.kicad_sch', 'paths': ['VIN to VOUT'], 'problems': [], 'render_review_items': [
+                {'item': 'pin-number:aaa: x', 'disposition': 'R1 与 U1 的脚号均可见'},
+                {'item': 'pin-name:bbb:1: x', 'disposition': 'R1 与 U1 的脚号均可见'}]}]})
+        _, problems = self.d.report()
+        self.assertIn('board.kicad_sch：同一句处置用在了 R1、U1：要逐个器件写看到了什么', problems)
 
     def test_handoffs_listed_apart(self):
         text, _ = self.d.report()

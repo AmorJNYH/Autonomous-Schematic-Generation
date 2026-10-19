@@ -54,16 +54,16 @@ O8 changes an earlier decision, in the order it states.
 | O4 | Recipe by role | Use the proposed role from `sheet.plan`: `series` on the path axis; `shunt` off its node toward its rail (returns down, positive supplies up, a negative rail below its return); `bank` for parallel parts on the same nets, as one bank with one return; `divider` stacked with the tap sideways to the sense pin; `lane_*` as identical series+shunt lanes with the same arrangement; `decoupling` as a shunt or bank at its anchor's supply pin. |
 | O5 | Pin exits | Start each branch from the pin along its outward direction (`stub`, or a recipe started at the pin). A support branch that must reach a pin on the far side of its anchor goes over or under the anchor block, never through another branch; if that is impossible, move the part to that pin's side. |
 | O6 | Rails and labels | Rails and returns are power symbols from the declared `rails`; global labels only on `external` nets; small names on the plan's `name` nets; a local join label only with a boundary reason. |
-| O7 | Spacing | Recipe gaps are at least two grid steps; widen a gap before moving parts by hand. A net that carries a small name needs one straight run longer than the name plus two grid steps. A vertical part with a long value needs that text width free on one side. Blocks are separated by more space than parts inside a block. |
-| O8 | Repair order | On a build error or failing gate, first change the recipe direction, gap or order; then the anchor position or orientation; then fold the path or split the block into rows (O1). Never add a label to hide a failed wire. |
+| O7 | Spacing | Recipe gaps are at least two grid steps and at most `MAX_SPACING_STEPS` (12, about 15 mm) unless the script records why; the same cap applies to stubs, explicit bank pitches and leads, and rail/label leads. Widen a gap before moving parts by hand, then shrink it back once the build passes. A net that carries a small name needs one straight run longer than the name plus two grid steps. A vertical part with a long value needs that text width free on one side. Blocks are separated by more space than parts inside a block; a page is not padded to fill its paper. |
+| O8 | Repair order | On a build error or failing gate, first change the recipe direction, gap or order; then the anchor position or orientation; then fold the path or split the block into rows (O1). Never add a label to hide a failed wire. After the page passes, read `report["readability"]`: shrink gaps that the audit lists, and if `fits_paper` is smaller than the sheet, move to that paper or bring the page's remaining blocks onto it. |
 
 What is checked automatically:
 
 | Rule | Checked by | Not checked (trace in the render) |
 | --- | --- | --- |
 | O4 | structure audit: recipe against role, banks drawn as one bank, identical lanes | whether the role itself suits the circuit |
-| O6 | structure audit: global labels exactly on external nets, rails only as their power symbols, selected names present, no unselected local label without a reason | label wording |
-| O7 | `build()` hard rejections: body clearance, text collisions, wires through bodies | gap sizes beyond collisions, block-versus-part spacing |
+| O6 | structure audit: global labels exactly on external nets, rails only as their power symbols, selected names present, no unselected local label without a reason; with `blocks`, a local join label whose wired parts all belong to one block | label wording |
+| O7 | `build()` hard rejections: body clearance, text collisions, wires through bodies; structure audit: gaps, stubs, pitches, leads beyond `MAX_SPACING_STEPS` without a reason; readability gate: a sheet whose content fits a smaller paper | block-versus-part spacing, whether a low `cell_coverage` page should be merged |
 | O1, O2, O3, O5 | readability gate catches some consequences (crossings, U-turns) | path order, block membership, ownership, branch side |
 
 A structure audit PASS therefore covers O4 and O6 only. Review the other rules
@@ -73,7 +73,7 @@ on the rendered page before calling the page readable.
 
 | Call | Draws |
 | --- | --- |
-| `Sheet(intent, rails, external, paper, dirs, power_ref_start)` | One sheet. `rails` maps nets to `power:` symbols, `external` lists nets leaving the sheet; both enable `plan` and the audit. `power_ref_start` keeps `#PWR` references unique across pages. |
+| `Sheet(intent, rails, external, paper, dirs, power_ref_start, blocks)` | One sheet. `rails` maps nets to `power:` symbols, `external` lists nets leaving the sheet; both enable `plan` and the audit. `power_ref_start` keeps `#PWR` references unique across pages. `blocks` is the page plan's `{block: [refs]}`; with it the audit rejects a local join label that only joins parts of one block (HR-01). |
 | `plan` | `{"parts": {ref: {role, why, ...}}, "nets": {net: "power" \| "global" \| "name" \| None}}`. |
 | `justify(part_or_net, reason)` | Records an intended deviation; the audit lists it with the reason. |
 | `place(ref, at, rotation, mirror, pin, facing, order)` | An anchor: controller, connector, magnetic, bridge. `facing={pin: direction}` picks rotation/mirror from the required pin exits (`order=(a, b, axis)` keeps pin a before b); with `pin`, `at` is that pin's tip. |
@@ -92,6 +92,15 @@ on the rendered page before calling the page readable.
 | `name(net, at, font=1.0)` | Small local name on the net's own wire, mid-segment and clear of pins and dots: above a horizontal wire, else beside a vertical one. Only on a connected piece that has no label or rail symbol of that net yet; when every piece already shows the name, `build()` skips it (`report["names_skipped_already_labelled"]`), and an explicit `at` on such a piece is an error. |
 | `select_local_names(intent, external, rails)` | Default selection: page-local nets touching a part with three or more pins. |
 | `text(text, at, font)` | Block title or note. |
+
+Every recipe records a gap, stub, pitch, lead or lead length beyond
+`MAX_SPACING_STEPS` in `sheet.spacing`; the audit lists each as a `spacing`
+finding unless `justify(ref_or_pin, reason)` names it. A measured bank pitch
+(`pitch_for`) is never a finding. The readability metrics in the report add
+`paper`, `content_size_mm`, `fits_paper`, `oversized_paper` (a gate reason),
+`occupancy`, `cell_coverage` (share of 25.4 mm cells holding any object),
+`part_groups`/`part_group_refs` (parts joined only through labels or rail
+symbols count as separate groups) and `longest_segment_mm`.
 
 `build(name, draft=False)` returns the native root and a report. With `draft=True`
 name and field failures are listed in `draft_failures` instead of raised, so a

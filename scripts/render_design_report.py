@@ -12,6 +12,9 @@ import sys
 from collections import Counter, OrderedDict
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from schematic_layout.sexpr import all_nodes, first, parse  # noqa: E402
+
 REPORT = '设计报告.md'
 SEVERITIES = ('P0', 'P1', 'P2', 'P3')
 SEVERITY_WORDS = {'P0': '可能损坏器件或危及安全', 'P1': '必需功能可能不达标',
@@ -21,6 +24,7 @@ GATES = OrderedDict([
     ('erc', 'KiCad 电气规则检查（ERC）'),
     ('intent_netlist', '网表与设计要求表逐脚对照'),
     ('hierarchy', '图纸层次与页数'),
+    ('system_block', '系统框图（箭头标注、隔离边界、无悬空线）'),
     ('symbol_integrity', '符号引脚完整'),
     ('discrete_semantics', '分立器件符号与手册一致（TVS单/双向、MOS沟道、NPN/PNP）'),
     ('readability', '图面可读性'),
@@ -41,7 +45,7 @@ RESPONSES = OrderedDict([
     ('DEFERRED', ('已暂缓', 'detail'))])
 RESPONSE_STAGE = {'ASK_USER': ('requirement',), 'DESIGN': ('design',), 'OBTAIN_DATA': ('external',), 'HANDOFF': ('validation', 'pcb')}
 REQUIRED = ('electrical-intent.json', 'design-closure.json', 'design-closure-audit.json',
-            'summary.json', 'visual-review.json')
+            'summary.json', 'visual-review.json', 'page-plan.json')
 
 
 def text(value):
@@ -94,6 +98,94 @@ def check_language(closure, notes):
         return []
     return ['下列给人看的文字是英文，要改成中文（器件型号、单位和缩写可以保留）：' + '；'.join(found[:6])
             + ('；等共 %d 处' % len(found) if len(found) > 6 else '')]
+
+
+def symbol_refs(sch_path):
+    """Placed symbol uuid -> reference, from one native sheet."""
+    refs = {}
+    for sym in all_nodes(parse(sch_path.read_text(encoding='utf-8')), 'symbol'):
+        uid = first(sym, 'uuid')
+        ref = next((str(p[2]) for p in all_nodes(sym, 'property') if len(p) > 2 and p[1] == 'Reference'), None)
+        if uid and len(uid) > 1 and ref:
+            refs[str(uid[1])] = ref
+    return refs
+
+
+def check_page_plan(plan, intent, visual):
+    """Every drawn page has a plan (reader tasks, blocks of parts) and a review that traced each task."""
+    if not isinstance(plan, dict) or plan.get('schema_version') != 1 or not isinstance(plan.get('pages'), list):
+        return ['page-plan.json 必须是 schema_version 1、带 pages 列表的对象']
+    errors = []
+    known = {c.get('ref') for c in intent.get('components') or [] if isinstance(c, dict)}
+    on_page = {}
+    for c in intent.get('components') or []:
+        if isinstance(c, dict) and isinstance(c.get('fields'), dict) and text(c['fields'].get('Circuit')):
+            on_page.setdefault(c['fields']['Circuit'], set()).add(c.get('ref'))
+    reviewed = {p.get('file'): p for p in (visual.get('pages') or []) if isinstance(p, dict)}
+    for page in plan['pages']:
+        name = page.get('file') if isinstance(page, dict) else None
+        if not text(name):
+            errors.append('page-plan.json 有一页没有 file')
+            continue
+        tasks = page.get('reader_tasks')
+        blocks = page.get('blocks')
+        if not isinstance(tasks, list) or not tasks or not all(text(t) for t in tasks):
+            errors.append('%s：要写明读者任务（reader_tasks）' % name)
+        if not isinstance(blocks, dict) or not blocks or not all(isinstance(v, list) and v for v in blocks.values()):
+            errors.append('%s：要按功能块列出器件（blocks）' % name)
+            continue
+        placed = {}
+        for block, refs in blocks.items():
+            for ref in refs:
+                if ref not in known:
+                    errors.append('%s：功能块“%s”里的 %s 不在设计要求表里' % (name, block, ref))
+                elif ref in placed:
+                    errors.append('%s：%s 同时在功能块“%s”和“%s”里' % (name, ref, placed[ref], block))
+                placed[ref] = block
+        missing = sorted(on_page.get(Path(name).stem, set()) - set(placed))
+        if missing:
+            errors.append('%s：这些器件不属于任何功能块：%s' % (name, '、'.join(missing[:6])))
+        review = reviewed.get(name)
+        if review is None:
+            errors.append('%s：看图检查没有这一页的记录' % name)
+        elif isinstance(tasks, list) and len(review.get('paths') or []) < len(tasks):
+            errors.append('%s：读者任务 %d 条，看图检查只追了 %d 条路径' % (name, len(tasks), len(review.get('paths') or [])))
+    return errors
+
+
+def check_visual_items(root, visual):
+    """Pin-text items handed to the render review are dispositioned per symbol, naming what was seen."""
+    errors = []
+    for page in visual.get('pages') or []:
+        items = page.get('render_review_items') if isinstance(page, dict) else None
+        if not items:
+            continue
+        name = page.get('file')
+        sch = root / '原理图' / str(name)
+        if not text(name) or not sch.is_file():
+            errors.append('第 %s 页：有引脚文字条目但找不到原理图/%s' % (page.get('page'), name))
+            continue
+        try:
+            refs = symbol_refs(sch)
+        except (OSError, ValueError) as error:
+            errors.append('原理图/%s 读不出来：%s' % (name, error))
+            continue
+        by_text = {}
+        for item in items:
+            key = str(item.get('item', '')) if isinstance(item, dict) else ''
+            parts = key.split(':')
+            ref = refs.get(parts[1]) if len(parts) > 1 else None
+            disposition = item.get('disposition', '') if isinstance(item, dict) else ''
+            if ref is None:
+                errors.append('%s：条目“%s”的符号在图里找不到' % (name, key[:48]))
+            elif not text(disposition) or ref not in disposition:
+                errors.append('%s：%s 的引脚文字处置要写明在图上看到了什么，并点名 %s' % (name, ref, ref))
+            else:
+                by_text.setdefault(disposition, set()).add(ref)
+        for disposition, group in by_text.items():
+            if len(group) > 1:
+                errors.append('%s：同一句处置用在了 %s：要逐个器件写看到了什么' % (name, '、'.join(sorted(group))))
+    return list(OrderedDict.fromkeys(errors))  # one line per symbol, not per pin
 
 
 def check_text(chk):
@@ -194,6 +286,9 @@ def render(root, notes=None, title=None):
                         '；'.join('%s %s' % (e.get('code'), e.get('item')) for e in (audit.get('errors') or [])[:5]))
     if visual and visual.get('status') not in VISUAL:
         problems.append('visual-review.json 的 status 必须是 %s 之一' % '/'.join(VISUAL))
+    if data['page-plan.json'] is not None:
+        problems += check_page_plan(data['page-plan.json'], intent, visual)
+    problems += check_visual_items(root, visual)
     if responses is not None:
         problems += check_responses(responses, work)
     problems += check_language(closure, notes)

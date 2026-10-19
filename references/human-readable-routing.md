@@ -205,7 +205,13 @@ Read the native-rendered full page and useful detail crops. For every block:
   label links without ambiguous names or missing destinations.
 
 Record sheet/block, references, the path traced, applicable rule findings and
-image/source identity. A checkbox saying "viewed all pages" is insufficient.
+image/source identity. A checkbox saying "viewed all pages" is insufficient,
+and so is "pixel-identical to a PDF reviewed earlier". In `visual-review.json`
+every page carries `file`, at least one `paths` entry per reader task of
+`page-plan.json`, and one disposition per `render_review_items` entry that
+names the symbol and says what was seen (pin numbers outside the pin, pin
+name clear of the wire); one sentence copied onto several symbols is rejected
+by `render_design_report.py`.
 Record electrical results separately; neither ERC nor hash freshness establishes
 readability. A layout can be electrically unchanged and still fail this review.
 
@@ -219,12 +225,16 @@ Use these **manual review states**, not fabricated tool results:
   or electrical qualification. Later user rejection reopens it.
 
 Run `scripts/check_schematic_readability.py` first. It is a hard gate: zero
-different-net wire crossings and zero two-terminal connections with three or
-more bends, each reported with its location. Redraw rather than waive; a waiver
-file entry must give the sheet, the allowed count and the reason. Label count,
-bends, wire length, detour ratio and page occupancy remain diagnostics without
-universal thresholds: a labeled MCU bank and a visible power stage have
-different needs. When comparing variants, keep electrical
+different-net wire crossings, zero two-terminal connections with three or
+more bends, each reported with its location, and no sheet whose content fits
+a smaller standard paper (`oversized_paper`, HR-11). Redraw rather than waive;
+a waiver file entry must give the sheet, the allowed count (or
+`oversized_paper: true`) and the reason. Label count, bends, wire length,
+`cell_coverage`, `part_groups` and `longest_segment_mm` remain diagnostics
+without universal thresholds: a labeled MCU bank and a visible power stage have
+different needs. Read them against the page plan: more part groups than
+declared blocks means the page shows islands, not paths; coverage near a
+quarter of the page with one block means the page should be merged or shrunk. When comparing variants, keep electrical
 identity, symbol scale, font size and viewing scale comparable. Do not improve
 one metric by hiding relationships or shrinking text.
 

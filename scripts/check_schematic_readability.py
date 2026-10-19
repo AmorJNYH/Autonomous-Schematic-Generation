@@ -4,8 +4,11 @@
 Reports segments, bends, different-net crossings, tortuous two-terminal
 connections (with their locations), remaining rail wiring, power symbols and
 labels per sheet. The gate is mandatory for generated or redrawn sheets: zero
-crossings and zero two-terminal connections with three or more bends, unless a
-waiver file names the sheet, the allowed count and a reason. It covers drawing
+crossings, zero two-terminal connections with three or more bends, and no
+sheet whose content fits a smaller standard paper, unless a waiver file names
+the sheet, the allowed count (or ``oversized_paper``) and a reason. Page
+occupancy, part groups joined only by labels/rails and the longest segment are
+reported as diagnostics. It covers drawing
 quality only; it never replaces ERC, netlist identity or native visual review.
 See references/human-readable-routing.md.
 """
@@ -20,10 +23,10 @@ from schematic_layout.sexpr import parse
 
 
 def load_waivers(path):
-    """{"sheet.kicad_sch": {"cross_net_crossings": 1, "reason": "..."}}"""
+    """{"sheet.kicad_sch": {"cross_net_crossings": 1, "oversized_paper": true, "reason": "..."}}"""
     waivers = json.loads(path.read_text(encoding="utf-8")) if path else {}
     for sheet, w in waivers.items():
-        if set(w) - {"cross_net_crossings", "tortuous_connections", "reason"} or not str(w.get("reason", "")).strip():
+        if set(w) - {"cross_net_crossings", "tortuous_connections", "oversized_paper", "reason"} or not str(w.get("reason", "")).strip():
             raise SystemExit(f"{sheet}: a waiver needs allowed counts and a nonempty reason")
     return waivers
 
@@ -42,7 +45,7 @@ def main():
         metrics = measure(parse(path.read_text(encoding="utf-8")))
         w = waivers.get(path.name, {})
         result = gate(metrics, w.get("cross_net_crossings", args.max_crossings),
-                      w.get("tortuous_connections", args.max_tortuous))
+                      w.get("tortuous_connections", args.max_tortuous), bool(w.get("oversized_paper")))
         if w:
             result["waiver"] = w
         report["sheets"][path.name] = {**metrics, "gate": result}

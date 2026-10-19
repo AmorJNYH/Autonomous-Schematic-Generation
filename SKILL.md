@@ -67,7 +67,10 @@ ASG 负责需求到电路的方案可行性、选型依据、设计计算和功�
 ### 1. 架构与分页
 
 第 1 页必须是 `System_block`，画出真实的系统架构、电源与信号流向、板与隔离边界、接口和各页编号；
-只有页面索引不算。按功能、隔离/电压域和可读面积分页。
+只有页面索引不算。框图的每条流向线都要在线旁写出它代表的电源轨或信号（RECT、BULK、FB/FAULT 光耦……），
+两端都落在页块、箭头或另一条线上；隔离边界是一条写着“隔离”的直线，一次侧页块在一边、二次侧在另一边，
+不穿过任何页块。`verify_schematic.py` 的 `system_block` 检查核对这些，悬空线和无名箭头算 FAIL。
+按功能、隔离/电压域和可读面积分页；几个很小的功能块合成一页，不单独占一张 A3。
 见 [reference-driven-board-design.md](references/reference-driven-board-design.md)。
 
 ### 2. 选型、外围电路要求与计算
@@ -108,7 +111,10 @@ ASG 负责需求到电路的方案可行性、选型依据、设计计算和功�
 ### 4. 页面方案
 
 为每页写一张简短的方案表，内容包括：读者任务（跟随能量流、看懂反馈、追一个受保护接口……）、
-功能块、主路径、rails、出页网络及目的功能/页码、标签边界。先保证一条功能路径易读，再决定拆页或加大纸张。见 [human-readable-routing.md](references/human-readable-routing.md) 第 1 节。
+功能块及每块的位号、主路径、rails、出页网络及目的功能/页码、标签边界。先保证一条功能路径易读，再决定拆页或加大纸张。
+方案表随交付保存为 `record/page-plan.json`（每页 `file`、`reader_tasks`、`blocks`），本页每个器件都要属于一个功能块；
+看图检查按它逐条追路径。见 [human-readable-routing.md](references/human-readable-routing.md) 第 1 节。
+纸张在画完后定：内容能放进 A4 就用 A4；一页只剩零散小块时并页，不把小电路摊在 A3 上。
 
 - 按拓扑选结构（Buck、LDO、隔离反激、滤波、MCU 各不相同），见
   [schematic-drawing-standards.md](references/schematic-drawing-standards.md) 第 2 节。不得为别的拓扑编造 SW 节点或电感级。
@@ -132,12 +138,17 @@ for n, (key, page) in enumerate(page_intents(board, rails=RAILS).items(), 1):
 ```
 
 - 先看 `s.plan` 给出的器件角色和网络标签角色。只给锚点写坐标，其余器件用与角色相符的画法从引脚推出。
-  有意偏离纲要时用 `s.justify(对象, 理由)` 记录。
+  有意偏离纲要时用 `s.justify(对象, 理由)` 记录。把方案表的功能块传给 `Sheet(..., blocks={块名: [位号]})`：
+  同一块内的器件之间不许用局部连接标签代替导线（HR-01），审计会列出只连一块的标签。
+- 间距只为通过检查而加大，通过后缩回：gap、stub、pitch、lead 和电源符号/标签引线超过 12 格（约 15 mm）
+  会进结构审计，要么缩小，要么 `justify` 写明为什么需要（如长 Value 文字）。不得用加大间距把一页摊满。
 - 先列真实 planned 局部网名及其字号。在相应 series 段或 own-pin stub 放置前，显式用
   `max(原gap, s.name_run_steps(原net, font=原字号))` 预留直段，之后仍调用原 `s.name`。
   多段链逐段按真实网络预算；不得全局加gap、缩字、改名或用标签绕过连线。预算不证明无遮挡或 KiCad 字体覆盖。
 - `build()` 遇到硬缺陷会直接报错。`report["structure"]` 必须为 PASS，`report["readability"]["gate"]` 必须为 PASS。
   失败时按 O8 改结构（方向、间隙、顺序 → 锚点 → 拆行）后重建，不得手调坐标打补丁。
+  `report["readability"]` 还给出 `cell_coverage`（有东西的 25.4 mm 格占比）、`part_groups`（只靠标签/电源符号相连的器件组）
+  和 `fits_paper`：覆盖率低、组数多于方案表的功能块、内容能放进更小的纸张，都说明这页要并块、缩间距或换纸。
 - 图页脚本随交付版本一起保存；下一版只重生成有变化的页面。
 
 ### 6. 组装与一键验证
@@ -152,8 +163,9 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
 ```
 
 它一次完成：KiCad ERC / XML 网表 / PDF 导出，网表分区与器件身份逐脚对比设计要求表（图上画出的网名须等于设计要求表里同一组引脚的网名，
-只允许页路径前缀；KiCad 自动网名不比），层次与 PDF 页数，
-符号引脚完整性，分立器件符号含义与手册/型号后缀是否一致（`discrete_semantics`），可读性自动检查，以及每个有效页面的几何检查，汇总到 `summary.json`。
+只允许页路径前缀；KiCad 自动网名不比），层次与 PDF 页数，根图的系统框图检查（`system_block`：流向线有名字、两端有着落、隔离边界不穿块、每个页块有线到达），
+符号引脚完整性，分立器件符号含义与手册/型号后缀是否一致（`discrete_semantics`），可读性自动检查（零异网交叉、零三折以上两端连线、
+内容放得进更小纸张的页算 FAIL），以及每个有效页面的几何检查，汇总到 `summary.json`。
 只有全部自动检查为 PASS 时结果才是 `AUTOMATED_PASS`。
 
 - 新设计提供 `--design-closure`，核对需求实现、外部依赖、计算覆盖和证据是否最新；格式与边界见 [设计待办记录](references/design-closure.md)。未提供时明确为 NOT_CHECKED，不能据此声明全流程完成。
@@ -185,8 +197,10 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
 
 ### 7. 看图检查
 
-打开导出的 PDF，逐页按方案表追一遍读者任务：主路径、每个支持网络到对应引脚和正确回路、
-重复通道、每个回路域和隔离跨越。记录追过的路径和发现的问题；“看过所有页”不算证据。
+打开导出的 PDF，逐页按 `page-plan.json` 的读者任务追一遍：主路径、每个支持网络到对应引脚和正确回路、
+重复通道、每个回路域和隔离跨越。每页记录的路径条数不少于读者任务数；“看过所有页”“与上一版像素一致”都不算证据。
+`geometry.render_review_items` 里的引脚文字逐器件处置：每条处置点名该器件并写出在图上看到了什么
+（脚号在引脚外侧、脚名未被导线压住……），同一句话不能套用到不同器件；`render_design_report.py` 会检查这两点。
 状态写 待返工（REWORK_REQUIRED）、待看图检查（REVIEW_PENDING）或 已看图检查（REVIEWED）。
 用户否决会重新打开看图检查。见 [human-readable-routing.md](references/human-readable-routing.md) 第 4 节。
 
@@ -202,7 +216,7 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
   设计报告.md     唯一给人看的文件：render_design_report.py 生成，agent 只通过 notes.json 补白话
   原理图/         KiCad 工程（根图、各页、项目符号库与封装库）、schematic.pdf、netlist.xml、BOM.csv
   设计资料/       跨版本有效、每版更新的设计文档（方案与选型依据、PCB与结构要求、磁件设计单等）
-  record/         设计要求表、待办处理情况、自检结果、看图检查、审查意见处理、本版用到的计算、
+  record/         设计要求表、页面方案表、待办处理情况、自检结果、看图检查、审查意见处理、本版用到的计算、
                   图页脚本、manifest.json（需求、原厂资料、前一版设计按路径+SHA-256 登记，不复制）
 ```
 
