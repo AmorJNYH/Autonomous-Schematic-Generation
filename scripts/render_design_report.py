@@ -131,18 +131,49 @@ def symbol_refs(sch_path):
     return refs
 
 
-def check_page_plan(plan, intent, visual):
-    """Every drawn page has a plan (reader tasks, blocks of parts) and a review that traced each task."""
+PATTERNS_DIR = Path(__file__).resolve().parent.parent / 'references' / 'circuit-patterns'
+
+
+def pattern_approaches(patterns_dir=PATTERNS_DIR):
+    out = {}
+    for md in sorted(patterns_dir.glob('*.md')) if patterns_dir.is_dir() else []:
+        out[md.stem] = {line[4:].strip() for line in md.read_text(encoding='utf-8').splitlines() if line.startswith('### ')}
+    return out
+
+
+def check_block_patterns(name, blocks, patterns, approaches, lessons):
+    """Each functional block names an existing pattern approach, or lessons.json registers the gap."""
+    errors = []
+    registered = any(isinstance(e, dict) and e.get('cause') == 'knowledge_missing' and 'circuit-patterns' in str(e.get('change') or '')
+                     for e in (lessons or {}).get('events') or [])
+    patterns = patterns if isinstance(patterns, dict) else {}
+    for block in blocks:
+        ref = patterns.get(block)
+        if not text(ref):
+            if not registered:
+                errors.append('%s：功能块“%s”没有标注电路模式（patterns），没有合适模式时在 lessons.json 登记 knowledge_missing 并补写 references/circuit-patterns/' % (name, block))
+            continue
+        pid, _, approach = ref.partition('#')
+        if pid not in approaches:
+            errors.append('%s：功能块“%s”标注的模式 %s 在 references/circuit-patterns/ 里不存在' % (name, block, pid))
+        elif approach not in approaches[pid]:
+            errors.append('%s：功能块“%s”标注的做法“%s”不在模式 %s 里（有：%s）' % (name, block, approach, pid, '、'.join(sorted(approaches[pid]))))
+    return errors
+
+
+def check_page_plan(plan, intent, visual, lessons=None, patterns_dir=PATTERNS_DIR):
+    """Every drawn page has a plan (reader tasks, blocks of parts, the pattern of each block) and a review that traced each task."""
     if not isinstance(plan, dict) or plan.get('schema_version') != 1 or not isinstance(plan.get('pages'), list):
         return ['page-plan.json 必须是 schema_version 1、带 pages 列表的对象']
     errors = []
+    approaches = pattern_approaches(patterns_dir)
     known = {c.get('ref') for c in intent.get('components') or [] if isinstance(c, dict)}
     on_page = {}
     for c in intent.get('components') or []:
         if isinstance(c, dict) and isinstance(c.get('fields'), dict) and text(c['fields'].get('Circuit')):
             on_page.setdefault(c['fields']['Circuit'], set()).add(c.get('ref'))
     reviewed = {p.get('file'): p for p in (visual.get('pages') or []) if isinstance(p, dict)}
-    for page in plan['pages']:
+    for index, page in enumerate(plan['pages']):
         name = page.get('file') if isinstance(page, dict) else None
         if not text(name):
             errors.append('page-plan.json 有一页没有 file')
@@ -162,6 +193,9 @@ def check_page_plan(plan, intent, visual):
                 elif ref in placed:
                     errors.append('%s：%s 同时在功能块“%s”和“%s”里' % (name, ref, placed[ref], block))
                 placed[ref] = block
+        cover = index == 0 and len(plan['pages']) > 1          # the first page is the System_block cover (SKILL.md step 1)
+        if not cover and 'system_block' not in name.lower():
+            errors += check_block_patterns(name, blocks, page.get('patterns'), approaches, lessons)
         missing = sorted(on_page.get(Path(name).stem, set()) - set(placed))
         if missing:
             errors.append('%s：这些器件不属于任何功能块：%s' % (name, '、'.join(missing[:6])))
@@ -491,14 +525,14 @@ def render(root, notes=None, title=None):
                         '；'.join('%s %s' % (e.get('code'), e.get('item')) for e in (audit.get('errors') or [])[:5]))
     if visual and visual.get('status') not in VISUAL:
         problems.append('visual-review.json 的 status 必须是 %s 之一' % '/'.join(VISUAL))
-    if data['page-plan.json'] is not None:
-        problems += check_page_plan(data['page-plan.json'], intent, visual)
-    problems += check_visual_items(root, visual)
     lessons, events = {}, None
     if data['lessons.json'] is not None:
         lesson_problems, events = check_lessons(data['lessons.json'])
         problems += lesson_problems
         lessons = data['lessons.json']
+    if data['page-plan.json'] is not None:
+        problems += check_page_plan(data['page-plan.json'], intent, visual, lessons)
+    problems += check_visual_items(root, visual)
     selection = data['selection.json'] or {}
     if data['selection.json'] is not None:
         problems += check_selection(selection, intent, root)

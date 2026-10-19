@@ -72,6 +72,8 @@ ASG 负责需求到电路的方案可行性、选型依据、设计计算和功�
 不穿过任何页块。`verify_schematic.py` 的 `system_block` 检查核对这些，悬空线和无名箭头算 FAIL。
 按功能、隔离/电压域和可读面积分页；几个很小的功能块合成一页，不单独占一张 A3。
 见 [reference-driven-board-design.md](references/reference-driven-board-design.md)。
+每个功能块先在 [功能电路模式库](references/circuit-patterns.md) 里找做法（`find_parts.py --patterns <功能>`）：
+做法给出核心器件类、必需外围、必算项和已知坑；没有合适做法的功能块在 `lessons.json` 登记 `knowledge_missing`，设计完成后补写模式文件。
 
 ### 2. 选型、外围电路要求与计算
 
@@ -120,7 +122,8 @@ ASG 负责需求到电路的方案可行性、选型依据、设计计算和功�
 
 为每页写一张简短的方案表，内容包括：读者任务（跟随能量流、看懂反馈、追一个受保护接口……）、
 功能块及每块的位号、主路径、rails、出页网络及目的功能/页码、标签边界。先保证一条功能路径易读，再决定拆页或加大纸张。
-方案表随交付保存为 `record/page-plan.json`（每页 `file`、`reader_tasks`、`blocks`），本页每个器件都要属于一个功能块；
+方案表随交付保存为 `record/page-plan.json`（每页 `file`、`reader_tasks`、`blocks`、`patterns`），本页每个器件都要属于一个功能块，
+每个功能块标注所用模式与做法 `"<模式文件名>#<做法名>"`（方案表第一页是架构页，免标；没有模式的块要在 `lessons.json` 登记）；
 看图检查按它逐条追路径。见 [human-readable-routing.md](references/human-readable-routing.md) 第 1 节。
 纸张在画完后定：内容能放进 A4 就用 A4；一页只剩零散小块时并页，不把小电路摊在 A3 上。
 
@@ -275,6 +278,7 @@ python3 <skill>/scripts/pack_design.py <交付目录> --input requirements=<需�
 | 核心器件从哪找候选、怎么比较、`selection.json` | [core-part-selection.md](references/core-part-selection.md) |
 | 技能怎样持续改进：事件、归因、台账、回归 | [docs/improvement-plan.md](docs/improvement-plan.md)、每版的固定动作 [docs/operating-cadence.md](docs/operating-cadence.md) |
 | 每类器件干什么、选它看什么参数（按知识库分类） | [part-roles.md](references/part-roles.md) |
+| 一个功能通常怎么实现、有几种做法、各自的必算项与已知坑 | [circuit-patterns.md](references/circuit-patterns.md) 与 `references/circuit-patterns/` |
 | 选符号、引脚表、外围电路要求 | [symbol-and-peripheral-contracts.md](references/symbol-and-peripheral-contracts.md) |
 | 计算条件记录 | [calculation-preflight.md](references/calculation-preflight.md) |
 | 非线性极值、条件匹配与插值边界 | [worst-case-bounds.md](references/worst-case-bounds.md) |

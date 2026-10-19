@@ -17,6 +17,7 @@ part's suitability.
   find_parts.py --notes "Type-C"                  # application notes
   find_parts.py --roles-coverage                  # part-roles.md vs library subcategories
   find_parts.py --file <pdf>                      # where this file already is in the library, if anywhere
+  find_parts.py --patterns 反激 隔离                # circuit patterns (references/circuit-patterns/) by name, function, approach
 """
 
 import argparse
@@ -27,6 +28,7 @@ import re
 import sys
 
 ROLES_MD = Path(__file__).resolve().parent.parent / "references" / "part-roles.md"
+PATTERNS_DIR = Path(__file__).resolve().parent.parent / "references" / "circuit-patterns"
 DEFAULT_WIKI = Path(os.environ.get("HARDWARE_WIKI", Path.home() / "Documents" / "知识库" / "HardwareWiki"))
 
 
@@ -142,6 +144,31 @@ def locate_file(wiki, path):
     return None
 
 
+def pattern_index(path=PATTERNS_DIR):
+    """{pattern id: {"title", "function", "approaches": [...]}} from references/circuit-patterns/*.md."""
+    index = {}
+    for md in sorted(path.glob("*.md")) if path.is_dir() else []:
+        title, function, approaches = "", "", []
+        for line in md.read_text(encoding="utf-8").splitlines():
+            if line.startswith("# ") and not title:
+                title = line[2:].strip()
+            elif line.startswith("功能："):
+                function = line[3:].strip()
+            elif line.startswith("### "):
+                approaches.append(line[4:].strip())
+        index[md.stem] = {"title": title, "function": function, "approaches": approaches}
+    return index
+
+
+def search_patterns(terms, path=PATTERNS_DIR):
+    hits = []
+    for pid, info in pattern_index(path).items():
+        hay = norm(" ".join([pid, info["title"], info["function"]] + info["approaches"]))
+        if all(norm(t) in hay for t in terms):
+            hits.append({"id": pid, "file": "references/circuit-patterns/%s.md" % pid, **info})
+    return {"terms": terms, "total": len(hits), "results": hits}
+
+
 def search_paths(wiki, kind, terms, limit=40):
     root = wiki / "raw" / kind
     if not root.is_dir():
@@ -167,12 +194,15 @@ def main(argv=None):
     ap.add_argument("--text", action="store_true", help="also match the indexed first pages of each datasheet")
     ap.add_argument("--designs", action="store_true", help="search raw/Designexample by path")
     ap.add_argument("--notes", action="store_true", help="search raw/Applicationnote by path")
+    ap.add_argument("--patterns", action="store_true", help="search circuit patterns in references/circuit-patterns/")
     ap.add_argument("--file", type=Path, help="report where this local file already is in the library")
     ap.add_argument("--roles-coverage", action="store_true", help="compare references/part-roles.md with the library")
     ap.add_argument("--limit", type=int, default=40)
     ap.add_argument("--out", type=Path)
     args = ap.parse_args(argv)
-    if args.file:
+    if args.patterns:
+        report = search_patterns(args.terms)
+    elif args.file:
         where = locate_file(args.wiki, args.file)
         report = {"library": str(args.wiki), "file": str(args.file), "in_library": where,
                   "status": "PASS" if where else "FAIL"}

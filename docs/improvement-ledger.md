@@ -6,6 +6,26 @@ record or user correction that caused the change; `Causes:` how many items
 fell in each cause class (rule_missing, rule_not_enforced, knowledge_missing,
 knowledge_wrong, judgment); `Changed:` the files touched.
 
+## Circuit pattern library, first batch (2026-10-19)
+
+Improvement plan stage 4. part-roles.md says what a kind of part does;
+nothing said how a function is usually built, which approaches exist and
+what each one's known pitfalls are, so every board started from a reference
+design's BOM. `references/circuit-patterns/` holds 16 patterns extracted
+from 100 W PD R1–R4 (input protection, PFC, QR flyback, ZCD, Y-cap
+bridging, bias supply, aux OVP latch, isolated feedback, synchronous
+rectification, output storage, current sensing, PD output control, Type-C
+protection, NTC sensing, test points, AC indicator); each approach lists
+its part classes, required peripherals, calculations, pitfalls that cite
+the R4 review items, and sources. `find_parts.py --patterns` searches
+them; `page-plan.json` names a pattern approach per functional block (the
+report checks it exists, or that lessons.json registers the gap). The
+patterns live in the skill because the wiki schema has no such page type.
+
+- Event: review:SR-20261019-R3-改版前独立审查-41f4ad3/W-OPTO, W-MLCC, W-SR, W-PORT-SOA, W-AUX-OVP, W-ZCD, W-CAL and the other R4 items cited in the pattern files; user:2026-10-19 (plan stage 4)
+- Causes: knowledge_missing 16
+- Changed: references/circuit-patterns.md, references/circuit-patterns, scripts/find_parts.py, scripts/render_design_report.py, tests/test_find_parts.py, tests/test_design_report.py, SKILL.md, references/delivery-report.md, README.md
+
 ## Operating cadence (2026-10-19)
 
 Improvement plan stage 6. `docs/operating-cadence.md` fixes the seven

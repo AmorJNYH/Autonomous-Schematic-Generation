@@ -69,7 +69,8 @@ class Delivery:
         self.write('visual-review.json', {'status': 'REVIEWED', 'pages': [
             {'page': 1, 'file': 'board.kicad_sch', 'paths': ['VIN to VOUT'], 'problems': []}]})
         self.write('page-plan.json', {'schema_version': 1, 'pages': [
-            {'file': 'board.kicad_sch', 'reader_tasks': ['跟随 VIN 到 VOUT 的能量流'], 'blocks': {'稳压': ['U1', 'R1']}}]})
+            {'file': 'board.kicad_sch', 'reader_tasks': ['跟随 VIN 到 VOUT 的能量流'], 'blocks': {'稳压': ['U1', 'R1']},
+             'patterns': {'稳压': 'output-filter-storage#电解/聚合物 + MLCC 并联'}}]})
         self.write('lessons.json', {'schema_version': 1, 'events': [
             {'source': 'datasheet:raw/Datasheet/08_电源管理/X - XYZ100.pdf#p3', 'cause': 'none',
              'why_none': 'p.3 的输出电容要求与 part-roles.md 降压转换器行一致'}]})
@@ -299,6 +300,35 @@ class DesignReportTests(unittest.TestCase):
         self.assertIn('选型角色“稳压器”淘汰候选 ABC200 没有一条决定性条件判定不满足，也没写 reject_kind（dependency/data/availability/cost/preference）', problems)
         self.assertIn('选型角色“稳压器”候选 GHI400 不满足条件“输入电压范围”（10–12 覆盖 9–14 V）却被列为备选', problems)
         self.assertIn('DEF300：资料不足', text)
+
+    def test_blocks_name_a_pattern_approach_or_register_the_gap(self):
+        plan = json.loads((self.d.record / 'page-plan.json').read_text())
+        page = plan['pages'][0]
+        page['patterns'] = {}
+        self.d.write('page-plan.json', plan)
+        _, problems = self.d.report()
+        self.assertIn('board.kicad_sch：功能块“稳压”没有标注电路模式（patterns），没有合适模式时在 lessons.json 登记 knowledge_missing 并补写 references/circuit-patterns/', problems)
+        self.d.write('lessons.json', {'schema_version': 1, 'events': [
+            {'source': 'user:2026-10-19', 'cause': 'knowledge_missing', 'change': 'references/circuit-patterns/ldo-regulator.md 新增'}]})
+        _, problems = self.d.report()
+        self.assertEqual([], problems)
+        page['patterns'] = {'稳压': 'no-such#做法'}
+        self.d.write('page-plan.json', plan)
+        _, problems = self.d.report()
+        self.assertIn('board.kicad_sch：功能块“稳压”标注的模式 no-such 在 references/circuit-patterns/ 里不存在', problems)
+        page['patterns'] = {'稳压': 'output-filter-storage#不存在的做法'}
+        self.d.write('page-plan.json', plan)
+        _, problems = self.d.report()
+        self.assertTrue(any(p.startswith('board.kicad_sch：功能块“稳压”标注的做法“不存在的做法”不在模式 output-filter-storage 里') for p in problems), problems)
+        plan['pages'].insert(0, {'file': 'PD_root.kicad_sch', 'reader_tasks': ['看流向'], 'blocks': {'能量链': ['U1']}})
+        self.d.write('page-plan.json', plan)
+        self.d.write('visual-review.json', {'status': 'REVIEWED', 'pages': [
+            {'page': 1, 'file': 'board.kicad_sch', 'paths': ['VIN to VOUT'], 'problems': []},
+            {'page': 0, 'file': 'PD_root.kicad_sch', 'paths': ['flow'], 'problems': []}]})
+        page['patterns'] = {'稳压': 'output-filter-storage#电解/聚合物 + MLCC 并联'}
+        self.d.write('page-plan.json', plan)
+        _, problems = self.d.report()
+        self.assertFalse(any('PD_root' in p for p in problems), problems)
 
     def test_parts_on_a_page_must_belong_to_a_block(self):
         self.d.write('electrical-intent.json', {'components': [
