@@ -120,9 +120,70 @@ def document_refs(root, intent):
     return errors
 
 
-def check(root, inputs=()):
+def nets_of(intent):
+    touched = {}
+    nets = intent.get('nets') or []
+    for n in (nets if isinstance(nets, list) else [{'name': k, 'pins': v} for k, v in nets.items()]):
+        for pin in n.get('pins') or []:
+            touched.setdefault(str(pin).rsplit('.', 1)[0], set()).add(n.get('name'))
+    return touched
+
+
+def check_against_previous(root, previous):
+    """A revision does not quietly regress: open design work and supported
+    requirements are compared with the previous delivery, and a 改图 response
+    must have changed something in the intent since then."""
+    root, previous = Path(root), Path(previous)
+    errors = []
+    try:
+        prev = json.loads((previous / 'record' / 'design-closure.json').read_text(encoding='utf-8'))
+        cur = json.loads((root / 'record' / 'design-closure.json').read_text(encoding='utf-8'))
+    except (OSError, ValueError) as error:
+        return ['previous: cannot compare design-closure.json: %s' % error]
+    count = lambda rec, pred: sum(1 for w in rec.get('work_items') or [] if isinstance(w, dict) and pred(w))
+    open_design = lambda w: w.get('stage') == 'design' and w.get('status') == 'open'
+    supported = lambda rec: sum(1 for r in rec.get('requirements') or [] if isinstance(r, dict) and r.get('status') == 'design_supported')
+    regressions = []
+    if count(cur, open_design) > count(prev, open_design):
+        regressions.append('设计没做完的待办 %d → %d' % (count(prev, open_design), count(cur, open_design)))
+    if supported(cur) < supported(prev):
+        regressions.append('有设计依据的需求 %d → %d' % (supported(prev), supported(cur)))
+    if regressions:
+        try:
+            reason = json.loads((root / 'record' / 'notes.json').read_text(encoding='utf-8')).get('regression_reason')
+        except (OSError, ValueError):
+            reason = None
+        if not (isinstance(reason, str) and reason.strip()):
+            errors.append('previous: 比上一版倒退（%s）；record/notes.json 要写 regression_reason 说明为什么' % '；'.join(regressions))
+    responses = root / 'record' / 'review-responses.json'
+    if responses.is_file():
+        try:
+            items = json.loads(responses.read_text(encoding='utf-8')).get('items') or []
+            prev_intent = json.loads((previous / 'record' / 'electrical-intent.json').read_text(encoding='utf-8'))
+            cur_intent = json.loads((root / 'record' / 'electrical-intent.json').read_text(encoding='utf-8'))
+        except (OSError, ValueError) as error:
+            return errors + ['previous: cannot compare intents: %s' % error]
+        before = {c.get('ref'): c for c in prev_intent.get('components') or [] if isinstance(c, dict)}
+        after = {c.get('ref'): c for c in cur_intent.get('components') or [] if isinstance(c, dict)}
+        nets_before, nets_after = nets_of(prev_intent), nets_of(cur_intent)
+        changed = {r for r in set(before) | set(after)
+                   if before.get(r) != after.get(r) or nets_before.get(r, set()) != nets_after.get(r, set())}
+        for item in items:
+            if not isinstance(item, dict) or item.get('response') != 'REDESIGN':
+                continue
+            named = set()
+            for c in item.get('changes') or []:
+                named |= set(re.findall(r'(?<![A-Za-z0-9])[A-Z]{1,3}\d{1,4}(?![A-Za-z0-9])', str(c)))
+            if named and not named & changed:
+                errors.append('previous: %s 标为“改图”，但 %s 在设计要求表里与上一版相同' % (item.get('id'), '、'.join(sorted(named))))
+    return errors
+
+
+def check(root, inputs=(), previous=None):
     root = Path(root)
     errors = []
+    if previous:
+        errors += check_against_previous(root, previous)
     present = {p.name for p in root.iterdir() if not p.name.startswith('.')} if root.is_dir() else set()
     extra = sorted(present - set(TOP))
     if extra:
@@ -179,7 +240,7 @@ def check(root, inputs=()):
 
 def pack(root, inputs):
     root = Path(root)
-    errors = check(root, list(inputs.values()))
+    errors = check(root, list(inputs.values()), inputs.get('previous'))
     declared = {}
     for name, path in inputs.items():
         if not Path(path).exists():

@@ -39,11 +39,15 @@ VISUAL = {'REVIEWED': '已完成', 'REVIEW_PENDING': '还没做完', 'REWORK_REQ
 STAGES = {'requirement': '等用户定需求', 'design': '设计没做完', 'external': '缺外部资料', 'validation': '样机或试验验证', 'pcb': 'PCB 实现'}
 REQUIREMENTS = OrderedDict([('design_supported', '有设计依据'), ('conditional', '有条件成立'), ('open', '还没有设计')])
 RESPONSES = OrderedDict([
-    ('REDESIGN', ('改图', 'changes')), ('DESIGN', ('补设计', 'work_items')),
+    ('REDESIGN', ('改图', 'changes')), ('CALC_DOC', ('补计算/补文档', 'changes')), ('DESIGN', ('补设计', 'work_items')),
     ('OBTAIN_DATA', ('补资料', 'work_items')), ('ASK_USER', ('请用户定需求', 'detail')),
     ('HANDOFF', ('交给后续环节', 'work_items')), ('DECLINE', ('不采纳', 'evidence')),
     ('DEFERRED', ('已暂缓', 'detail'))])
 RESPONSE_STAGE = {'ASK_USER': ('requirement',), 'DESIGN': ('design',), 'OBTAIN_DATA': ('external',), 'HANDOFF': ('validation', 'pcb')}
+REF_PATTERN = re.compile(r'(?<![A-Za-z0-9])[A-Z]{1,3}\d{1,4}(?![A-Za-z0-9])')
+PAGE_PATTERN = re.compile(r'(?<![A-Za-z0-9])\d{2}_[A-Za-z][A-Za-z0-9_]*|System_block')
+# Words that describe the review process, not a design basis.
+PROCESS_WORDS = ('审查', '第一轮', '第二轮', '下一轮', '下一版', '核销', '复审')
 REQUIRED = ('electrical-intent.json', 'design-closure.json', 'design-closure-audit.json',
             'summary.json', 'visual-review.json', 'page-plan.json')
 
@@ -188,13 +192,23 @@ def check_visual_items(root, visual):
     return list(OrderedDict.fromkeys(errors))  # one line per symbol, not per pin
 
 
+def num(value):
+    """A number with three significant digits; integers and non-numbers unchanged."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return str(value)
+    if isinstance(value, int) or value == 0 or value != value:
+        return str(value)
+    rounded = float('%.3g' % value)
+    return str(int(rounded)) if rounded == int(rounded) and abs(rounded) >= 1 else ('%f' % rounded).rstrip('0').rstrip('.')
+
+
 def check_text(chk):
     if not isinstance(chk, dict):
         return ''
     side = SIDE_WORDS.get(chk.get('side'))
-    return '%s%s：%s %s %s %s' % ('[%s] ' % side if side else '', chk.get('name'), chk.get('value'),
+    return '%s%s：%s %s %s %s' % ('[%s] ' % side if side else '', chk.get('name'), num(chk.get('value')),
                                  OPERATOR_SIGNS.get(chk.get('operator'), chk.get('operator')),
-                                 chk.get('limit'), chk.get('unit') or '')
+                                 num(chk.get('limit')), chk.get('unit') or '')
 
 
 def cell(value):
@@ -210,11 +224,23 @@ def load(path):
         return None, 'record/%s 读不出来：%s' % (path.name, error)
 
 
-def check_responses(data, work):
-    """Each review comment has one allowed response and what that response requires."""
+def check_responses(data, work, intent=None, closure=None, root=None):
+    """Each review comment has one allowed response and what that response requires.
+
+    A response is work done this version, not a transcription of the comment:
+    the same explanation may not serve several comments, 补设计 points at a
+    work item that records this version's progress, 改图 names the parts it
+    changed, and 补计算/补文档 names the calculation or design document.
+    """
     errors = []
     if not isinstance(data, dict) or data.get('schema_version') != 1:
         return ['review-responses.json 必须是 schema_version 1 的对象']
+    known_refs = {c.get('ref') for c in (intent or {}).get('components') or [] if isinstance(c, dict)}
+    calc_ids = {c.get('id') for c in (closure or {}).get('calculations') or [] if isinstance(c, dict)}
+    details = Counter(i.get('detail') for i in data.get('items') or [] if isinstance(i, dict) and text(i.get('detail')))
+    for detail, n in details.items():
+        if n > 1:
+            errors.append('处理说明“%s”在 %d 条意见里重复：每条意见要写它自己怎么处理' % (detail[:30] + ('…' if len(detail) > 30 else ''), n))
     sources = {s.get('id') for s in data.get('sources') or [] if isinstance(s, dict)
                and text(s.get('id')) and text(s.get('path')) and text(s.get('sha256'))}
     if not sources:
@@ -237,12 +263,23 @@ def check_responses(data, work):
         field = RESPONSES[response][1]
         if field != 'detail' and not (isinstance(item.get(field), list) and item[field]):
             errors.append('%s：处理方式为“%s”时必须填 %s' % (key, RESPONSES[response][0], field))
+        changes = [c for c in item.get('changes') or [] if text(c)]
+        if response == 'REDESIGN' and changes and not any(
+                (known_refs & set(REF_PATTERN.findall(c))) or PAGE_PATTERN.search(c) for c in changes):
+            errors.append('%s：“改图”的 changes 没有点名改了哪个位号或哪一页' % key)
+        if response == 'CALC_DOC':
+            for c in changes:
+                if c not in calc_ids and not (root is not None and (Path(root) / '设计资料' / c).is_file()):
+                    errors.append('%s：“补计算/补文档”的 changes 项“%s”既不是计算编号也不是设计资料文件' % (key, c[:30]))
         for wid in item.get('work_items') or []:
             row = work.get(wid)
             if row is None:
                 errors.append('%s：引用的待办 %s 不在 design-closure.json 里' % (key, wid))
             elif response in RESPONSE_STAGE and row.get('stage') not in RESPONSE_STAGE[response]:
                 errors.append('%s：待办 %s 的阶段与处理方式“%s”不符' % (key, wid, RESPONSES[response][0]))
+            elif response == 'DESIGN' and row.get('status') != 'closed' and (
+                    not text(row.get('progress')) or row.get('progress') == row.get('action')):
+                errors.append('%s：“补设计”引用的待办 %s 没有写本版做了什么（progress），只抄了意见' % (key, wid))
     if not seen:
         errors.append('review-responses.json 没有登记任何意见')
     return errors
@@ -290,8 +327,11 @@ def render(root, notes=None, title=None):
         problems += check_page_plan(data['page-plan.json'], intent, visual)
     problems += check_visual_items(root, visual)
     if responses is not None:
-        problems += check_responses(responses, work)
+        problems += check_responses(responses, work, intent, closure, root)
     problems += check_language(closure, notes)
+    for i, h in enumerate(notes.get('highlights') or []):
+        if text(h) and any(w in h for w in PROCESS_WORDS):
+            problems.append('关键设计依据第 %d 条写的是审查流程，不是设计依据：“%s”' % (i + 1, h.strip()[:40]))
 
     gates = summary.get('gates') or {}
     shown = [(key, label, (gates.get(key) or {}).get('status')) for key, label in GATES.items() if key in gates]
@@ -356,6 +396,10 @@ def render(root, notes=None, title=None):
     out.append('')
     if notes.get('summary'):
         out += [notes['summary'], '']
+    if items:
+        redrawn = reply_counts.get('REDESIGN', 0) + reply_counts.get('CALC_DOC', 0)
+        out += ['本版收到 %d 条审查意见：改图或补计算/补文档 %d 条，其余 %d 条登记为待办、交给后续环节或不采纳。'
+                % (len(items), redrawn, len(items) - redrawn), '']
 
     if notes.get('changes') or change:
         out += ['## 这版改了什么', '']

@@ -43,6 +43,7 @@ class Delivery:
                  'evidence': ['E1'], 'owner': '样机验证', 'action': '满载温升测试'}],
             'calculations': [{'id': 'C1', 'requirements': ['R-OUT'], 'evidence': ['E1'], 'refs': ['U1'],
                               'coverage': 'partial', 'conclusion': 'conditional', 'omitted_terms': ['ripple'],
+                              'missing_guarantee': '纹波电流在 105°C 的额定',
                               'checks': [{'name': '输出纹波', 'value': 18, 'operator': '<=', 'limit': 30, 'unit': 'mV'}]}]}
         self.write('design-closure.json', self.closure)
         self.write('design-closure-audit.json', audit(self.closure, self.record / 'electrical-intent.json', self.root))
@@ -227,6 +228,59 @@ class DesignReportTests(unittest.TestCase):
         self.assertIn('| RC1 | 过压保护配置没依据 | 补资料 | 向固件供应方要配置表 |', text)
         self.assertIn('设计记录本身有问题', text.splitlines()[2])
 
+    def responses(self, items):
+        self.d.write('review-responses.json', {'schema_version': 1,
+            'sources': [{'id': 'S1', 'path': '/x', 'sha256': '0' * 64}], 'items': items})
+        _, problems = self.d.report()
+        return problems
+
+    def test_same_detail_on_several_comments_is_a_problem(self):
+        same = '本次未宣称关闭；已复核现有条件计算并保留原任务。'
+        problems = self.responses([
+            {'id': 'RC1', 'source': 'S1', 'locator': '1', 'comment': 'a', 'response': 'OBTAIN_DATA', 'detail': same, 'work_items': ['W-FW']},
+            {'id': 'RC2', 'source': 'S1', 'locator': '2', 'comment': 'b', 'response': 'OBTAIN_DATA', 'detail': same, 'work_items': ['W-FW']}])
+        self.assertTrue(any(p.startswith('处理说明“本次未宣称关闭') and '2 条意见里重复' in p for p in problems), problems)
+
+    def test_design_response_needs_this_versions_progress(self):
+        item = {'id': 'RC1', 'source': 'S1', 'locator': '1', 'comment': 'c', 'response': 'DESIGN',
+                'detail': '自己算完', 'work_items': ['W-CALC']}
+        problems = self.responses([item])
+        self.assertIn('RC1：“补设计”引用的待办 W-CALC 没有写本版做了什么（progress），只抄了意见', problems)
+        self.d.closure['work_items'][0]['progress'] = '已按 105°C 额定算出 2.67A，待核均流'
+        self.d.write('design-closure.json', self.d.closure)
+        self.d.write('design-closure-audit.json', audit(self.d.closure, self.d.record / 'electrical-intent.json', self.d.root))
+        self.assertEqual([], self.responses([item]))
+
+    def test_redesign_names_a_part_or_page_and_calc_doc_names_its_target(self):
+        base = {'source': 'S1', 'locator': '1', 'comment': 'c', 'detail': 'd'}
+        problems = self.responses([
+            {'id': 'RC1', 'response': 'REDESIGN', 'changes': ['三只旁路升为2.2uF'], **base},
+            {'id': 'RC2', 'response': 'REDESIGN', 'changes': ['R1 改 470Ω'], **{**base, 'detail': 'e'}},
+            {'id': 'RC3', 'response': 'REDESIGN', 'changes': ['System_block 流向标名'], **{**base, 'detail': 'f'}},
+            {'id': 'RC4', 'response': 'CALC_DOC', 'changes': ['C1', '方案与选型依据.md', '不存在.md'], **{**base, 'detail': 'g'}}])
+        self.assertIn('RC1：“改图”的 changes 没有点名改了哪个位号或哪一页', problems)
+        self.assertFalse(any(p.startswith('RC2') or p.startswith('RC3') for p in problems), problems)
+        self.assertIn('RC4：“补计算/补文档”的 changes 项“不存在.md”既不是计算编号也不是设计资料文件', problems)
+        self.assertEqual(1, sum(p.startswith('RC4') for p in problems), problems)
+
+    def test_process_words_in_highlights_and_response_tally(self):
+        text, problems = self.d.report({'highlights': ['第一轮审查已锁定，第二轮将逐件核销', '120Hz 纹波按 0.66A 额定核过']})
+        self.assertTrue(any(p.startswith('关键设计依据第 1 条写的是审查流程') for p in problems), problems)
+        self.assertEqual(1, sum('关键设计依据' in p for p in problems))
+        self.d.write('review-responses.json', {'schema_version': 1,
+            'sources': [{'id': 'S1', 'path': '/x', 'sha256': '0' * 64}],
+            'items': [{'id': 'RC1', 'source': 'S1', 'locator': '1', 'comment': 'c', 'response': 'OBTAIN_DATA',
+                       'detail': 'x', 'work_items': ['W-FW']},
+                      {'id': 'RC2', 'source': 'S1', 'locator': '2', 'comment': 'c', 'response': 'REDESIGN',
+                       'detail': 'y', 'changes': ['R1 改值']}]})
+        text, _ = self.d.report()
+        self.assertIn('本版收到 2 条审查意见：改图或补计算/补文档 1 条，其余 1 条登记为待办、交给后续环节或不采纳。', text)
+
+    def test_numbers_use_three_significant_digits(self):
+        from render_design_report import num
+        self.assertEqual(['0.426', '145000', '18', '0.00199', '1.04', '264', '2.67'],
+                         [num(v) for v in (0.42632428, 144700.68310544, 18, 0.0019886243943543296, 1.0392525, 264, 2.6666667)])
+
     def test_response_stage_must_match_work_item(self):
         self.d.write('review-responses.json', {'schema_version': 1,
             'sources': [{'id': 'S1', 'path': '/x', 'sha256': '0' * 64}],
@@ -256,6 +310,41 @@ class PackDesignTests(unittest.TestCase):
         (self.d.root / REPORT).write_text(text)
         errors, _ = self.run_pack()
         self.assertTrue(any('图面几何' in e for e in errors), errors)
+
+    def previous(self, closure_changes=None, intent=None):
+        prev = Path(self.d.tmp.name) / 'v0'
+        (prev / 'record').mkdir(parents=True)
+        closure = json.loads(json.dumps(self.d.closure))
+        for change in closure_changes or []:
+            change(closure)
+        (prev / 'record' / 'design-closure.json').write_text(json.dumps(closure, ensure_ascii=False))
+        (prev / 'record' / 'electrical-intent.json').write_text(json.dumps(
+            intent if intent is not None else json.loads((self.d.record / 'electrical-intent.json').read_text())))
+        return prev
+
+    def test_regression_against_previous_needs_a_reason(self):
+        prev = self.previous([lambda c: c['work_items'][0].update(status='closed'),
+                              lambda c: c['requirements'][0].update(status='design_supported')])
+        errors, _ = pack(self.d.root, {'requirements': str(self.inputs), 'previous': str(prev)})
+        self.assertTrue(any('倒退' in e and '设计没做完的待办 0 → 1' in e and '有设计依据的需求 1 → 0' in e for e in errors), errors)
+        self.d.write('notes.json', {'regression_reason': '审查方把 W-CALC 从外部资料改判为设计项'})
+        errors, _ = pack(self.d.root, {'requirements': str(self.inputs), 'previous': str(prev)})
+        self.assertFalse(any('倒退' in e for e in errors), errors)
+
+    def test_redesign_must_change_the_named_part_since_previous(self):
+        prev = self.previous(intent={'components': [{'ref': 'U1'}, {'ref': 'R1'}]})
+        self.d.write('review-responses.json', {'schema_version': 1,
+            'sources': [{'id': 'S1', 'path': '/x', 'sha256': '0' * 64}],
+            'items': [{'id': 'RC1', 'source': 'S1', 'locator': '1', 'comment': 'c', 'response': 'REDESIGN',
+                       'detail': 'R1 改 470Ω', 'changes': ['R1 改 470Ω']}]})
+        errors, _ = pack(self.d.root, {'requirements': str(self.inputs), 'previous': str(prev)})
+        self.assertIn('previous: RC1 标为“改图”，但 R1 在设计要求表里与上一版相同', errors)
+        self.d.write('electrical-intent.json', {'components': [{'ref': 'U1'}, {'ref': 'R1', 'value': '470R'}]})
+        self.d.closure['intent_sha256'] = sha256(self.d.record / 'electrical-intent.json')
+        self.d.write('design-closure.json', self.d.closure)
+        self.d.write('design-closure-audit.json', audit(self.d.closure, self.d.record / 'electrical-intent.json', self.d.root))
+        errors, _ = pack(self.d.root, {'requirements': str(self.inputs), 'previous': str(prev)})
+        self.assertFalse(any('与上一版相同' in e for e in errors), errors)
 
     def test_clean_delivery_packs_with_manifest(self):
         errors, manifest = self.run_pack()

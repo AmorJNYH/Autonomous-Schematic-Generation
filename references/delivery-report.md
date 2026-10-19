@@ -52,8 +52,12 @@
 {"summary": "1–3 句：这一版的状态和最要紧的一件事",
  "changes": "这版改了什么、为什么，一段话",
  "items": {"W1": "这件待办用白话说是什么问题"},
- "highlights": ["已经核对清楚、值得一提的设计结论（最多 8 条）"]}
+ "highlights": ["已经核对清楚、值得一提的设计结论（最多 8 条）"],
+ "regression_reason": "只在比上一版倒退时写：为什么设计待办变多或有依据的需求变少"}
 ```
+
+`highlights` 写设计结论，不写流程（“第二轮审查将核销”这类句子会被报告拒绝）。报告的摘要后面会自动加一句本版多少条意见真正改图或补算、多少条只是登记。
+计算的值和门槛按 3 位有效数字打印。
 
 写给硬件工程师看：用“定稿”“待办”“交给后续环节”这类说法，不写内部代号和英文状态码；
 `action`、`owner`、`fallback`、需求的 `implementation`、计算的 `assumptions`/`omitted_terms`/`checks[].name`
@@ -67,7 +71,8 @@ python3 <skill>/scripts/pack_design.py <交付目录> --input requirements=<需�
   --input datasheets=<原厂资料目录> [--input previous=<前一版交付目录>]
 ```
 
-检查失败就修正后重跑，直到 PASS：顶层只能有上面四样；`原理图/` 和 `record/` 的必需文件齐全；
+检查失败就修正后重跑，直到 PASS：给了 `previous` 时，设计阶段未关闭的待办数不能比上一版多、有设计依据的需求数不能比上一版少，
+除非 `record/notes.json` 的 `regression_reason` 说明原因；标为“改图”的审查回复点名的位号必须与上一版设计要求表不同。顶层只能有上面四样；`原理图/` 和 `record/` 的必需文件齐全；
 `设计资料/` 里的表格（有位号列的 CSV）和装配文件（JSON 的 `ref`/`refs`/`fit`/`dnp`）提到的位号都在设计要求表里，
 表格给出的型号（mpn）和值（value）与设计要求表一致——说明文字里提到的位号和描述不在自动检查范围，改版时要人工清理；
 `record/` 只有允许的子目录；没有日志和超大文件；`design-closure.json` 在交付目录内重新审核不出错；

@@ -1,5 +1,34 @@
 # 此前问题点的改造闭环
 
+## 100 W PD R4 review follow-up (2026-10-19)
+
+The R4 report passed every drawing gate and still showed the skill letting a
+revision stand still. Traced to rules that only checked presence, not content:
+
+- 18 of 23 review responses shared one `detail` sentence and 8 `DESIGN`
+  responses pointed at work items whose `action` was the comment itself.
+  `check_responses` rejects a `detail` reused across comments, requires an
+  open design work item referenced by `DESIGN` to carry `progress` (what this
+  version did, not equal to `action`), requires `REDESIGN` changes to name a
+  part or page, and adds `CALC_DOC` (补计算/补文档) for document-only work so
+  it is no longer called 改图. The report states after the summary how many
+  comments were actually redrawn or recalculated.
+- Open design work went 0 → 10 and supported requirements 8 → 0 between R3
+  and R4 without a word. `pack_design.py --input previous=` compares both
+  counts and refuses a regression unless `notes.json` gives
+  `regression_reason`; it also checks that a `REDESIGN` response's named
+  parts differ from the previous intent.
+- All 27 calculations were `partial`/`conditional`, including 1.33 A < 3 A.
+  `conditional` now needs `missing_guarantee` (which guarantee is absent) and
+  `partial` needs non-empty `omitted_terms`; the report prints values with
+  three significant digits instead of 16-digit floats.
+- draw_pages.py kept gap=38 and pitch=35 behind 12 `justify` calls.
+  `justify` takes `conflict` (part, pin or `text:<field>`) for spacing
+  deviations, a reason alone leaves the finding open, and more than three
+  justified spacing deviations on a page is a finding.
+- `highlights` carried process talk ("第二轮将核销"); process words in
+  highlights are a report problem.
+
 ## 100 W PD R3 drawing review (2026-10-19)
 
 Reading the eight rendered pages of the R3 delivery against the drawing rules,

@@ -35,6 +35,9 @@ FLAG_SYMBOL = "power:PWR_FLAG"
 # steps (15.24 mm) is reported by the structure audit unless the script records
 # why; widening a gap is the first repair, not a resting state.
 MAX_SPACING_STEPS = 12
+# More justified spacing deviations than this on one page means the page is
+# padded, not laid out: fold or re-anchor it instead of writing more reasons.
+MAX_SPACING_DEVIATIONS = 3
 
 
 def flag_value(symbol, net):
@@ -173,6 +176,7 @@ class Sheet:
         self.notes = []
         self.decisions = []
         self.reasons = {}
+        self.conflicts = {}
         self._shapes = {}
         self.rails = dict(rails or {})
         self.external = sorted(external)
@@ -264,10 +268,21 @@ class Sheet:
                        else "name" if n in names else None)
         return {"parts": roles, "nets": nets}
 
-    def justify(self, subject, reason):
-        """Record why a part or net deviates from the outline rules."""
+    def justify(self, subject, reason, conflict=None):
+        """Record why a part or net deviates from the outline rules.
+
+        A spacing deviation (O7) also names what the extra room avoids in
+        ``conflict``: a part, a pin, or ``text:<what>`` for a long field.
+        """
         if not str(reason).strip():
             raise ValueError("A deviation needs a reason")
+        if conflict is not None:
+            conflict = str(conflict).strip()
+            if not conflict:
+                raise ValueError("conflict names the object the spacing avoids")
+            if not conflict.startswith("text:") and conflict not in self.components and conflict not in self.nets:
+                raise ValueError(f"conflict {conflict!r} is not a part, a pin or text:<what>")
+            self.conflicts[subject] = conflict
         self.reasons[subject] = reason
 
     # ----- geometry -------------------------------------------------------
@@ -1135,7 +1150,20 @@ class Sheet:
                 found.append({"rule": "name", "subject": net, "detail": "selected local net carries no small name"})
             if role is None and "local" in k and f"label:{net}" not in self.reasons:
                 found.append({"rule": "name", "subject": net, "detail": "local label on an unselected net"})
-        findings = [f for f in found if f["subject"] not in self.reasons]
-        deviations = [{**f, "reason": self.reasons[f["subject"]]} for f in found if f["subject"] in self.reasons]
+        findings, deviations = [], []
+        for f in found:
+            subject = f["subject"]
+            if subject not in self.reasons:
+                findings.append(f)
+            elif f["rule"] == "spacing" and subject not in self.conflicts:
+                findings.append({**f, "detail": f["detail"] + "; justify(..., conflict=<part, pin or text:...>) names what it avoids"})
+            else:
+                deviations.append({**f, "reason": self.reasons[subject],
+                                   **({"conflict": self.conflicts[subject]} if subject in self.conflicts else {})})
+        spacing = [d for d in deviations if d["rule"] == "spacing"]
+        if len(spacing) > MAX_SPACING_DEVIATIONS:
+            findings.append({"rule": "spacing", "subject": "page", "detail":
+                             f"{len(spacing)} justified spacing deviations on one page (limit {MAX_SPACING_DEVIATIONS}): "
+                             "fold the path or re-anchor the block instead (O8)"})
         return {"status": "FAIL" if findings else "PASS", "findings": findings, "deviations": deviations,
                 "plan": self.plan, "blocks": self.blocks}

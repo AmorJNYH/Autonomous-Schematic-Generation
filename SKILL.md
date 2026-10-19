@@ -48,7 +48,7 @@ ASG 负责需求到电路的方案可行性、选型依据、设计计算和功�
 | 重画已有工程，电气不变 | [existing-project-redraw.md](references/existing-project-redraw.md) 锁定基线，再走第 4–8 步 |
 | 已授权、保持连线与图面的 Value 参数修改 | [value-patch.md](references/value-patch.md) 生成 KiCad 验证的草稿图，再更新设计要求表/脚本与计算，走第 6–8 步 |
 | 授权的电气改版 | 先读 [electrical-redesign.md](references/electrical-redesign.md) 和 [change-preflight.md](references/change-preflight.md)，再走主流程 |
-| 收到审查意见后继续设计 | 按 [处理审查意见](references/review-comments.md) 逐条登记处理方式，再按电气改版处理需要改图的项 |
+| 收到审查意见后继续设计 | 按 [处理审查意见](references/review-comments.md) 逐条登记处理方式，再按电气改版处理需要改图的项；每条意见写本版做了什么，补设计的待办写 `progress`，没改电路的叫“补计算/补文档”不叫“改图” |
 | 从 PDF 参考设计提取电路 | [pdf-schematic-extraction.md](references/pdf-schematic-extraction.md)；提取结果只作线索，仍按第 2 步核对手册 |
 | 模块化数据、SKiDL/circuit-synth 导入、锁定基线 | [circuit-ir.md](references/circuit-ir.md)。人读的页面仍按第 5 步用 recipes 画 |
 | 用户要求 CopperPilot 协助 | [copperpilot-reference-workflow.md](references/copperpilot-reference-workflow.md) |
@@ -88,7 +88,8 @@ ASG 负责需求到电路的方案可行性、选型依据、设计计算和功�
   写明假设、余量和没算进去的项，结论记为有条件成立（`conditional`），不阻塞出图；只有算出不满足（`failed`）
   才是必须先解决的设计缺口。按最坏情况逐条证明属于独立审查，不在 ASG 内重复。
 - 每条计算给出位号（`refs`）和算出的值对门槛（`checks`），结论由数字决定；保护/检测/钳位阈值两侧都算
-  （不误动作 + 保护有效），稳压管/TVS/基准源都要有计算。见 [设计待办记录](references/design-closure.md)。
+  （不误动作 + 保护有效），稳压管/TVS/基准源都要有计算。`conditional` 要写明缺的是哪项保证（`missing_guarantee`），
+  `partial` 要写明漏了什么；没有缺失保证的核对就是 `supported`，不拿“有条件”当免责。见 [设计待办记录](references/design-closure.md)。
 - 器件热可行性（功耗→结温）属于选型，在本步算；散热实现才交 PCB。见 requirements-to-intent.md 第 4 节。
 - 外围电路要求中的每个数值上/下界也须逐项核原表：确切变体、版本、页/表/参数行、单位、MIN/TYP/MAX 列、脚注及测试条件。
   不能只核计算输入；TYP 或所需限值列的空白/破折号不能写成保证的 `≤`/`≥`，依赖它的负载/时序结论继续保留未知。
@@ -141,7 +142,8 @@ for n, (key, page) in enumerate(page_intents(board, rails=RAILS).items(), 1):
   有意偏离纲要时用 `s.justify(对象, 理由)` 记录。把方案表的功能块传给 `Sheet(..., blocks={块名: [位号]})`：
   同一块内的器件之间不许用局部连接标签代替导线（HR-01），审计会列出只连一块的标签。
 - 间距只为通过检查而加大，通过后缩回：gap、stub、pitch、lead 和电源符号/标签引线超过 12 格（约 15 mm）
-  会进结构审计，要么缩小，要么 `justify` 写明为什么需要（如长 Value 文字）。不得用加大间距把一页摊满。
+  会进结构审计，要么缩小，要么 `justify(对象, 理由, conflict=避让的器件/引脚/text:字段)` 写明避让了什么；
+  一页超过 3 处间距豁免本身就是审计不通过，改为折行或重新锚定。不得用加大间距把一页摊满。
 - 先列真实 planned 局部网名及其字号。在相应 series 段或 own-pin stub 放置前，显式用
   `max(原gap, s.name_run_steps(原net, font=原字号))` 预留直段，之后仍调用原 `s.name`。
   多段链逐段按真实网络预算；不得全局加gap、缩字、改名或用标签绕过连线。预算不证明无遮挡或 KiCad 字体覆盖。
@@ -208,7 +210,8 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
 
 - 按 [execution-evidence.md](references/execution-evidence.md) 写 `delivery-evidence.json`，报告前运行
   `scripts/check_delivery_freshness.py`；任何导出后的修改都会使旧结果作废。
-- 还有可独立完成的设计项就继续，不以列出缺口代替完成。
+- 还有可独立完成的设计项就继续，不以列出缺口代替完成。`pack_design.py --input previous=` 会对比上一版：
+  设计阶段待办变多或有依据的需求变少，必须在 notes.json 的 `regression_reason` 写明原因。
 - 交付目录只有下面四样，由 [交付与设计报告](references/delivery-report.md) 规定，`pack_design.py` 检查：
 
 ```

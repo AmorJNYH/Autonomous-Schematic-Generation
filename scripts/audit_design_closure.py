@@ -179,6 +179,12 @@ def audit(record, intent_path, artifact_root, inputs=None):
         # draw the schematic; proving it under every guaranteed condition belongs to independent review.
         if conclusion == 'conditional' and not (omitted or assumptions):
             error('conditional_without_assumptions', key)
+        # Conditional is not a hedge: it names the guarantee the datasheet or the
+        # requirement does not give; partial coverage names what was left out.
+        if conclusion == 'conditional' and not (isinstance(row.get('missing_guarantee'), str) and row['missing_guarantee'].strip()):
+            error('conditional_without_missing_guarantee', key)
+        if coverage == 'partial' and not omitted:
+            error('partial_without_omitted_terms', key)
         linked(row, 'refs', refs, True)
         # The conclusion follows from the numbers: each check compares a computed
         # value with the limit it must meet. A failed check cannot be called

@@ -75,7 +75,7 @@ on the rendered page before calling the page readable.
 | --- | --- |
 | `Sheet(intent, rails, external, paper, dirs, power_ref_start, blocks)` | One sheet. `rails` maps nets to `power:` symbols, `external` lists nets leaving the sheet; both enable `plan` and the audit. `power_ref_start` keeps `#PWR` references unique across pages. `blocks` is the page plan's `{block: [refs]}`; with it the audit rejects a local join label that only joins parts of one block (HR-01). |
 | `plan` | `{"parts": {ref: {role, why, ...}}, "nets": {net: "power" \| "global" \| "name" \| None}}`. |
-| `justify(part_or_net, reason)` | Records an intended deviation; the audit lists it with the reason. |
+| `justify(part_or_net, reason, conflict)` | Records an intended deviation; the audit lists it with the reason. A spacing deviation also needs `conflict`: the part, pin or `text:<field>` the extra room avoids. |
 | `place(ref, at, rotation, mirror, pin, facing, order)` | An anchor: controller, connector, magnetic, bridge. `facing={pin: direction}` picks rotation/mirror from the required pin exits (`order=(a, b, axis)` keeps pin a before b); with `pin`, `at` is that pin's tip. |
 | `orient(ref, facing, order)` | The (rotation, mirror) that `facing` would choose; raises when no orientation gives those exits. |
 | `put(ref, pin, at, toward)` | Part with `pin` on `at`, extending along `toward` (pin faces back). Parts with more than two pins stay upright. |
@@ -95,8 +95,11 @@ on the rendered page before calling the page readable.
 
 Every recipe records a gap, stub, pitch, lead or lead length beyond
 `MAX_SPACING_STEPS` in `sheet.spacing`; the audit lists each as a `spacing`
-finding unless `justify(ref_or_pin, reason)` names it. A measured bank pitch
-(`pitch_for`) is never a finding. The readability metrics in the report add
+finding unless `justify(ref_or_pin, reason, conflict=...)` names both why and
+what the room avoids: a part, a pin or `text:<which field>`. A reason without
+a `conflict` leaves the finding open, and more than `MAX_SPACING_DEVIATIONS`
+(3) justified spacing deviations on one page is itself a finding: fold or
+re-anchor the page (O8). A measured bank pitch (`pitch_for`) is never a finding. The readability metrics in the report add
 `paper`, `content_size_mm`, `fits_paper`, `oversized_paper` (a gate reason),
 `occupancy`, `cell_coverage` (share of 25.4 mm cells holding any object),
 `part_groups`/`part_group_refs` (parts joined only through labels or rail

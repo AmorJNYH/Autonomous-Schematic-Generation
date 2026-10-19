@@ -76,6 +76,7 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
     {"id": "C1", "requirements": ["R1"], "evidence": ["E1"], "refs": ["D403", "R408", "U402"],
      "kind": "threshold", "coverage": "partial", "conclusion": "conditional",
      "assumptions": ["辅助绕组漏感尖峰按稳态值的10%计"], "omitted_terms": ["故障期间辅助供电保持"],
+     "missing_guarantee": "BZT52H-B75 在 200µA、−10..105°C 的 Vz 范围手册没有给",
      "checks": [
        {"name": "21V输出时AUX_DC峰值 对 动作下限(Vz最小+FAULT门限最小)", "side": "no_false_trip",
         "value": 67.6, "operator": "<", "limit": 69.5, "unit": "V"},
@@ -98,7 +99,9 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
     `side: "protection"`（动作上限仍低于被保护对象的耐受值或需求的保护点）。只算一侧会漏掉误动作或保护无效。
   - 设计要求表里的稳压管、TVS、基准源（lib_id 含 Zener/TVS/TL431/LM4040/Ref 等）都必须出现在某条计算的 `refs` 里，
     否则审计报 `threshold_part_uncalculated`。设计资料里写的阈值（如“对应30V包络”）必须与这条计算的数字一致。
-  门槛按设计用途：`conditional` 必须用 `omitted_terms` 或 `assumptions`（字符串列表）写明假设，写明后不阻塞设计完成，需求也可以据此记为 `design_supported`；报告把它们列在“有条件成立的计算”一节，交独立审查严格核对。只有 `failed` 计入未完成，且不能支撑 `design_supported` 的需求。
+  门槛按设计用途：`conditional` 必须用 `omitted_terms` 或 `assumptions`（字符串列表）写明假设，并在 `missing_guarantee` 里写明缺的是哪一项保证（哪个器件、哪个参数、哪个条件手册或需求没给）；写明后不阻塞设计完成，需求也可以据此记为 `design_supported`；报告把它们列在“有条件成立的计算”一节，交独立审查严格核对。只有 `failed` 计入未完成，且不能支撑 `design_supported` 的需求。
+  `coverage: partial` 必须有非空 `omitted_terms`：说不出漏了什么就不是 partial。`conditional` 不是免责词：1.33 A < 3 A 这种没有缺失保证的核对要写 `bounded`/`supported`，审计报 `conditional_without_missing_guarantee` 和 `partial_without_omitted_terms`。
+- 待办的 `progress`：design 阶段未关闭的待办写本版做到哪（算了什么、定了什么、还差什么），不能等于 `action`；审查回复 `DESIGN` 引用的待办没有它就不算处理。
 - 所有证据 path 相对于 `--artifact-root`，不得逃逸该目录；必须有哈希和页码/章节/行号定位。需求源、数据手册和计算结论都纳入相应证据。`refs` 必须存在于设计要求表中；纯使用/验证条件可为空但须说明实现/交接。
 
 ```bash

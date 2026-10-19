@@ -70,17 +70,26 @@ class DesignClosureTests(unittest.TestCase):
     def test_omitted_loss_terms_cannot_prove_budget(self):
         self.record['calculations'][0].update(coverage='partial', omitted_terms=['core loss', 'clamp loss'])
         self.assertIn('partial_calculation_claimed_supported', self.codes())
-        self.record['calculations'][0]['conclusion'] = 'conditional'
+        self.record['calculations'][0].update(conclusion='conditional', missing_guarantee='loss model at full load')
         self.record['requirements'][0]['status'] = 'conditional'
         self.assertEqual('INCOMPLETE', self.run_audit()['status'])
 
     def test_conditional_calculation_with_written_assumptions_does_not_block(self):
         self.record['calculations'][0].update(coverage='partial', conclusion='conditional',
-                                              omitted_terms=['line regulation has only a typical value'])
+                                              omitted_terms=['line regulation has only a typical value'],
+                                              missing_guarantee='line regulation over temperature')
         result = self.run_audit()
         self.assertEqual('PASS', result['status'], result)
         self.record['calculations'][0].update(coverage='bounded', omitted_terms=[], assumptions=['typical Vth used'])
         self.assertEqual('PASS', self.run_audit()['status'])
+
+    def test_conditional_names_the_missing_guarantee_and_partial_names_omissions(self):
+        self.record['calculations'][0].update(coverage='partial', conclusion='conditional', assumptions=['typ Vf'])
+        codes = self.codes()
+        self.assertIn('conditional_without_missing_guarantee', codes)
+        self.assertIn('partial_without_omitted_terms', codes)
+        self.record['calculations'][0].update(omitted_terms=['ESR drift'], missing_guarantee='Vf at -10 °C')
+        self.assertEqual('PASS', self.run_audit()['status'], self.run_audit())
 
     def test_conditional_calculation_must_state_its_assumptions(self):
         self.record['calculations'][0].update(conclusion='conditional')

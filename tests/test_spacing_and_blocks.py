@@ -54,10 +54,35 @@ class SpacingTests(unittest.TestCase):
         self.assertIn('exceeds %d' % MAX_SPACING_STEPS, found[0]['detail'])
         s = draw()
         s.spacing.append(('R1', 'gap', 20))
-        s.justify('R1', 'long value text needs the run')
+        s.justify('R1', 'long value text needs the run')          # a reason alone is not enough
         _, report = s.build('recipe_board')
-        self.assertEqual('PASS', report['structure']['status'])
-        self.assertTrue(any(d['rule'] == 'spacing' for d in report['structure']['deviations']))
+        found = [f for f in report['structure']['findings'] if f['subject'] == 'R1']
+        self.assertEqual(1, len(found))
+        self.assertIn('conflict=', found[0]['detail'])
+        s = draw()
+        s.spacing.append(('R1', 'gap', 20))
+        s.justify('R1', 'long value text needs the run', conflict='text:R1 value')
+        _, report = s.build('recipe_board')
+        self.assertEqual('PASS', report['structure']['status'], report['structure'])
+        dev = [d for d in report['structure']['deviations'] if d['rule'] == 'spacing']
+        self.assertEqual('text:R1 value', dev[0]['conflict'])
+
+    def test_conflict_must_name_a_real_object(self):
+        s = draw()
+        with self.assertRaisesRegex(ValueError, 'not a part, a pin or text'):
+            s.justify('R1', 'x', conflict='R99')
+        s.justify('R1', 'x', conflict='U1.4')
+        self.assertEqual({'R1': 'U1.4'}, s.conflicts)
+
+    def test_too_many_spacing_deviations_on_one_page(self):
+        s = draw()
+        for ref in ('R1', 'R2', 'C3', 'C4'):
+            s.spacing.append((ref, 'gap', 20))
+            s.justify(ref, 'test', conflict='text:value')
+        _, report = s.build('recipe_board')
+        page = [f for f in report['structure']['findings'] if f['subject'] == 'page']
+        self.assertEqual(1, len(page), report['structure'])
+        self.assertIn('4 justified spacing deviations', page[0]['detail'])
 
 
 class BlockTests(unittest.TestCase):
