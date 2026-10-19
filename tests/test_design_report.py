@@ -26,7 +26,17 @@ class Delivery:
             (self.root / '原理图' / name).write_text('x')
         (self.root / '设计资料' / '方案与选型依据.md').write_text('# basis')
         (self.record / 'evidence' / 'design.md').write_text('regulator design basis')
-        self.write('electrical-intent.json', {'components': [{'ref': 'U1'}, {'ref': 'R1'}]})
+        self.write('electrical-intent.json', {'components': [{'ref': 'U1', 'value': 'XYZ100'}, {'ref': 'R1'}]})
+        (self.root / '设计资料' / 'X - XYZ100.pdf').write_bytes(b'%PDF')
+        (self.root / '设计资料' / 'Y - ABC200.pdf').write_bytes(b'%PDF')
+        self.selection = {'schema_version': 1, 'library_root': str(self.root), 'roles': [
+            {'role': '稳压器', 'refs': ['U1'], 'requirements': ['R-OUT'], 'decisive': ['输入 12 V', '输出 3 A'],
+             'sources': ['catalog:08_电源管理/DC-DC 降压转换器 (Buck)'], 'candidates': [
+                 {'mpn': 'XYZ100', 'vendor': 'X', 'status': 'selected', 'datasheet': '设计资料/X - XYZ100.pdf',
+                  'reason': '电流裕量够，库里资料全'},
+                 {'mpn': 'ABC200', 'vendor': 'Y', 'status': 'rejected', 'datasheet': '设计资料/Y - ABC200.pdf',
+                  'reason': '最大 2 A 不满足'}]}]}
+        self.write('selection.json', self.selection)
         self.closure = {
             'schema_version': 1, 'coverage': 'complete', 'claim': 'candidate',
             'intent_sha256': sha256(self.record / 'electrical-intent.json'),
@@ -171,6 +181,48 @@ class DesignReportTests(unittest.TestCase):
         self.assertIn('board.kicad_sch：读者任务 2 条，看图检查只追了 1 条路径', problems)
         self.assertIn('other.kicad_sch：要写明读者任务（reader_tasks）', problems)
         self.assertIn('other.kicad_sch：要按功能块列出器件（blocks）', problems)
+
+    def test_selection_is_required_and_checked(self):
+        (self.d.record / 'selection.json').unlink()
+        _, problems = self.d.report()
+        self.assertIn('缺少 record/selection.json', problems)
+        self.d.write('selection.json', self.d.selection)
+        text, problems = self.d.report()
+        self.assertEqual([], problems)
+        self.assertIn('## 核心器件选型', text)
+        self.assertIn('| 稳压器 | U1 | XYZ100 | 2 | 电流裕量够，库里资料全 |', text)
+        self.d.write('selection.json', {'schema_version': 1, 'roles': []})
+        _, problems = self.d.report()
+        self.assertTrue(any('没有 roles' in p for p in problems), problems)
+
+    def test_selection_candidates_are_compared_and_traceable(self):
+        sel = json.loads(json.dumps(self.d.selection))
+        role = sel['roles'][0]
+        role['candidates'][1]['status'] = 'selected'
+        role['candidates'][1]['reason'] = ''
+        role['candidates'][0]['datasheet'] = '设计资料/missing.pdf'
+        role['decisive'] = []
+        self.d.write('selection.json', sel)
+        _, problems = self.d.report()
+        self.assertIn('选型角色“稳压器”没有写决定性条件', problems)
+        self.assertIn('选型角色“稳压器”要恰好一个 selected 候选，现在 2 个', problems)
+        self.assertIn('候选 ABC200 没有写选中或淘汰的理由', problems)
+        self.assertTrue(any(p.startswith('候选 XYZ100 的资料 设计资料/missing.pdf 不在知识库') for p in problems), problems)
+        role['candidates'][1] = {'mpn': 'ABC200', 'status': 'rejected', 'datasheet': '设计资料/Y - ABC200.pdf', 'reason': 'x'}
+        role['candidates'][0]['datasheet'] = '设计资料/X - XYZ100.pdf'
+        role['decisive'] = ['x']
+        del role['candidates'][1]
+        self.d.write('selection.json', sel)
+        _, problems = self.d.report()
+        self.assertIn('选型角色“稳压器”只有 1 个候选又没写 single_candidate_reason', problems)
+        role['single_candidate_reason'] = '用户指定'
+        role['refs'] = ['U1', 'U9']
+        self.d.write('selection.json', sel)
+        self.d.write('electrical-intent.json', {'components': [{'ref': 'U1', 'value': 'OTHER'}, {'ref': 'Q1', 'value': 'M'}]})
+        _, problems = self.d.report()
+        self.assertIn('选型角色“稳压器”的位号 U9 不在设计要求表里', problems)
+        self.assertIn('位号 U1 的 value “OTHER” 不含选定型号 XYZ100', problems)
+        self.assertIn('核心器件没有选型记录：Q1', problems)
 
     def test_parts_on_a_page_must_belong_to_a_block(self):
         self.d.write('electrical-intent.json', {'components': [

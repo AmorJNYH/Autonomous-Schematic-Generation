@@ -1,5 +1,35 @@
 # 此前问题点的改造闭环
 
+## Core part selection (2026-10-19)
+
+Asked how ASG decides which core parts to use, the honest answer was that it
+did not: step 2 verified whatever MPN the architecture step had already
+written, and the 100 W PD revisions took every IC from the one reference
+design in the knowledge base. The skill also had no picture of what kinds of
+parts exist, so it could not even start a search from the function needed.
+
+- `references/part-roles.md` gives that picture: every category and
+  subcategory of `HardwareWiki/raw/Datasheet` with what the part does, where
+  it sits in a circuit and the parameters that eliminate candidates, plus a
+  function → category index to start from. `find_parts.py --roles-coverage`
+  keeps it aligned with the library's real subcategories (new subcategory in
+  the library = missing row).
+- `scripts/find_parts.py` searches the library's `catalog.json` (vendor,
+  model, category, facets, optional first pages), lists PDFs not yet indexed
+  as 未入索引, and finds reference designs and application notes by path. The
+  library stays outside the skill (`HARDWARE_WIKI`, default
+  `~/Documents/知识库/HardwareWiki`).
+- `references/core-part-selection.md` fixes the candidate sources in order
+  (user's parts list, previous reviewed revision, same-topology reference
+  designs, library category search, external search last with the datasheet
+  filed into the library), the elimination order and the record
+  `record/selection.json`. `render_design_report.py` requires it: each role
+  needs decisive conditions, sources and at least two candidates (or a
+  reason), exactly one selected candidate whose MPN is the part's value in
+  the intent, a reason per candidate, a datasheet that exists in the
+  library, and every U/Q/T part covered by a role. The report gains a
+  核心器件选型 section; `pack_design.py` refuses a delivery without it.
+
 ## 100 W PD R4 review follow-up (2026-10-19)
 
 The R4 report passed every drawing gate and still showed the skill letting a

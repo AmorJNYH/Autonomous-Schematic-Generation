@@ -75,6 +75,12 @@ ASG 负责需求到电路的方案可行性、选型依据、设计计算和功�
 
 ### 2. 选型、外围电路要求与计算
 
+- **先选型再核手册**：每个核心器件角色（控制器、协议 IC、功率开关、磁件、隔离/反馈器件、MCU）按
+  [core-part-selection.md](references/core-part-selection.md) 找候选、比较并记录到 `record/selection.json`：
+  至少两个候选、写明决定性条件和每个候选选中/淘汰的理由。器件资料在本机知识库
+  `~/Documents/知识库/HardwareWiki/raw/`（手册、参考设计、应用笔记），用 `scripts/find_parts.py` 检索；
+  每类器件干什么、选它看什么参数见 [part-roles.md](references/part-roles.md)，从"按功能找类"定二级类再找候选。
+  库里没有合适候选才外部检索，下载的手册按下面的资料规则入库。
 - 每个核心器件对应确切 MPN/封装的物理引脚表、典型应用、必需外围和装配状态，记录实际阅读的手册页码。
   分立器件的**符号含义**也按确切料号选：TVS 单向/双向、MOS N/P 沟道、NPN/PNP，脚名按手册（单向二极管用 K/A）。
   KiCad `Device:D_TVS` 只表示双向 TVS，不能用于单向器件。
@@ -258,6 +264,8 @@ python3 <skill>/scripts/pack_design.py <交付目录> --input requirements=<需�
 | 交付目录、设计报告、打包检查 | [delivery-report.md](references/delivery-report.md) |
 | 从需求写设计要求表 | [requirements-to-intent.md](references/requirements-to-intent.md) |
 | 架构页、参考设计外围、学习工程师图面 | [reference-driven-board-design.md](references/reference-driven-board-design.md) |
+| 核心器件从哪找候选、怎么比较、`selection.json` | [core-part-selection.md](references/core-part-selection.md) |
+| 每类器件干什么、选它看什么参数（按知识库分类） | [part-roles.md](references/part-roles.md) |
 | 选符号、引脚表、外围电路要求 | [symbol-and-peripheral-contracts.md](references/symbol-and-peripheral-contracts.md) |
 | 计算条件记录 | [calculation-preflight.md](references/calculation-preflight.md) |
 | 非线性极值、条件匹配与插值边界 | [worst-case-bounds.md](references/worst-case-bounds.md) |

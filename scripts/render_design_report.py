@@ -7,6 +7,7 @@ Records that are missing or inconsistent are reported at the top instead of gues
 """
 import argparse
 import json
+import os
 import re
 import sys
 from collections import Counter, OrderedDict
@@ -49,7 +50,9 @@ PAGE_PATTERN = re.compile(r'(?<![A-Za-z0-9])\d{2}_[A-Za-z][A-Za-z0-9_]*|System_b
 # Words that describe the review process, not a design basis.
 PROCESS_WORDS = ('审查', '第一轮', '第二轮', '下一轮', '下一版', '核销', '复审')
 REQUIRED = ('electrical-intent.json', 'design-closure.json', 'design-closure-audit.json',
-            'summary.json', 'visual-review.json', 'page-plan.json')
+            'summary.json', 'visual-review.json', 'page-plan.json', 'selection.json')
+SELECTION_STATUS = ('selected', 'rejected', 'alternate')
+CORE_REF = re.compile(r'^[UQT]\d')
 
 
 def text(value):
@@ -192,6 +195,58 @@ def check_visual_items(root, visual):
     return list(OrderedDict.fromkeys(errors))  # one line per symbol, not per pin
 
 
+def norm_mpn(value):
+    return re.sub(r'[\s\-_/]+', '', value if text(value) else '').lower()
+
+
+def check_selection(data, intent, root):
+    """Every core part was chosen from compared candidates whose datasheets are in the library."""
+    roles = data.get('roles') if isinstance(data, dict) else None
+    if not isinstance(roles, list) or not roles:
+        return ['selection.json 没有 roles：每个核心器件角色都要有候选比较（见 core-part-selection.md）']
+    problems = []
+    comps = {c.get('ref'): c for c in intent.get('components') or [] if isinstance(c, dict)}
+    library = Path(os.path.expanduser(data.get('library_root') if text(data.get('library_root')) else ''))
+    covered = set()
+    for i, role in enumerate(roles, 1):
+        if not isinstance(role, dict):
+            problems.append('selection.json 第 %d 个角色不是对象' % i)
+            continue
+        name = role.get('role') if text(role.get('role')) else '第 %d 个角色' % i
+        refs = [r for r in role.get('refs') or [] if text(r)]
+        cands = [c for c in role.get('candidates') or [] if isinstance(c, dict)]
+        for key, label in (('refs', '位号'), ('decisive', '决定性条件'), ('sources', '候选来源')):
+            if not role.get(key):
+                problems.append('选型角色“%s”没有写%s' % (name, label))
+        if len(cands) < 2 and not text(role.get('single_candidate_reason')):
+            problems.append('选型角色“%s”只有 %d 个候选又没写 single_candidate_reason' % (name, len(cands)))
+        selected = [c for c in cands if c.get('status') == 'selected']
+        if len(selected) != 1:
+            problems.append('选型角色“%s”要恰好一个 selected 候选，现在 %d 个' % (name, len(selected)))
+        for c in cands:
+            mpn = c.get('mpn') if text(c.get('mpn')) else '?'
+            if c.get('status') not in SELECTION_STATUS:
+                problems.append('候选 %s 的 status 必须是 %s 之一' % (mpn, '/'.join(SELECTION_STATUS)))
+            if not text(c.get('reason')):
+                problems.append('候选 %s 没有写选中或淘汰的理由' % mpn)
+            sheet = c.get('datasheet') if text(c.get('datasheet')) else ''
+            if not sheet or not ((library / sheet).is_file() or (root / sheet).is_file()):
+                problems.append('候选 %s 的资料 %s 不在知识库 %s 或交付目录内' % (mpn, sheet or '（没写）', library))
+        for ref in refs:
+            covered.add(ref)
+            if ref not in comps:
+                problems.append('选型角色“%s”的位号 %s 不在设计要求表里' % (name, ref))
+            elif selected:
+                mpn = selected[0].get('mpn') if text(selected[0].get('mpn')) else ''
+                value = next((comps[ref][k] for k in ('value', 'mpn') if text(comps[ref].get(k))), '')
+                if norm_mpn(mpn) not in norm_mpn(value):
+                    problems.append('位号 %s 的 value “%s” 不含选定型号 %s' % (ref, value, mpn))
+    missing = sorted(r for r in comps if CORE_REF.match(r if text(r) else '') and r not in covered)
+    if missing:
+        problems.append('核心器件没有选型记录：%s' % '、'.join(missing))
+    return problems
+
+
 def num(value):
     """A number with three significant digits; integers and non-numbers unchanged."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
@@ -326,6 +381,9 @@ def render(root, notes=None, title=None):
     if data['page-plan.json'] is not None:
         problems += check_page_plan(data['page-plan.json'], intent, visual)
     problems += check_visual_items(root, visual)
+    selection = data['selection.json'] or {}
+    if data['selection.json'] is not None:
+        problems += check_selection(selection, intent, root)
     if responses is not None:
         problems += check_responses(responses, work, intent, closure, root)
     problems += check_language(closure, notes)
@@ -400,6 +458,17 @@ def render(root, notes=None, title=None):
         redrawn = reply_counts.get('REDESIGN', 0) + reply_counts.get('CALC_DOC', 0)
         out += ['本版收到 %d 条审查意见：改图或补计算/补文档 %d 条，其余 %d 条登记为待办、交给后续环节或不采纳。'
                 % (len(items), redrawn, len(items) - redrawn), '']
+
+    roles = [r for r in selection.get('roles') or [] if isinstance(r, dict)]
+    if roles:
+        out += ['## 核心器件选型', '', '| 角色 | 位号 | 选定 | 候选数 | 理由 |', '|---|---|---|---|---|']
+        for r in roles:
+            chosen = [c for c in r.get('candidates') or [] if isinstance(c, dict) and c.get('status') == 'selected']
+            out.append('| %s | %s | %s | %d | %s |' % (
+                cell(r.get('role', '')), '、'.join(r.get('refs') or []),
+                cell(chosen[0].get('mpn', '')) if chosen else '未选定', len(r.get('candidates') or []),
+                cell(chosen[0].get('reason', '')) if chosen else cell(r.get('single_candidate_reason', ''))))
+        out.append('')
 
     if notes.get('changes') or change:
         out += ['## 这版改了什么', '']
