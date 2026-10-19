@@ -126,20 +126,35 @@ def sha256(path):
     return h.hexdigest()
 
 
-def locate_file(wiki, path):
-    """Library-relative path of a file already in raw/ (same SHA-256, else same file name), or None."""
-    path = Path(path)
+def library_index(wiki):
+    """One walk of raw/: catalog SHA-256 -> path, normalised file name -> path, byte size -> paths."""
     catalog, _ = load_catalog(wiki)
-    digest = sha256(path)
-    for row in (catalog or {}).get("rows") or []:
-        if row.get("sha256") == digest:
-            return "raw/Datasheet/" + row["path"]
+    by_hash = {row["sha256"]: "raw/Datasheet/" + row["path"] for row in (catalog or {}).get("rows") or [] if row.get("sha256")}
+    by_name, by_size = {}, {}
     raw = wiki / "raw"
-    if not raw.is_dir():
-        return None
-    name = norm(path.stem)
-    for p in raw.rglob("*.pdf"):
-        if norm(p.stem) == name:
+    for p in raw.rglob("*.pdf") if raw.is_dir() else []:
+        by_name.setdefault(norm(p.stem), p)
+        by_size.setdefault(p.stat().st_size, []).append(p)
+    return {"wiki": wiki, "by_hash": by_hash, "by_name": by_name, "by_size": by_size}
+
+
+def locate_file(wiki, path, index=None):
+    """Library-relative path of a file already in raw/, or None.
+
+    Matched by catalog SHA-256, then by normalised file name, then by hashing the
+    library files of the same byte size (a renamed copy whose catalog entry is stale).
+    Pass the same library_index() when locating many files.
+    """
+    path = Path(path)
+    index = index or library_index(wiki)
+    digest = sha256(path)
+    if digest in index["by_hash"]:
+        return index["by_hash"][digest]
+    hit = index["by_name"].get(norm(path.stem))
+    if hit is not None:
+        return hit.relative_to(wiki).as_posix()
+    for p in index["by_size"].get(path.stat().st_size, []):
+        if sha256(p) == digest:
             return p.relative_to(wiki).as_posix()
     return None
 

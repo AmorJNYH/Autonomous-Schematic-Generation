@@ -6,6 +6,20 @@ record or user correction that caused the change; `Causes:` how many items
 fell in each cause class (rule_missing, rule_not_enforced, knowledge_missing,
 knowledge_wrong, judgment); `Changed:` the files touched.
 
+## Library lookup recognises renamed copies (2026-10-19)
+
+Filing the 100 W PD datasheets showed that `locate_file` only matched a
+library copy by the catalog's (stale) SHA-256 or by file name, so 25 files
+that were already in the library under another name were reported missing.
+It now also hashes library files of the same byte size, and one walk of
+`raw/` serves a whole datasheets folder (130 files: 31 s → a few seconds).
+On the 100 W PD inputs the unfiled list went 34 → 3 (one part and two
+licence documents).
+
+- Event: test:2026-10-19-100W-PD-datasheets-filed (filing session's report), user:2026-10-19
+- Causes: rule_not_enforced 1
+- Changed: scripts/find_parts.py, scripts/pack_design.py, tests/test_find_parts.py
+
 ## Reviewer side of selection and attribution (2026-10-19)
 
 Improvement plan stage 5, done in the schematic-review repository

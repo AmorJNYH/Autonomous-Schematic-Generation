@@ -99,6 +99,11 @@ class FindPartsTests(unittest.TestCase):
             by_name = Path(tmp) / 'infineon-IPA60R180P7.pdf'
             by_name.write_bytes(b'%PDF-other')
             self.assertEqual('raw/Datasheet/09_功率半导体/MOSFET/Infineon - IPA60R180P7.pdf', find_parts.locate_file(self.wiki, by_name))
+            renamed_in_library = Path(tmp) / 'onsemi-NCP1343-old-name.pdf'       # same bytes, stale catalog, other name
+            renamed_in_library.write_bytes((ds / rows[1]['path']).read_bytes() + b'')
+            (ds / rows[1]['path']).write_bytes(b'%PDF-ncp1343-unique')
+            renamed_in_library.write_bytes(b'%PDF-ncp1343-unique')
+            self.assertEqual('raw/Datasheet/' + rows[1]['path'], find_parts.locate_file(self.wiki, renamed_in_library))
             other = Path(tmp) / 'TI - TPS1234.pdf'
             other.write_bytes(b'%PDF-x')
             self.assertIsNone(find_parts.locate_file(self.wiki, other))

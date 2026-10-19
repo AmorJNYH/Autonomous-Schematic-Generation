@@ -27,7 +27,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from audit_design_closure import audit  # noqa: E402
-from find_parts import DEFAULT_WIKI, locate_file  # noqa: E402
+from find_parts import DEFAULT_WIKI, library_index, locate_file  # noqa: E402
 from render_design_report import REPORT, REQUIRED, render  # noqa: E402
 
 TOP = (REPORT, '原理图', '设计资料', 'record')
@@ -245,7 +245,8 @@ def datasheets_not_in_library(folder, wiki):
     """PDFs under the datasheets input that the HardwareWiki library does not hold yet."""
     folder = Path(folder)
     pdfs = sorted(p for p in folder.rglob('*.pdf') if p.is_file()) if folder.is_dir() else []
-    return [p.relative_to(folder).as_posix() for p in pdfs if locate_file(wiki, p) is None]
+    index = library_index(Path(wiki)) if pdfs else None
+    return [p.relative_to(folder).as_posix() for p in pdfs if locate_file(wiki, p, index) is None]
 
 
 def pack(root, inputs, wiki=DEFAULT_WIKI):
