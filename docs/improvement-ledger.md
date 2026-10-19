@@ -6,6 +6,17 @@ record or user correction that caused the change; `Causes:` how many items
 fell in each cause class (rule_missing, rule_not_enforced, knowledge_missing,
 knowledge_wrong, judgment); `Changed:` the files touched.
 
+## Operating cadence (2026-10-19)
+
+Improvement plan stage 6. `docs/operating-cadence.md` fixes the seven
+steps of every board version (deliver, independent review, attribute,
+change, regress, ledger and commit, feed back test results), the checkpoint
+of each step and the three numbers recorded per version.
+
+- Event: user:2026-10-19 (accepted improvement plan, stage 6)
+- Causes: rule_missing 0 (process document, no finding)
+- Changed: docs/operating-cadence.md, SKILL.md
+
 ## Decisive conditions judged by the script (2026-10-19)
 
 Improvement plan stage 3. `selection.json` recorded decisive conditions as

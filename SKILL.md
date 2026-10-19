@@ -273,7 +273,7 @@ python3 <skill>/scripts/pack_design.py <交付目录> --input requirements=<需�
 | 从需求写设计要求表 | [requirements-to-intent.md](references/requirements-to-intent.md) |
 | 架构页、参考设计外围、学习工程师图面 | [reference-driven-board-design.md](references/reference-driven-board-design.md) |
 | 核心器件从哪找候选、怎么比较、`selection.json` | [core-part-selection.md](references/core-part-selection.md) |
-| 技能怎样持续改进：事件、归因、台账、回归 | [docs/improvement-plan.md](docs/improvement-plan.md) |
+| 技能怎样持续改进：事件、归因、台账、回归 | [docs/improvement-plan.md](docs/improvement-plan.md)、每版的固定动作 [docs/operating-cadence.md](docs/operating-cadence.md) |
 | 每类器件干什么、选它看什么参数（按知识库分类） | [part-roles.md](references/part-roles.md) |
 | 选符号、引脚表、外围电路要求 | [symbol-and-peripheral-contracts.md](references/symbol-and-peripheral-contracts.md) |
 | 计算条件记录 | [calculation-preflight.md](references/calculation-preflight.md) |
