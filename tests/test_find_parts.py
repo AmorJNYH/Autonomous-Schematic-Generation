@@ -87,6 +87,24 @@ class FindPartsTests(unittest.TestCase):
         r = subprocess.run([sys.executable, str(CLI), '--wiki', str(self.wiki)], capture_output=True, text=True)
         self.assertEqual(2, r.returncode)
 
+    def test_locate_file_by_hash_then_by_name(self):
+        ds = self.wiki / 'raw' / 'Datasheet'
+        rows = json.loads((ds / 'catalog.json').read_text())['rows']
+        rows[0]['sha256'] = find_parts.sha256(ds / rows[0]['path'])
+        (ds / 'catalog.json').write_text(json.dumps({'rows': rows}))
+        with tempfile.TemporaryDirectory() as tmp:
+            same = Path(tmp) / 'renamed.pdf'
+            same.write_bytes((ds / rows[0]['path']).read_bytes())
+            self.assertEqual('raw/Datasheet/' + rows[0]['path'], find_parts.locate_file(self.wiki, same))
+            by_name = Path(tmp) / 'infineon-IPA60R180P7.pdf'
+            by_name.write_bytes(b'%PDF-other')
+            self.assertEqual('raw/Datasheet/09_功率半导体/MOSFET/Infineon - IPA60R180P7.pdf', find_parts.locate_file(self.wiki, by_name))
+            other = Path(tmp) / 'TI - TPS1234.pdf'
+            other.write_bytes(b'%PDF-x')
+            self.assertIsNone(find_parts.locate_file(self.wiki, other))
+            r = subprocess.run([sys.executable, str(CLI), '--wiki', str(self.wiki), '--file', str(other)], capture_output=True, text=True)
+            self.assertEqual(1, r.returncode)
+
     def test_roles_table_covers_library_subcategories(self):
         r = find_parts.roles_coverage(self.wiki)
         self.assertEqual('PASS', r['status'], r)

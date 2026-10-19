@@ -13,6 +13,8 @@ copied. Anything else at the top level, history snapshots, logs, oversized files
 evidence that the closure record cites but the folder does not contain all fail the pack.
 Design documents must also agree with the design: every part a 设计资料/ table or assembly file
 names must exist in the electrical intent, with the same MPN and value where the table gives them.
+Every PDF in the datasheets input must already be in the HardwareWiki library (same SHA-256 or
+file name ignoring spaces, hyphens and case); packing lists the ones that are not and refuses until they are filed.
 """
 import argparse
 import csv
@@ -25,6 +27,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from audit_design_closure import audit  # noqa: E402
+from find_parts import DEFAULT_WIKI, locate_file  # noqa: E402
 from render_design_report import REPORT, REQUIRED, render  # noqa: E402
 
 TOP = (REPORT, '原理图', '设计资料', 'record')
@@ -238,7 +241,14 @@ def check(root, inputs=(), previous=None):
     return errors
 
 
-def pack(root, inputs):
+def datasheets_not_in_library(folder, wiki):
+    """PDFs under the datasheets input that the HardwareWiki library does not hold yet."""
+    folder = Path(folder)
+    pdfs = sorted(p for p in folder.rglob('*.pdf') if p.is_file()) if folder.is_dir() else []
+    return [p.relative_to(folder).as_posix() for p in pdfs if locate_file(wiki, p) is None]
+
+
+def pack(root, inputs, wiki=DEFAULT_WIKI):
     root = Path(root)
     errors = check(root, list(inputs.values()), inputs.get('previous'))
     declared = {}
@@ -247,6 +257,12 @@ def pack(root, inputs):
             errors.append('input %s does not exist: %s' % (name, path))
         else:
             declared[name] = fingerprint(path)
+    if 'datasheets' in declared:
+        missing = datasheets_not_in_library(inputs['datasheets'], Path(wiki))
+        if missing:
+            errors.append('%d datasheets are not in the library %s yet; file them per SKILL.md step 2 '
+                          '(find_parts.py --file <pdf> shows where one already is): %s'
+                          % (len(missing), wiki, ', '.join(missing[:8]) + ('…' if len(missing) > 8 else '')))
     if errors:
         return errors, None
     packed = {p.relative_to(root).as_posix(): sha256(p) for p in sorted(root.rglob('*'))
@@ -262,8 +278,9 @@ def main(argv=None):
     parser.add_argument('delivery')
     parser.add_argument('--input', action='append', default=[], metavar='NAME=PATH',
                         help='requirements, datasheets, previous version ... (referenced, not copied)')
+    parser.add_argument('--wiki', type=Path, default=DEFAULT_WIKI, help='HardwareWiki root (env HARDWARE_WIKI)')
     args = parser.parse_args(argv)
-    errors, _ = pack(args.delivery, dict(item.split('=', 1) for item in args.input))
+    errors, _ = pack(args.delivery, dict(item.split('=', 1) for item in args.input), args.wiki)
     for e in errors:
         print('ERROR:', e)
     print('FAIL' if errors else 'PASS')

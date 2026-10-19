@@ -6,6 +6,20 @@ record or user correction that caused the change; `Causes:` how many items
 fell in each cause class (rule_missing, rule_not_enforced, knowledge_missing,
 knowledge_wrong, judgment); `Changed:` the files touched.
 
+## Datasheet filing gate (2026-10-19)
+
+Improvement plan stage 2. SKILL.md step 2 has long said every downloaded
+datasheet is copied into the HardwareWiki library, and nothing checked it:
+R4 declares 130 vendor documents as its datasheets input and the library's
+coverage of them was unknown. `pack_design.py` now locates every PDF of the
+`datasheets` input in the library (catalog SHA-256, else file name under
+`raw/`) and refuses to pack while any is missing, naming them;
+`find_parts.py --file <pdf>` answers for one file.
+
+- Event: user:2026-10-19 (accepted improvement plan, stage 2)
+- Causes: rule_not_enforced 1
+- Changed: scripts/pack_design.py, scripts/find_parts.py, tests/test_find_parts.py, tests/test_design_report.py, SKILL.md, references/delivery-report.md
+
 ## Regression skeleton and the feedback channel (2026-10-19)
 
 Improvement plan stages 0 and 1 (`docs/improvement-plan.md`). Until now a

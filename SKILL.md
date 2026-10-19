@@ -105,7 +105,8 @@ ASG 负责需求到电路的方案可行性、选型依据、设计计算和功�
   `~/Documents/知识库/HardwareWiki/raw/Datasheet/<分类>/<子类>/`，文件名为 `Vendor - PartNumber.pdf`
   （厂商简称按 `raw/Datasheet/VENDORS.yaml`，分类按 `raw/Datasheet/元器件体系/器件统一分类大表.md`，
   无分类放 `ZZ_其他` 并报告）。raw/ 中已有相同哈希或型号时跳过。只复制原文件，不改工程路径，
-  也不触发知识库入库。参考设计和评估板手册放 `raw/Designexample/<拓扑>/<板名>/`，
+  也不触发知识库入库。`pack_design.py` 核对 `datasheets` 目录里的每个 PDF 都已在库内（同哈希或同文件名），没入库的拒绝打包。
+  参考设计和评估板手册放 `raw/Designexample/<拓扑>/<板名>/`，
   文件名为 `Vendor - BoardName - Title.pdf`；应用笔记和标准不放 Datasheet 目录。
 
 ### 3. 整板设计要求表

@@ -16,6 +16,7 @@ part's suitability.
   find_parts.py --designs flyback PD              # reference designs by topology
   find_parts.py --notes "Type-C"                  # application notes
   find_parts.py --roles-coverage                  # part-roles.md vs library subcategories
+  find_parts.py --file <pdf>                      # where this file already is in the library, if anywhere
 """
 
 import argparse
@@ -114,6 +115,33 @@ def roles_coverage(wiki, path=ROLES_MD):
             "status": "PASS" if library and library <= table else "FAIL"}
 
 
+def sha256(path):
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def locate_file(wiki, path):
+    """Library-relative path of a file already in raw/ (same SHA-256, else same file name), or None."""
+    path = Path(path)
+    catalog, _ = load_catalog(wiki)
+    digest = sha256(path)
+    for row in (catalog or {}).get("rows") or []:
+        if row.get("sha256") == digest:
+            return "raw/Datasheet/" + row["path"]
+    raw = wiki / "raw"
+    if not raw.is_dir():
+        return None
+    name = norm(path.stem)
+    for p in raw.rglob("*.pdf"):
+        if norm(p.stem) == name:
+            return p.relative_to(wiki).as_posix()
+    return None
+
+
 def search_paths(wiki, kind, terms, limit=40):
     root = wiki / "raw" / kind
     if not root.is_dir():
@@ -139,11 +167,16 @@ def main(argv=None):
     ap.add_argument("--text", action="store_true", help="also match the indexed first pages of each datasheet")
     ap.add_argument("--designs", action="store_true", help="search raw/Designexample by path")
     ap.add_argument("--notes", action="store_true", help="search raw/Applicationnote by path")
+    ap.add_argument("--file", type=Path, help="report where this local file already is in the library")
     ap.add_argument("--roles-coverage", action="store_true", help="compare references/part-roles.md with the library")
     ap.add_argument("--limit", type=int, default=40)
     ap.add_argument("--out", type=Path)
     args = ap.parse_args(argv)
-    if args.roles_coverage:
+    if args.file:
+        where = locate_file(args.wiki, args.file)
+        report = {"library": str(args.wiki), "file": str(args.file), "in_library": where,
+                  "status": "PASS" if where else "FAIL"}
+    elif args.roles_coverage:
         report = roles_coverage(args.wiki)
     elif args.categories:
         report = categories(args.wiki)
