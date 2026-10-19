@@ -61,6 +61,10 @@ CAUSE_TARGETS = {'rule_missing': ('scripts/',), 'rule_not_enforced': ('scripts/'
 SOURCE_PATTERN = re.compile(r'^(review:[^/\s]+/\S+|datasheet:.+#p\d+|test:\S+|user:\d{4}-\d{2}-\d{2})$')
 PAGE_REF = re.compile(r'(p\.?\s?\d+|第\s?\d+\s?页|W-[A-Z0-9-]+)')
 SELECTION_STATUS = ('selected', 'rejected', 'alternate')
+OPS = ('<=', '>=', 'covers', 'equals', 'has')
+# A rejection that is not a failed decisive condition must say what kind it is.
+REJECT_KINDS = {'dependency': '依赖拿不到', 'data': '资料不足', 'availability': '可得性', 'cost': '成本',
+                'preference': '都能用，按优先规则落选'}
 CORE_REF = re.compile(r'^[UQT]\d')
 
 
@@ -208,6 +212,55 @@ def norm_mpn(value):
     return re.sub(r'[\s\-_/]+', '', value if text(value) else '').lower()
 
 
+def judge(cond, entry):
+    """(ok, shown) for one decisive condition against one candidate's recorded value; ok is None when unusable."""
+    op, limit = cond.get('op'), cond.get('limit')
+    if not isinstance(entry, dict) or 'value' not in entry or not (text(entry.get('page')) or isinstance(entry.get('page'), int)):
+        return None, '没有值或页码'
+    value = entry['value']
+    unit = cond.get('unit') or ''
+    try:
+        if op in ('<=', '>='):
+            ok = float(value) <= float(limit) if op == '<=' else float(value) >= float(limit)
+            return ok, '%s %s %s %s' % (num(value), op, num(limit), unit)
+        if op == 'covers':
+            ok = float(value[0]) <= float(limit[0]) and float(value[1]) >= float(limit[1])
+            return ok, '%s–%s 覆盖 %s–%s %s' % (num(value[0]), num(value[1]), num(limit[0]), num(limit[1]), unit)
+        if op == 'equals':
+            return norm_mpn(str(value)) == norm_mpn(str(limit)), '%s = %s' % (value, limit)
+        if op == 'has':
+            want = limit if isinstance(limit, bool) else True
+            return bool(value) == want, '%s%s' % ('有' if value else '无', '' if want else '（要求无）')
+    except (TypeError, ValueError, IndexError):
+        pass
+    return None, '值 %r 无法按 %s 判定' % (value, op)
+
+
+def check_conditions(name, conds, cands):
+    """Selected and alternate candidates satisfy every decisive condition; a rejected one fails at least one or says why."""
+    problems, basis = [], []
+    for c in cands:
+        mpn = c.get('mpn') if text(c.get('mpn')) else '?'
+        verdicts = [(d['param'], *judge(d, (c.get('values') or {}).get(d['param']))) for d in conds]
+        failed = [(param, shown) for param, ok, shown in verdicts if ok is False]
+        if c.get('status') in ('selected', 'alternate'):
+            for param, ok, shown in verdicts:
+                if ok is None:
+                    problems.append('选型角色“%s”候选 %s 没有给出条件“%s”的值和页码（%s）' % (name, mpn, param, shown))
+                elif not ok:
+                    problems.append('选型角色“%s”候选 %s 不满足条件“%s”（%s）却被%s' % (name, mpn, param, shown, '选定' if c.get('status') == 'selected' else '列为备选'))
+        else:
+            kind = c.get('reject_kind')
+            if failed:
+                basis.append('%s：%s %s' % (mpn, failed[0][0], failed[0][1]))
+            elif kind in REJECT_KINDS:
+                basis.append('%s：%s' % (mpn, REJECT_KINDS[kind]))
+            else:
+                problems.append('选型角色“%s”淘汰候选 %s 没有一条决定性条件判定不满足，也没写 reject_kind（%s）'
+                                % (name, mpn, '/'.join(REJECT_KINDS)))
+    return problems, basis
+
+
 def check_selection(data, intent, root):
     """Every core part was chosen from compared candidates whose datasheets are in the library."""
     roles = data.get('roles') if isinstance(data, dict) else None
@@ -227,6 +280,15 @@ def check_selection(data, intent, root):
         for key, label in (('refs', '位号'), ('decisive', '决定性条件'), ('sources', '候选来源')):
             if not role.get(key):
                 problems.append('选型角色“%s”没有写%s' % (name, label))
+        conds = [d for d in role.get('decisive') or [] if isinstance(d, dict)]
+        if role.get('decisive') and (len(conds) != len(role['decisive']) or not all(
+                text(d.get('param')) and d.get('op') in OPS and 'limit' in d for d in conds)):
+            problems.append('选型角色“%s”的决定性条件要写成 {param, op, limit[, unit, requirement]}，op 取 %s' % (name, '/'.join(OPS)))
+            conds = []
+        if conds:
+            cond_problems, basis = check_conditions(name, conds, cands)
+            problems += cond_problems
+            role['_basis'] = basis
         if len(cands) < 2 and not text(role.get('single_candidate_reason')):
             problems.append('选型角色“%s”只有 %d 个候选又没写 single_candidate_reason' % (name, len(cands)))
         selected = [c for c in cands if c.get('status') == 'selected']
@@ -517,13 +579,14 @@ def render(root, notes=None, title=None):
 
     roles = [r for r in selection.get('roles') or [] if isinstance(r, dict)]
     if roles:
-        out += ['## 核心器件选型', '', '| 角色 | 位号 | 选定 | 候选数 | 理由 |', '|---|---|---|---|---|']
+        out += ['## 核心器件选型', '', '| 角色 | 位号 | 选定 | 候选数 | 理由 | 淘汰依据 |', '|---|---|---|---|---|---|']
         for r in roles:
             chosen = [c for c in r.get('candidates') or [] if isinstance(c, dict) and c.get('status') == 'selected']
-            out.append('| %s | %s | %s | %d | %s |' % (
+            out.append('| %s | %s | %s | %d | %s | %s |' % (
                 cell(r.get('role', '')), '、'.join(r.get('refs') or []),
                 cell(chosen[0].get('mpn', '')) if chosen else '未选定', len(r.get('candidates') or []),
-                cell(chosen[0].get('reason', '')) if chosen else cell(r.get('single_candidate_reason', ''))))
+                cell(chosen[0].get('reason', '')) if chosen else cell(r.get('single_candidate_reason', '')),
+                cell('；'.join(r.get('_basis') or []))))
         out.append('')
 
     if notes.get('changes') or change:

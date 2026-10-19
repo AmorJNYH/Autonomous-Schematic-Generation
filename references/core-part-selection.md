@@ -33,7 +33,11 @@
 
 每个角色先写**决定性条件**：从需求表抽出的、能直接淘汰候选的量（输入电压范围、功率等级、协议版本、隔离等级、
 开关频率、封装热阻上限、固件/配置工具依赖、成本或可得性目标）。不写泛泛的"性能好"。
-比较时逐条对照手册首页/特性表，用页码记录；只在淘汰或决定时才深读。
+每条条件是一个对象 `{"param", "op", "limit", "unit", "requirement"}`，`op` 只有五种：
+`<=`、`>=`（数值）、`covers`（候选范围 `[低, 高]` 覆盖要求范围）、`equals`（字符串，忽略空格、连字符和大小写）、
+`has`（功能有无，`limit` 为 true/false）。"计算已绑定""沿用上一版"不是决定性条件，写进 `reason` 或 `sources`。
+比较时逐条对照手册首页/特性表，把读到的值和页码记进候选的 `values`；脚本按 `op` 判定，不是人工宣称满足。
+只在淘汰或决定时才深读。
 
 淘汰顺序：
 
@@ -42,6 +46,10 @@
 3. 资料不足：库里只有简介没有完整手册，且外部也拿不到——不能选。
 4. 封装/热/可得性/成本：按需求的目标；需求没给目标时记"未评估"，不编数字。
 5. 剩下多个都能用时，优先参考设计已验证的组合（减少外围设计风险），其次库里资料最全的。
+
+淘汰候选要么有至少一条决定性条件判定不满足（值和页码在 `values` 里），要么写 `reject_kind`：
+`dependency`（依赖拿不到）、`data`（资料不足）、`availability`、`cost`、`preference`（都能用，按第 5 条落选）。
+`preference` 淘汰的候选在报告里和真正不满足的分开显示，太多说明决定性条件写得不够。
 
 至少两个候选才算比较过；只有一个时写 `single_candidate_reason`（用户指定、沿用上一版、该类库里只有一份且外部检索也没找到……）。
 
@@ -56,15 +64,23 @@
       "role": "PFC 控制器",
       "refs": ["U201"],
       "requirements": ["R-IN-01", "R-EFF-02"],
-      "decisive": ["输入 90–264 VAC", "100 W 级 CrM/DCM 多模", "待机功耗 ≤ 75 mW", "外部 MOS 驱动"],
+      "decisive": [
+        {"param": "输入电压范围", "op": "covers", "limit": [90, 264], "unit": "Vac", "requirement": "R-IN-01"},
+        {"param": "轻载 DCM/跳周期", "op": "has", "limit": true, "requirement": "R-EFF-02"},
+        {"param": "待机功耗", "op": "<=", "limit": 75, "unit": "mW", "requirement": "R-EFF-02"},
+        {"param": "外置 MOSFET 驱动", "op": "has", "limit": true}
+      ],
       "sources": ["designexample:raw/Designexample/USB-PD/NCP1343PD100WGEVB", "catalog:08_电源管理/AC-DC 转换器"],
       "candidates": [
         {"mpn": "NCP1623", "vendor": "onsemi", "status": "selected",
          "datasheet": "raw/Datasheet/08_电源管理/AC-DC 转换器/onsemi - NCP1623.pdf",
-         "reason": "参考设计验证的组合；多模 CrM/DCM 满足轻载效率；p.1 特性、p.6 表 3 待机功耗", "pages": "1, 6"},
+         "reason": "参考设计验证的组合；多模 CrM/DCM 满足轻载效率", "pages": "1, 6",
+         "values": {"输入电压范围": {"value": [85, 265], "page": 1}, "轻载 DCM/跳周期": {"value": true, "page": 1},
+                    "待机功耗": {"value": 30, "page": 6}, "外置 MOSFET 驱动": {"value": true, "page": 1}}},
         {"mpn": "L4984D", "vendor": "ST", "status": "rejected",
          "datasheet": "raw/Datasheet/08_电源管理/AC-DC 转换器/ST - L4984D.pdf",
-         "reason": "固定 CrM，轻载效率不满足 R-EFF-02；p.1", "pages": "1"}
+         "reason": "固定 CCM，没有轻载 DCM/跳周期", "pages": "1",
+         "values": {"轻载 DCM/跳周期": {"value": false, "page": 1}}}
       ]
     }
   ]
@@ -73,10 +89,13 @@
 
 字段要求（`render_design_report.py` 检查，不满足算记录问题，`pack_design.py` 拒绝打包）：
 
-- 每个角色有 `role`、非空 `refs`、非空 `decisive`、非空 `sources`、`candidates`。
+- 每个角色有 `role`、非空 `refs`、非空 `decisive`（对象列表，见第 3 节）、非空 `sources`、`candidates`。
+- `selected` 和 `alternate` 候选对每条决定性条件都有 `values[param] = {"value", "page"}` 且判定满足；
+  `rejected` 候选至少一条判定不满足，或写 `reject_kind`。
 - 候选 ≥ 2，否则要有 `single_candidate_reason`；`status` 只能是 `selected`/`rejected`/`alternate`，恰好一个 `selected`。
 - 每个候选有 `mpn`、`reason`、`datasheet`；`datasheet` 是相对 `library_root` 的路径，文件必须存在（也可以是交付目录内 `设计资料/` 下的文件）。
 - `selected` 的每个位号都在设计要求表里，且该器件的 `value` 含选定型号。
 - 设计要求表里每个 U/Q/T 开头的器件都属于某个角色；一个角色可以覆盖多个位号（例如两只并联 MOS）。
 
-报告的"核心器件选型"一节由这份记录生成：角色、选定型号、候选数和一句理由。理由用中文，型号和单位可以保留。
+报告的"核心器件选型"一节由这份记录生成：角色、选定型号、候选数、一句理由和每个淘汰候选的依据（哪条条件不满足，或 `reject_kind`）。
+理由用中文，型号和单位可以保留。

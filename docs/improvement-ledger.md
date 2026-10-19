@@ -6,6 +6,23 @@ record or user correction that caused the change; `Causes:` how many items
 fell in each cause class (rule_missing, rule_not_enforced, knowledge_missing,
 knowledge_wrong, judgment); `Changed:` the files touched.
 
+## Decisive conditions judged by the script (2026-10-19)
+
+Improvement plan stage 3. `selection.json` recorded decisive conditions as
+prose, so the report could only check that something was written, not that
+the chosen part met it. Conditions are now objects (`param`, `op` in
+<=, >=, covers, equals, has, `limit`, `unit`, `requirement`); every
+candidate records the value it was read at with the page; selected and
+alternate candidates must satisfy every condition, a rejected one must fail
+at least one or carry a `reject_kind` (dependency, data, availability, cost,
+preference). The report's selection table shows each rejection's basis. The
+R4 record was converted: 11 roles, 48 candidates, 6 rejected on preference,
+1 on data, the rest on a failed condition.
+
+- Event: user:2026-10-19 (accepted improvement plan, stage 3)
+- Causes: rule_not_enforced 1
+- Changed: scripts/render_design_report.py, tests/test_design_report.py, references/core-part-selection.md
+
 ## Datasheet filing gate (2026-10-19)
 
 Improvement plan stage 2. SKILL.md step 2 has long said every downloaded

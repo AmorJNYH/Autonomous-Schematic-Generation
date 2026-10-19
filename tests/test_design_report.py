@@ -30,12 +30,18 @@ class Delivery:
         (self.root / '设计资料' / 'X - XYZ100.pdf').write_bytes(b'%PDF')
         (self.root / '设计资料' / 'Y - ABC200.pdf').write_bytes(b'%PDF')
         self.selection = {'schema_version': 1, 'library_root': str(self.root), 'roles': [
-            {'role': '稳压器', 'refs': ['U1'], 'requirements': ['R-OUT'], 'decisive': ['输入 12 V', '输出 3 A'],
+            {'role': '稳压器', 'refs': ['U1'], 'requirements': ['R-OUT'], 'decisive': [
+                {'param': '输入电压范围', 'op': 'covers', 'limit': [9, 14], 'unit': 'V', 'requirement': 'R-OUT'},
+                {'param': '输出电流', 'op': '>=', 'limit': 3, 'unit': 'A'},
+                {'param': '封装', 'op': 'equals', 'limit': 'SOIC-8'},
+                {'param': '使能引脚', 'op': 'has', 'limit': True}],
              'sources': ['catalog:08_电源管理/DC-DC 降压转换器 (Buck)'], 'candidates': [
                  {'mpn': 'XYZ100', 'vendor': 'X', 'status': 'selected', 'datasheet': '设计资料/X - XYZ100.pdf',
-                  'reason': '电流裕量够，库里资料全'},
+                  'reason': '电流裕量够，库里资料全', 'values': {
+                      '输入电压范围': {'value': [4.5, 18], 'page': 1}, '输出电流': {'value': 3.5, 'page': 1},
+                      '封装': {'value': 'soic8', 'page': 2}, '使能引脚': {'value': True, 'page': 1}}},
                  {'mpn': 'ABC200', 'vendor': 'Y', 'status': 'rejected', 'datasheet': '设计资料/Y - ABC200.pdf',
-                  'reason': '最大 2 A 不满足'}]}]}
+                  'reason': '最大 2 A 不满足', 'values': {'输出电流': {'value': 2, 'page': 1}}}]}]}
         self.write('selection.json', self.selection)
         self.closure = {
             'schema_version': 1, 'coverage': 'complete', 'claim': 'candidate',
@@ -193,7 +199,7 @@ class DesignReportTests(unittest.TestCase):
         text, problems = self.d.report()
         self.assertEqual([], problems)
         self.assertIn('## 核心器件选型', text)
-        self.assertIn('| 稳压器 | U1 | XYZ100 | 2 | 电流裕量够，库里资料全 |', text)
+        self.assertIn('| 稳压器 | U1 | XYZ100 | 2 | 电流裕量够，库里资料全 | ABC200：输出电流 2 >= 3 A |', text)
         self.d.write('selection.json', {'schema_version': 1, 'roles': []})
         _, problems = self.d.report()
         self.assertTrue(any('没有 roles' in p for p in problems), problems)
@@ -213,7 +219,8 @@ class DesignReportTests(unittest.TestCase):
         self.assertTrue(any(p.startswith('候选 XYZ100 的资料 设计资料/missing.pdf 不在知识库') for p in problems), problems)
         role['candidates'][1] = {'mpn': 'ABC200', 'status': 'rejected', 'datasheet': '设计资料/Y - ABC200.pdf', 'reason': 'x'}
         role['candidates'][0]['datasheet'] = '设计资料/X - XYZ100.pdf'
-        role['decisive'] = ['x']
+        role['decisive'] = [{'param': 'x', 'op': 'has', 'limit': True}]
+        role['candidates'][0]['values'] = {'x': {'value': True, 'page': 1}}
         del role['candidates'][1]
         self.d.write('selection.json', sel)
         _, problems = self.d.report()
@@ -263,6 +270,35 @@ class DesignReportTests(unittest.TestCase):
         self.assertIn('W-B：归因 rule_missing，lessons.json 里要有 source 以 /W-B 结尾的事件写明改了什么', problems)
         self.assertIn('W-C：review-responses 归因 knowledge_wrong，lessons.json 同一事件归因 knowledge_missing，要一致', problems)
         self.assertFalse(any(p.startswith('W-D') for p in problems), problems)
+
+    def test_decisive_conditions_are_judged_from_recorded_values(self):
+        sel = json.loads(json.dumps(self.d.selection))
+        role = sel['roles'][0]
+        role['decisive'][0] = '输入 12 V'
+        self.d.write('selection.json', sel)
+        _, problems = self.d.report()
+        self.assertIn('选型角色“稳压器”的决定性条件要写成 {param, op, limit[, unit, requirement]}，op 取 <=/>=/covers/equals/has', problems)
+        sel = json.loads(json.dumps(self.d.selection))
+        role = sel['roles'][0]
+        chosen, rejected = role['candidates']
+        chosen['values']['输出电流']['value'] = 2.5                       # fails >= 3
+        del chosen['values']['封装']                                      # missing
+        chosen['values']['使能引脚']['value'] = False
+        rejected['values'] = {}                                           # no failed condition, no kind
+        role['candidates'].append({'mpn': 'DEF300', 'status': 'rejected', 'datasheet': '设计资料/Y - ABC200.pdf',
+                                   'reason': '只有简介', 'reject_kind': 'data'})
+        role['candidates'].append({'mpn': 'GHI400', 'status': 'alternate', 'datasheet': '设计资料/Y - ABC200.pdf',
+                                   'reason': '可替代', 'values': {
+                                       '输入电压范围': {'value': [10, 12], 'page': 1}, '输出电流': {'value': 3, 'page': 1},
+                                       '封装': {'value': 'SOIC-8', 'page': 1}, '使能引脚': {'value': True, 'page': 1}}})
+        self.d.write('selection.json', sel)
+        text, problems = self.d.report()
+        self.assertIn('选型角色“稳压器”候选 XYZ100 不满足条件“输出电流”（2.5 >= 3 A）却被选定', problems)
+        self.assertIn('选型角色“稳压器”候选 XYZ100 没有给出条件“封装”的值和页码（没有值或页码）', problems)
+        self.assertIn('选型角色“稳压器”候选 XYZ100 不满足条件“使能引脚”（无）却被选定', problems)
+        self.assertIn('选型角色“稳压器”淘汰候选 ABC200 没有一条决定性条件判定不满足，也没写 reject_kind（dependency/data/availability/cost/preference）', problems)
+        self.assertIn('选型角色“稳压器”候选 GHI400 不满足条件“输入电压范围”（10–12 覆盖 9–14 V）却被列为备选', problems)
+        self.assertIn('DEF300：资料不足', text)
 
     def test_parts_on_a_page_must_belong_to_a_block(self):
         self.d.write('electrical-intent.json', {'components': [
