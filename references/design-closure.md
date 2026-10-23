@@ -127,6 +127,30 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
    "work_item": "W-OPTO",
    "alternatives": [{"approach": "小信号 MOS 缓冲", "specified": true, "feasible": false, "reason": "……"}]}
   ```
+- **资料缺口**（`"gap_version": 1`，新交付必填；有未关闭的 external 待办而没有它时报告提出问题、`pack_design.py` 拒绝打包）：
+  每件未关闭的 external 待办写：
+  - `missing`：非空列表，每项 `{source, given, needed}`。`source` 是发现缺口的位置：`datasheet:<库内路径>#p<页>`、
+    `review:<审查目录>/<待办编号>` 或 `user:<日期>`；`given` 写手册给了什么（含测试条件），`needed` 写设计还需要什么。
+  - `why_external`：为什么只能由这个负责方给，例如行为在芯片内部或固件里，外部推不出来。
+  - `calculations`：依赖这项资料的计算 id，非空，且都是 `conditional`；报告在待办下列出这些计算的 `missing_guarantee`，
+    并在“有条件成立的计算”表里反查对应待办。
+  - `consequence`：资料与假设不符时具体会出什么问题，不能只写后果等级。
+  - `questions`：能直接发给负责方的问题，每条独立成句；报告按 `owner` 汇总到“要向外部要的资料”一节。
+  - `owner`：写到具体公司或角色（“Richtek 应用支持”），只由“原厂”“应用支持”“电路设计”这类泛称组成时审计报 `gap_vague_owner`。
+  - `fallback`：本项自己的替代做法和代价，或本项为什么没有替代；两件以上待办的 `fallback` 文字相同，审计报 `gap_generic_fallback`。
+  - `action`：资料到手后怎么关闭这项（重算哪条计算、核对什么）。
+  其他报错：缺字段 `gap_missing_fields`，位置格式不对 `gap_bad_source`，计算不存在或不是 conditional `gap_unlinked_calculation`。
+  审计只查格式；问题问得对不对、替代做法能不能用，仍要人看。
+  ```json
+  {"id": "W-PORT-SOA", "stage": "external", "status": "open", "severity": "P1", "owner": "Richtek 应用支持",
+   "missing": [{"source": "datasheet:Datasheet/.../Richtek - RT7209.pdf#p18", "given": "VOH_USBP=VO+8.5–12V，只在 RL=10MΩ 下规定",
+                "needed": "带 120nC 栅荷时的电荷泵电流、开通与关断时间"}],
+   "why_external": "电荷泵驱动能力、故障到下拉的时延和重试时序在芯片内部与固件里",
+   "calculations": ["PORT-GATE"], "consequence": "Q701 短路关断或重试时超出 SOA，D-S 短路后端口无法断开",
+   "questions": ["从检测到故障到 USBP 开始下拉的最大时延", "短路重试每次开通的持续时间、间隔与次数上限"],
+   "fallback": "栅极加由短路检测触发的快放电，增加 3 个器件",
+   "action": "按最小 ESR 与最大输出电容积分 Q701 的 VDS-ID-t，对照 SOA 与瞬态热阻核结温"}
+  ```
 - 待办的 `progress`：design 阶段未关闭的待办写本版做到哪（算了什么、定了什么、还差什么），不能等于 `action`；审查回复 `DESIGN` 引用的待办没有它就不算处理。
 - 所有证据 path 相对于 `--artifact-root`，不得逃逸该目录；必须有哈希和页码/章节/行号定位。需求源、数据手册和计算结论都纳入相应证据。`refs` 必须存在于设计要求表中；纯使用/验证条件可为空但须说明实现/交接。
 

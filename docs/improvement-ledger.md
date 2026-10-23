@@ -8,6 +8,21 @@ knowledge_wrong, judgment); `Changed:` the files touched. An entry that
 changes the ASG 纲要 or the 绘图纲要 O1–O8 also carries `Approved:
 user:<date>` and `Outline:` the hash from `check_ledger.py --outline-hash`.
 
+## 资料缺口在待办里当场写清，报告按负责方汇总问题 (2026-10-23)
+
+逐条讲解 R6 的外部待办时，用户发现设计时已经知道的资料缺口，报告没有讲清楚：待办只有一句 action，
+缺的是哪条规格、为什么只能找原厂、要问什么都不在报告里；14 件 external 待办只用了两句共用的替代做法；
+找谁写成“电路设计与原厂应用支持”；缺口细节只在“有条件成立的计算”表里，和待办没有关联。
+归因：`missing_guarantee` 只要求写在计算上，external 待办只要求 owner/action/fallback，审计和报告都不要求说明缺口（rule_missing）。
+现在 `gap_version: 1` 的未关闭 external 待办要写 missing（手册给了 / 还需要 / 页码）、why_external、calculations、consequence、
+questions 和具体的 owner、本项自己的 fallback；审计报缺字段、出处格式、计算不存在或非 conditional、泛称负责方和重复替代做法；
+报告逐件列出缺口、影响的计算和问题，新增“要向外部要的资料”一节按负责方汇总，计算表反查对应待办，结论单列缺外部资料一行。
+有未关闭 external 待办却没有 `gap_version` 的交付报告提出问题；R1–R4 因此各多一个报告问题，这是真问题，按运行节奏第 5 步更新基线。R6 尚未迁移。
+
+- Event: user:2026-10-23
+- Causes: rule_missing 1
+- Changed: references/design-closure.md, references/delivery-report.md, scripts/audit_design_closure.py, scripts/render_design_report.py, tests/test_design_closure.py, tests/test_design_report.py, tests/regression/baseline.json, docs/improvement-ledger.md
+
 ## 计算参数逐项有来源；优先手册规定的工作方式 (2026-10-23)
 
 R5 的 U601（RT7209BGQW）GPIO1/GPIO3 用开漏灌电流直驱光耦 U403/U202。手册 GPIO 一节只有开路电压和偏置电流档，

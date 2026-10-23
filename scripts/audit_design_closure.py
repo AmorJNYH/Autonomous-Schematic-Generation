@@ -25,6 +25,11 @@ WINDOW_SIDES = ('no_false_trip', 'protection')
 # not give is "unspecified" and ties to a recorded operating-point decision.
 PARAMETER_BASES = ('guaranteed', 'typical', 'derived', 'design_choice', 'model', 'unspecified')
 DATASHEET = re.compile(r'^datasheet:.+#p\d+$')
+# Where a data gap was found (gap_version 1): a datasheet page, a review item or a user decision.
+GAP_SOURCE = re.compile(r'^(datasheet:.+#p\d+|review:[^/\s]+/\S+|user:\d{4}-\d{2}-\d{2})$')
+GAP_FIELDS = ('missing', 'why_external', 'calculations', 'consequence', 'questions', 'owner', 'fallback', 'action')
+# An owner made only of these words names no one a question list can be sent to.
+GENERIC_OWNER = re.compile(r'原厂|厂商|厂家|供应商|供应方|应用支持|技术支持|电路设计|设计|vendor|supplier|support|application|fae|[与和及、/,，\s]', re.I)
 
 
 def text(value):
@@ -111,6 +116,36 @@ def audit_parameters(key, row, refs, points, calculations, error):
                 error('unspecified_parameter_without_operating_point', where)
         if basis in ('typical', 'unspecified') and row.get('conclusion') == 'supported':
             error('supported_with_unguaranteed_parameter', where)
+
+
+def audit_gaps(work, calculations, error):
+    """Open external items say which data is missing, why only the owner has it and what to ask."""
+    fallbacks = {}
+    for key, row in work.items():
+        if row.get('stage') != 'external' or row.get('status') == 'closed':
+            continue
+        for field in GAP_FIELDS:
+            value = row.get(field)
+            if not (text(value) or (isinstance(value, list) and value)):
+                error('gap_missing_fields', key + ':' + field)
+        for i, m in enumerate(row.get('missing') if isinstance(row.get('missing'), list) else []):
+            if not isinstance(m, dict) or not all(text(m.get(f)) for f in ('source', 'given', 'needed')):
+                error('schema', key + ':missing[%d] needs source, given and needed' % i)
+            elif not GAP_SOURCE.match(m['source']):
+                error('gap_bad_source', key + ':missing[%d]' % i)
+        for field in ('questions', 'calculations'):
+            if isinstance(row.get(field), list) and not all(text(x) for x in row[field]):
+                error('schema', key + ':' + field + ' must be a nonempty string list')
+        for cid in row.get('calculations') if isinstance(row.get('calculations'), list) else []:
+            if calculations.get(cid, {}).get('conclusion') != 'conditional':
+                error('gap_unlinked_calculation', key + ':' + str(cid))
+        if text(row.get('owner')) and not GENERIC_OWNER.sub('', row['owner']):
+            error('gap_vague_owner', key)
+        if text(row.get('fallback')):
+            fallbacks.setdefault(' '.join(row['fallback'].split()), []).append(key)
+    for keys in fallbacks.values():
+        if len(keys) > 1:
+            error('gap_generic_fallback', '、'.join(keys))
 
 
 def finite(x):
@@ -321,6 +356,12 @@ def audit(record, intent_path, artifact_root, inputs=None):
             for rid in row.get('requirements', []):
                 if rid in requirements and requirements[rid].get('status') == 'design_supported':
                     error('unsupported_calculation_dependency', rid + ':' + key)
+    gaps = 'gap_version' in record
+    if gaps and record['gap_version'] != 1:
+        error('schema', 'gap_version must be 1')
+        gaps = False
+    if gaps:
+        audit_gaps(work, calculations, error)
     covered = {r for row in calculations.values() if isinstance(row.get('refs'), list) for r in row['refs']}
     for ref in threshold_parts:
         if ref not in covered:
@@ -350,6 +391,7 @@ def audit(record, intent_path, artifact_root, inputs=None):
             'pcb_handoffs': [k for k, v in work.items() if v.get('stage') == 'pcb' and v.get('status') == 'handoff'],
             'counts': {k: len(v) for k, v in tables.items()}, 'convergence': convergence,
             'parameters': 'CHECKED' if parameters else 'NOT_CHECKED',
+            'gaps': 'CHECKED' if gaps else 'NOT_CHECKED',
             'unspecified_operations': sorted(k for k, v in points.items() if v.get('specified') is False),
             'downstream_handoffs': [k for k, v in work.items() if v.get('stage') in ('validation', 'pcb') and v.get('status') == 'handoff']}
 

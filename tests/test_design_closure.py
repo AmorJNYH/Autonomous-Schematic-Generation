@@ -346,3 +346,74 @@ class ParameterSourceTests(unittest.TestCase):
         _, point = self.opto_board()
         point['source'] = 'RT7209 p12'
         self.assertIn('operating_point_source', self.codes())
+
+
+class DataGapTests(unittest.TestCase):
+    """An open external item says what the datasheet gives, what is missing, what to ask and a fallback of its own."""
+    setUp = DesignClosureTests.setUp
+    run_audit = DesignClosureTests.run_audit
+    codes = DesignClosureTests.codes
+    external = DesignClosureTests.external
+    SHEET = 'datasheet:Datasheet/PD/Richtek - RT7209.pdf#p18'
+
+    def gap_board(self):
+        # The R6 case: USBP is specified only unloaded, so the blocking MOS turn-off path is unknown.
+        self.record['gap_version'] = 1
+        self.record['requirements'][0].update(status='conditional')
+        self.record['calculations'][0].update(coverage='partial', conclusion='conditional', omitted_terms=['开关轨迹'],
+                                              missing_guarantee='USBP 带载驱动能力与关断时延')
+        item = self.record['work_items'][0]
+        item.update(stage='external', status='open', severity='P1', owner='Richtek 应用支持',
+                    action='按关断时延积分 Q701 的 VDS-ID-t 并核 SOA',
+                    missing=[{'source': self.SHEET, 'given': 'VOH_USBP 只在 RL=10MΩ 下规定', 'needed': '带 120nC 栅荷时的开通与关断时间'}],
+                    why_external='电荷泵驱动和故障时序在芯片内部与固件里', calculations=['C1'],
+                    consequence='Q701 超出 SOA 后 D-S 短路，端口无法断开', questions=['从检测到故障到 USBP 下拉的最大时延'],
+                    fallback='栅极加由短路检测触发的快放电')
+        return item
+
+    def test_gaps_are_checked_only_with_gap_version(self):
+        self.external()
+        self.assertEqual('NOT_CHECKED', self.run_audit()['gaps'])
+        self.record['gap_version'] = 1
+        self.assertIn('gap_missing_fields', self.codes())
+
+    def test_complete_gap_record_has_no_gap_errors(self):
+        self.gap_board()
+        result = self.run_audit()
+        self.assertEqual('CHECKED', result['gaps'])
+        self.assertEqual([], [e for e in result['errors'] if e['code'].startswith('gap_')])
+
+    def test_each_gap_field_is_required(self):
+        item = self.gap_board()
+        for field in ('missing', 'why_external', 'calculations', 'consequence', 'questions'):
+            saved = item.pop(field)
+            self.assertIn({'code': 'gap_missing_fields', 'item': 'W1:' + field}, self.run_audit()['errors'])
+            item[field] = saved
+
+    def test_gap_cites_where_it_was_found(self):
+        item = self.gap_board()
+        item['missing'][0]['source'] = 'RT7209 手册 p18'
+        self.assertIn('gap_bad_source', self.codes())
+
+    def test_gap_links_to_existing_conditional_calculations(self):
+        item = self.gap_board()
+        item['calculations'] = ['C9']
+        self.assertIn('gap_unlinked_calculation', self.codes())
+        item['calculations'] = ['C1']
+        self.record['calculations'][0].update(coverage='bounded', conclusion='supported', omitted_terms=[])
+        self.assertIn('gap_unlinked_calculation', self.codes())
+
+    def test_owner_names_who_to_ask(self):
+        item = self.gap_board()
+        item['owner'] = '电路设计与原厂应用支持'
+        self.assertIn('gap_vague_owner', self.codes())
+
+    def test_shared_boilerplate_fallback_is_rejected(self):
+        item = self.gap_board()
+        twin = copy.deepcopy(item)
+        twin['id'] = 'W2'
+        self.record['work_items'].append(twin)
+        self.assertIn({'code': 'gap_generic_fallback', 'item': 'W1、W2'}, self.run_audit()['errors'])
+        twin['fallback'] = '换带短路保护的负载开关'
+        self.assertNotIn('gap_generic_fallback', self.codes())
+

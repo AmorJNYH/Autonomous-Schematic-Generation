@@ -526,6 +526,10 @@ def render(root, notes=None, title=None):
     if closure and closure.get('parameter_version') != 1:
         problems.append('计算没有逐项登记参数来源：design-closure.json 要写 parameter_version 1，'
                         '每条计算的 parameters 写明每个器件参数的值、依据和手册页码（见 design-closure.md）')
+    if closure.get('gap_version') != 1 and any(isinstance(w, dict) and w.get('stage') == 'external' and w.get('status') != 'closed'
+                                               for w in closure.get('work_items') or []):
+        problems.append('缺外部资料的待办没有写清缺口：design-closure.json 要写 gap_version 1，每件写明手册给了什么、'
+                        '还缺什么、影响哪些计算、要问的问题和本项的替代做法（见 design-closure.md）')
     if visual and visual.get('status') not in VISUAL:
         problems.append('visual-review.json 的 status 必须是 %s 之一' % '/'.join(VISUAL))
     lessons, events = {}, None
@@ -568,7 +572,7 @@ def render(root, notes=None, title=None):
     parts = len(intent.get('components') or [])
     sheets = len(summary.get('sheets') or [])
     out.append('- **规模**：器件 %d 个，图纸 %d 页。' % (parts, sheets))
-    out.append('- **自动检查**：共 %d 项。%s。' % (len(shown), '，'.join(
+    out.append('- **图纸自动检查**：共 %d 项。%s。' % (len(shown), '，'.join(
         '%s %d 项' % (label, gate_counts.get(key, 0)) for key, label in GATE_RESULTS.items()
         if key != 'CONDITIONAL' or gate_counts.get(key))))
     out.append('- **看图检查**：%s。' % VISUAL.get(visual.get('status'), '没有记录'))
@@ -581,9 +585,9 @@ def render(root, notes=None, title=None):
     failed = [label for _, label, status in shown if status == 'FAIL']
     short = [label for _, label, status in shown if status not in ('PASS', 'FAIL', 'CONDITIONAL')]
     if failed:
-        missing.append('%d 项自动检查没通过：%s' % (len(failed), '、'.join(failed)))
+        missing.append('%d 项图纸自动检查没通过：%s' % (len(failed), '、'.join(failed)))
     if short:
-        missing.append('%d 项自动检查资料不足或没做：%s' % (len(short), '、'.join(short)))
+        missing.append('%d 项图纸自动检查资料不足或没做：%s' % (len(short), '、'.join(short)))
     if visual.get('status') != 'REVIEWED':
         missing.append('看图检查%s' % VISUAL.get(visual.get('status'), '没有记录'))
     by_stage = Counter(w.get('stage') for w in open_work)
@@ -602,6 +606,13 @@ def render(root, notes=None, title=None):
     if asks:
         out.append('- **请你定的需求**：%d 件（%s）。本版先按写明的假设设计，定下来后可能要改图，列在“待办”最前面。'
                    % (len(asks), '、'.join(w['id'] for w in asks)))
+    external = [w for w in open_work if w.get('stage') == 'external']
+    if external:
+        owners = Counter(w.get('owner') or '未指定' for w in external)
+        linked = {c for w in external for c in w.get('calculations') or [] if isinstance(c, str)}
+        out.append('- **缺外部资料**：%d 件（%s）%s。要问的问题汇总在“要向外部要的资料”一节。' % (
+            len(external), '、'.join('%s %d 件' % kv for kv in owners.most_common()),
+            '，影响有条件成立的计算 %d 项' % len(linked) if linked else ''))
     if open_work:
         out.append('- **待办**：%d 件，%s按可能后果从重到轻列在“待办”一节。'
                    % (len(open_work), '等你定的需求排最前，其余' if asks else ''))
@@ -659,14 +670,49 @@ def render(root, notes=None, title=None):
             out += ['### %s（%s）' % (w['id'], ('%s：%s' % (level, SEVERITY_WORDS[level])) if level in SEVERITY_WORDS else '未定后果'), '']
             if item_notes.get(w['id']):
                 out += [item_notes[w['id']], '']
-            for label, value in (('类型', STAGES.get(w.get('stage'), w.get('stage'))),
-                                 ('本版按什么假设设计', w.get('assumption')), ('要做什么', w.get('action')),
-                                 ('找谁', w.get('owner')), ('拿不到时的替代做法', w.get('fallback')),
-                                 ('要先完成', '、'.join(w.get('blocked_by') or [])),
-                                 ('影响的需求', '、'.join(w.get('requirements') or []))):
+            gap = w.get('stage') == 'external' and isinstance(w.get('missing'), list)
+            if gap:
+                fields = (('类型', STAGES['external']), ('找谁', w.get('owner')), ('为什么只能找他', w.get('why_external')),
+                          ('搞错的后果', w.get('consequence')), ('资料到手后怎么关', w.get('action')),
+                          ('拿不到时的替代做法', w.get('fallback')), ('要先完成', '、'.join(w.get('blocked_by') or [])),
+                          ('影响的需求', '、'.join(w.get('requirements') or [])))
+            else:
+                fields = (('类型', STAGES.get(w.get('stage'), w.get('stage'))),
+                          ('本版按什么假设设计', w.get('assumption')), ('要做什么', w.get('action')),
+                          ('找谁', w.get('owner')), ('拿不到时的替代做法', w.get('fallback')),
+                          ('要先完成', '、'.join(w.get('blocked_by') or [])),
+                          ('影响的需求', '、'.join(w.get('requirements') or [])))
+            for label, value in fields:
                 if text(value):
                     out.append('- **%s**：%s' % (label, value))
+            if gap:
+                out.append('- **缺什么**：')
+                for m in w['missing']:
+                    if isinstance(m, dict):
+                        out.append('  - 手册给了：%s；设计还需要：%s（%s）' % (m.get('given', ''), m.get('needed', ''), m.get('source', '')))
+                calcs = {c.get('id'): c for c in calculations}
+                if w.get('calculations'):
+                    out.append('- **影响的计算**：')
+                    out += ['  - %s：%s' % (cid, calcs.get(cid, {}).get('missing_guarantee') or '（计算不存在）')
+                            for cid in w['calculations']]
+                if w.get('questions'):
+                    out.append('- **要问的问题**：')
+                    out += ['  %d. %s' % (i, q) for i, q in enumerate(w['questions'], 1)]
             out.append('')
+
+        asked = [w for w in sorted(open_work, key=order) if w.get('stage') == 'external' and w.get('questions')]
+        if asked:
+            out += ['## 要向外部要的资料', '',
+                    '按负责方汇总缺外部资料的待办要问的问题，每组可以整段发给对应负责方；括号里是对应待办。', '']
+            for owner in OrderedDict.fromkeys(w.get('owner') or '未指定' for w in asked):
+                out += ['### %s' % owner, '']
+                n = 0
+                for w in asked:
+                    if (w.get('owner') or '未指定') == owner:
+                        for q in w['questions']:
+                            n += 1
+                            out.append('%d. %s（%s）' % (n, q, w['id']))
+                out.append('')
 
     if handoffs:
         out += ['## 交给后续环节的要求', '',
@@ -682,11 +728,13 @@ def render(root, notes=None, title=None):
         out += ['## 有条件成立的计算', '',
                 '这些计算按设计用途已经够用，不阻塞出图；结论建立在下面写明的假设或没算进去的项上，'
                 '按最坏情况逐条证明留给独立审查。', '',
-                '| 计算 | 涉及的需求 | 算出的值与门槛 | 假设或没算进去的项 |', '|---|---|---|---|']
+                '| 计算 | 涉及的需求 | 算出的值与门槛 | 假设或没算进去的项 | 对应待办 |', '|---|---|---|---|---|']
         for c in conditional:
-            out.append('| %s | %s | %s | %s |' % (c.get('id'), '、'.join(c.get('requirements') or []),
+            owed = [w['id'] for w in open_work if c.get('id') in (w.get('calculations') or [])]
+            out.append('| %s | %s | %s | %s | %s |' % (c.get('id'), '、'.join(c.get('requirements') or []),
                                             cell('；'.join(check_text(k) for k in c.get('checks') or [])),
-                                            cell('；'.join((c.get('assumptions') or []) + (c.get('omitted_terms') or [])))))
+                                            cell('；'.join((c.get('assumptions') or []) + (c.get('omitted_terms') or []))),
+                                            '、'.join(owed)))
         out.append('')
 
     unspecified = [p for p in closure.get('operating_points') or [] if isinstance(p, dict) and p.get('specified') is False]

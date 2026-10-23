@@ -44,7 +44,7 @@ class Delivery:
                   'reason': '最大 2 A 不满足', 'values': {'输出电流': {'value': 2, 'page': 1}}}]}]}
         self.write('selection.json', self.selection)
         self.closure = {
-            'schema_version': 1, 'parameter_version': 1, 'coverage': 'complete', 'claim': 'candidate',
+            'schema_version': 1, 'parameter_version': 1, 'gap_version': 1, 'coverage': 'complete', 'claim': 'candidate',
             'intent_sha256': sha256(self.record / 'electrical-intent.json'),
             'evidence': [{'id': 'E1', 'path': 'record/evidence/design.md',
                           'sha256': sha256(self.record / 'evidence' / 'design.md'), 'locator': 'section 1'}],
@@ -54,7 +54,11 @@ class Delivery:
                 {'id': 'W-CALC', 'stage': 'design', 'status': 'open', 'severity': 'P2', 'requirements': ['R-OUT'],
                  'evidence': [], 'owner': '设计', 'action': '补算输出电容纹波电流'},
                 {'id': 'W-FW', 'stage': 'external', 'status': 'open', 'severity': 'P0', 'requirements': ['R-OUT'],
-                 'evidence': [], 'owner': '固件供应方', 'action': '取得过压保护配置表', 'fallback': '评估独立硬件过压关断'},
+                 'evidence': [], 'owner': 'X 公司应用支持', 'action': '取得过压保护配置表后重算 C1', 'fallback': '评估独立硬件过压关断',
+                 'missing': [{'source': 'datasheet:设计资料/X - XYZ100.pdf#p2', 'given': '过压门限只在 25°C 规定',
+                              'needed': '全温过压门限与关断时延'}],
+                 'why_external': '过压动作由固件配置决定，手册没有公开', 'calculations': ['C1'],
+                 'consequence': '过压时输出电容过充，负载损坏', 'questions': ['全温下过压门限的范围', '从检测到关断的最大时延']},
                 {'id': 'W-TEST', 'stage': 'validation', 'status': 'handoff', 'requirements': ['R-OUT'],
                  'evidence': ['E1'], 'owner': '样机验证', 'action': '满载温升测试'}],
             'calculations': [{'id': 'C1', 'requirements': ['R-OUT'], 'evidence': ['E1'], 'refs': ['U1'],
@@ -96,10 +100,10 @@ class DesignReportTests(unittest.TestCase):
         lines = [l for l in text.splitlines() if l.strip()]
         self.assertEqual(lines[1], '## 结论')
         self.assertEqual(lines[2], '- **规模**：器件 2 个，图纸 2 页。')
-        self.assertEqual(lines[3], '- **自动检查**：共 3 项。通过（PASS） 2 项，没通过（FAIL） 0 项，资料不足（INSUFFICIENT） 1 项。')
+        self.assertEqual(lines[3], '- **图纸自动检查**：共 3 项。通过（PASS） 2 项，没通过（FAIL） 0 项，资料不足（INSUFFICIENT） 1 项。')
         self.assertIn('- **需求**：共 1 条。有设计依据 0 条，有条件成立 1 条，还没有设计 0 条。', text)
         self.assertIn('- **设计是否完成**：还没完成。还差：', text)
-        self.assertIn('1 项自动检查资料不足或没做：图面几何（重叠、穿线）', text)
+        self.assertIn('1 项图纸自动检查资料不足或没做：图面几何（重叠、穿线）', text)
         self.assertIn('2 件待办没做完（设计没做完 1 件，缺外部资料 1 件）', text)
 
     def test_one_todo_list_ordered_by_consequence(self):
@@ -109,6 +113,27 @@ class DesignReportTests(unittest.TestCase):
         self.assertIn('- **拿不到时的替代做法**：评估独立硬件过压关断', section)
         self.assertIn('固件过压保护配置还没拿到。', section)
         self.assertNotIn('W-TEST', section)
+
+    def test_external_gap_shows_what_is_missing_and_what_to_ask(self):
+        text, problems = self.d.report()
+        self.assertEqual([], problems)
+        self.assertIn('- **缺外部资料**：1 件（X 公司应用支持 1 件），影响有条件成立的计算 1 项。', text)
+        section = text.split('## 待办')[1].split('\n## ')[0]
+        self.assertIn('  - 手册给了：过压门限只在 25°C 规定；设计还需要：全温过压门限与关断时延'
+                      '（datasheet:设计资料/X - XYZ100.pdf#p2）', section)
+        self.assertIn('  - C1：纹波电流在 105°C 的额定', section)
+        self.assertIn('- **为什么只能找他**：过压动作由固件配置决定，手册没有公开', section)
+        self.assertIn('- **资料到手后怎么关**：取得过压保护配置表后重算 C1', section)
+        self.assertIn('  2. 从检测到关断的最大时延', section)
+        asks = text.split('## 要向外部要的资料')[1].split('\n## ')[0]
+        self.assertIn('### X 公司应用支持', asks)
+        self.assertIn('1. 全温下过压门限的范围（W-FW）', asks)
+
+    def test_external_item_without_gap_record_is_a_problem(self):
+        del self.d.closure['gap_version']
+        self.d.write('design-closure.json', self.d.closure)
+        _, problems = self.d.report()
+        self.assertTrue(any('gap_version 1' in p for p in problems), problems)
 
     def ask_user(self):
         c = self.d.closure
@@ -148,7 +173,7 @@ class DesignReportTests(unittest.TestCase):
     def test_conditional_calculations_listed_with_assumptions(self):
         text, _ = self.d.report()
         section = text.split('## 有条件成立的计算')[1].split('## ')[0]
-        self.assertIn('| C1 | R-OUT | 输出纹波：18 ≤ 30 mV | ripple |', section)
+        self.assertIn('| C1 | R-OUT | 输出纹波：18 ≤ 30 mV | ripple | W-FW |', section)
         self.assertIn('不阻塞出图', section)
 
     def test_calculations_without_parameter_sources_are_a_problem(self):
