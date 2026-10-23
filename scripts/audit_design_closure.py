@@ -126,6 +126,9 @@ def audit_gaps(work, calculations, error):
             continue
         for field in GAP_FIELDS:
             value = row.get(field)
+            # A behaviour or qualification gap that no calculation rests on says so instead of linking one.
+            if field == 'calculations' and value == [] and text(row.get('no_calculation_reason')):
+                continue
             if not (text(value) or (isinstance(value, list) and value)):
                 error('gap_missing_fields', key + ':' + field)
         for i, m in enumerate(row.get('missing') if isinstance(row.get('missing'), list) else []):

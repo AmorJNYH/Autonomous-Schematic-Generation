@@ -611,7 +611,7 @@ def render(root, notes=None, title=None):
         owners = Counter(w.get('owner') or '未指定' for w in external)
         linked = {c for w in external for c in w.get('calculations') or [] if isinstance(c, str)}
         out.append('- **缺外部资料**：%d 件（%s）%s。要问的问题汇总在“要向外部要的资料”一节。' % (
-            len(external), '、'.join('%s %d 件' % kv for kv in owners.most_common()),
+            len(external), '；'.join('%s %d 件' % kv for kv in owners.most_common()),
             '，影响有条件成立的计算 %d 项' % len(linked) if linked else ''))
     if open_work:
         out.append('- **待办**：%d 件，%s按可能后果从重到轻列在“待办”一节。'
@@ -695,6 +695,8 @@ def render(root, notes=None, title=None):
                     out.append('- **影响的计算**：')
                     out += ['  - %s：%s' % (cid, calcs.get(cid, {}).get('missing_guarantee') or '（计算不存在）')
                             for cid in w['calculations']]
+                elif text(w.get('no_calculation_reason')):
+                    out.append('- **影响的计算**：无。%s' % w['no_calculation_reason'])
                 if w.get('questions'):
                     out.append('- **要问的问题**：')
                     out += ['  %d. %s' % (i, q) for i, q in enumerate(w['questions'], 1)]

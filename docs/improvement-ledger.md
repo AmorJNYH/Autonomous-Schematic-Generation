@@ -8,6 +8,16 @@ knowledge_wrong, judgment); `Changed:` the files touched. An entry that
 changes the ASG 纲要 or the 绘图纲要 O1–O8 also carries `Approved:
 user:<date>` and `Outline:` the hash from `check_ledger.py --outline-hash`.
 
+## 不依赖计算的资料缺口写明理由 (2026-10-23)
+
+把 R6 迁到 gap_version 1 时，W-VTR（固件上电行为确认）和 W-ISO（加强绝缘资格）没有任何数值计算依赖它们，
+`calculations` 非空的要求只能靠挂不相关的计算来满足（rule_missing）。现在允许空列表加 `no_calculation_reason`，
+报告在“影响的计算”写“无”并给出理由。
+
+- Event: user:2026-10-23
+- Causes: rule_missing 1
+- Changed: references/design-closure.md, scripts/audit_design_closure.py, scripts/render_design_report.py, tests/test_design_closure.py, docs/improvement-ledger.md
+
 ## 资料缺口在待办里当场写清，报告按负责方汇总问题 (2026-10-23)
 
 逐条讲解 R6 的外部待办时，用户发现设计时已经知道的资料缺口，报告没有讲清楚：待办只有一句 action，

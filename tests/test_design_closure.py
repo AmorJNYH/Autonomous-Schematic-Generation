@@ -390,6 +390,13 @@ class DataGapTests(unittest.TestCase):
             self.assertIn({'code': 'gap_missing_fields', 'item': 'W1:' + field}, self.run_audit()['errors'])
             item[field] = saved
 
+    def test_gap_without_dependent_calculation_says_why(self):
+        item = self.gap_board()
+        item['calculations'] = []
+        self.assertIn('gap_missing_fields', self.codes())
+        item['no_calculation_reason'] = '只确认固件上电默认行为，没有数值计算依赖它'
+        self.assertNotIn('gap_missing_fields', self.codes())
+
     def test_gap_cites_where_it_was_found(self):
         item = self.gap_board()
         item['missing'][0]['source'] = 'RT7209 手册 p18'
