@@ -22,7 +22,7 @@
 ## 2. 候选从哪里来（按优先级）
 
 1. 用户指定或用户的优选料表：有就以它为准，其余候选只用来证明它可行或说明为什么不行。
-2. 上一版已审查的设计沿用的型号：不换，除非审查意见或新需求要求换。
+2. 上一版用的型号：作为候选之一，和其他候选同等比较，不因为沿用而优先。
 3. 同拓扑参考设计的核心器件：`find_parts.py --designs <拓扑/功率/接口>`，打开板手册的 BOM，把它用的控制器、开关、磁件抄成候选，记下板名。
 4. 库内同类手册：按 part-roles.md 定二级类，`find_parts.py --category "<二级类>"` 列出全部，
    用决定性参数先筛掉明显不合的，剩下的打开手册首页核。
@@ -53,6 +53,15 @@
 
 至少两个候选才算比较过；只有一个时写 `single_candidate_reason`（用户指定、沿用上一版、该类库里只有一份且外部检索也没找到……）。
 
+**外部依赖作为比较条件。** 每个候选写 `external_dependencies`：选它之后，设计要依赖哪些手册没公开的资料或行为
+（固件默认态、内部时序、编码表、全温保证……），每条一句话，写明查过哪页没有；没有就写空列表。
+这一项不淘汰候选，而是和代价一起比较：依赖越多，交付时缺外部资料的待办越多。
+
+**外部条件不确定时给出方案，先问再画。** 选定候选的 `external_dependencies` 不为空时，列出 2–3 个选型方案
+（例如“单芯片方案”“通用控制器 + MCU”“换一家资料公开的控制器”），比较各自的外部依赖、代价和优缺点，
+给出 ASG 的建议和理由，在第 2 步结束时交用户决定；用户定下来之前不进入第 3 步。用户的决定记在 `decision` 里，
+选定候选必须属于用户选的方案。
+
 ## 4. 记录：`record/selection.json`
 
 ```json
@@ -74,7 +83,7 @@
       "candidates": [
         {"mpn": "NCP1623", "vendor": "onsemi", "status": "selected",
          "datasheet": "raw/Datasheet/08_电源管理/AC-DC 转换器/onsemi - NCP1623.pdf",
-         "reason": "参考设计验证的组合；多模 CrM/DCM 满足轻载效率", "pages": "1, 6",
+         "reason": "参考设计验证的组合；多模 CrM/DCM 满足轻载效率", "pages": "1, 6", "external_dependencies": [],
          "values": {"输入电压范围": {"value": [85, 265], "page": 1}, "轻载 DCM/跳周期": {"value": true, "page": 1},
                     "待机功耗": {"value": 30, "page": 6}, "外置 MOSFET 驱动": {"value": true, "page": 1}}},
         {"mpn": "L4984D", "vendor": "ST", "status": "rejected",
@@ -96,6 +105,23 @@
 - 每个候选有 `mpn`、`reason`、`datasheet`；`datasheet` 是相对 `library_root` 的路径，文件必须存在（也可以是交付目录内 `设计资料/` 下的文件）。
 - `selected` 的每个位号都在设计要求表里，且该器件的 `value` 含选定型号。
 - 设计要求表里每个 U/Q/T 开头的器件都属于某个角色；一个角色可以覆盖多个位号（例如两只并联 MOS）。
+- `selected` 候选写 `external_dependencies`（字符串列表，没有写空列表）。不为空时角色还要有：
+  - `options`：2–3 个方案，每个 `{name, parts, external_dependencies, cost, pros, cons, recommended}`，
+    `parts` 是涉及的型号列表，恰好一个 `recommended: true`，各方案的 `cons` 不能一字不差；
+  - `recommendation`：ASG 推荐哪个、为什么，拿到哪些资料后结论会变；
+  - `decision`：`{"option": "<用户选的方案名>", "source": "user:<日期>"}`，选定候选的型号必须在该方案的 `parts` 里。
+
+```json
+"external_dependencies": ["补偿网络编码表（p13 只给范围）", "阻断管驱动的带载能力与关断时延（p18 只在空载测试）"],
+"options": [
+  {"name": "控制器 A 单芯片", "parts": ["CTRL-A"], "external_dependencies": ["补偿网络编码表", "阻断管驱动时延"],
+   "cost": "器件最少", "pros": "内置环路与驱动", "cons": "关键行为在固件里，要原厂答复", "recommended": false},
+  {"name": "控制器 B + 外置环路", "parts": ["CTRL-B", "TL431"], "external_dependencies": [],
+   "cost": "增加约 8 个器件，重画一页", "pros": "环路与保护可按公开手册计算", "cons": "器件多、板面积增加", "recommended": true}],
+"recommendation": "推荐方案 2：没有外部依赖，环路与保护能按公开资料算清；若原厂能答复编码表和驱动时延，方案 1 更省器件",
+"decision": {"option": "控制器 B + 外置环路", "source": "user:2026-10-24"}
+```
 
 报告的"核心器件选型"一节由这份记录生成：角色、选定型号、候选数、一句理由和每个淘汰候选的依据（哪条条件不满足，或 `reject_kind`）。
+有方案的角色另列"外部条件不确定的选型"一节：每个方案的型号、外部依赖、代价、优缺点，ASG 的建议和你的决定。
 理由用中文，型号和单位可以保留。

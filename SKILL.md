@@ -29,7 +29,7 @@ ASG 从需求文档出发，让 Agent 在 KiCad 中画出**可读、电气正确
 ASG 负责需求到电路的方案可行性、选型依据、设计计算和功能实现，不能把未做完的设计留给别人。
 新设计和电气改版同时遵循
 [设计待办记录](references/design-closure.md)，区分工程可完成、真实外部依赖和后续环节验证。
-电气改版按其中的收敛迭代执行；审计列出的可执行设计动作须继续完成，不能把缺口清单当成结束条件。
+电气改版按其中从审查缺口回到电路的做法执行；审计列出的可执行设计动作须继续完成，不能把缺口清单当成结束条件。
 
 以下验收与独立复核不由 ASG 负责：
 
@@ -115,6 +115,9 @@ ASG 负责需求到电路的方案可行性、选型依据、设计计算和功�
   `~/Documents/知识库/HardwareWiki/raw/`（手册、参考设计、应用笔记），用 `scripts/find_parts.py` 检索；
   每类器件干什么、选它看什么参数见 [part-roles.md](references/part-roles.md)，从"按功能找类"定二级类再找候选。
   库里没有合适候选才外部检索，下载的手册按下面的资料规则入库。
+- **外部条件不确定时给出方案**：推荐候选依赖未公开的资料或行为（会产生外部资料待办）时，列出 2–3 个选型方案，
+  比较各自的外部依赖、代价和优缺点，给出 ASG 的建议，交用户决定。用户定下来之前不进入第 3 步。
+  格式见 [core-part-selection.md](references/core-part-selection.md)。
 - 每个核心器件对应确切 MPN/封装的物理引脚表、典型应用、必需外围和装配状态，记录实际阅读的手册页码。
   分立器件的**符号含义**也按确切料号选：TVS 单向/双向、MOS N/P 沟道、NPN/PNP，脚名按手册（单向二极管用 K/A）。
   KiCad `Device:D_TVS` 只表示双向 TVS，不能用于单向器件。
@@ -262,8 +265,7 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
 
 - 按 [execution-evidence.md](references/execution-evidence.md) 写 `delivery-evidence.json`，报告前运行
   `scripts/check_delivery_freshness.py`；任何导出后的修改都会使旧结果作废。
-- 还有可独立完成的设计项就继续，不以列出缺口代替完成。`pack_design.py --input previous=` 会对比上一版：
-  设计阶段待办变多或有依据的需求变少，必须在 notes.json 的 `regression_reason` 写明原因。
+- 还有可独立完成的设计项就继续，不以列出缺口代替完成。待办只由本版设计过程中确认仍需做的事项决定，不与上一版比较。
 - **写本版学到的东西** `record/lessons.json`：每条审查意见、每份改变了认识的手册页、每次用户纠正都是一个事件，
   写来源（`review:<审查目录>/<待办编号>`、`datasheet:<库内路径>#p<页>`、`test:…`、`user:<日期>`）、归因
   （`rule_missing`/`rule_not_enforced` 改 `scripts/`，`knowledge_missing`/`knowledge_wrong` 改 `references/` 或知识库，

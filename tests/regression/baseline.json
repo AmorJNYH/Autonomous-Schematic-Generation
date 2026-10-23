@@ -51,8 +51,8 @@
       "open_work": 15
     },
     "100W-PD-R4": {
-      "report_problems": 16,
-      "pack_errors": 16,
+      "report_problems": 17,
+      "pack_errors": 17,
       "gates": {
         "erc": "PASS",
         "intent_netlist": "PASS",

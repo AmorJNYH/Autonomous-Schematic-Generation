@@ -37,7 +37,7 @@ class Delivery:
                 {'param': '使能引脚', 'op': 'has', 'limit': True}],
              'sources': ['catalog:08_电源管理/DC-DC 降压转换器 (Buck)'], 'candidates': [
                  {'mpn': 'XYZ100', 'vendor': 'X', 'status': 'selected', 'datasheet': '设计资料/X - XYZ100.pdf',
-                  'reason': '电流裕量够，库里资料全', 'values': {
+                  'reason': '电流裕量够，库里资料全', 'external_dependencies': [], 'values': {
                       '输入电压范围': {'value': [4.5, 18], 'page': 1}, '输出电流': {'value': 3.5, 'page': 1},
                       '封装': {'value': 'soic8', 'page': 2}, '使能引脚': {'value': True, 'page': 1}}},
                  {'mpn': 'ABC200', 'vendor': 'Y', 'status': 'rejected', 'datasheet': '设计资料/Y - ABC200.pdf',
@@ -250,6 +250,58 @@ class DesignReportTests(unittest.TestCase):
         self.d.write('selection.json', {'schema_version': 1, 'roles': []})
         _, problems = self.d.report()
         self.assertTrue(any('没有 roles' in p for p in problems), problems)
+
+    def options_role(self):
+        sel = json.loads(json.dumps(self.d.selection))
+        role = sel['roles'][0]
+        role['candidates'][0]['external_dependencies'] = ['过压保护配置表未公开（p2 只有功能描述）']
+        role['options'] = [
+            {'name': 'XYZ100 单芯片', 'parts': ['XYZ100'], 'external_dependencies': ['过压保护配置表'],
+             'cost': '器件最少', 'pros': '集成度高', 'cons': '过压行为要原厂答复', 'recommended': True},
+            {'name': 'ABC200 加外置过压', 'parts': ['ABC200', 'TL431'], 'external_dependencies': [],
+             'cost': '增加 4 个器件', 'pros': '过压可按手册算', 'cons': '电流只有 2A', 'recommended': False}]
+        role['recommendation'] = '推荐方案 1：电流满足需求，过压另有硬件后备'
+        role['decision'] = {'option': 'XYZ100 单芯片', 'source': 'user:2026-10-24'}
+        return sel, role
+
+    def test_uncertain_selection_lists_options_and_the_users_choice(self):
+        sel, _ = self.options_role()
+        self.d.write('selection.json', sel)
+        text, problems = self.d.report()
+        self.assertEqual([], problems)
+        self.assertIn('- **外部条件不确定的选型**：1 个角色（稳压器→XYZ100 单芯片）', text)
+        section = text.split('## 外部条件不确定的选型')[1].split('\n## ')[0]
+        self.assertIn('| XYZ100 单芯片（ASG 推荐） | XYZ100 | 1 项：过压保护配置表 | 器件最少 | 集成度高 | 过压行为要原厂答复 |', section)
+        self.assertIn('- **你的决定**：XYZ100 单芯片（user:2026-10-24）', section)
+
+    def test_uncertain_selection_needs_options_recommendation_and_decision(self):
+        sel, role = self.options_role()
+        del role['decision']
+        self.d.write('selection.json', sel)
+        _, problems = self.d.report()
+        self.assertTrue(any('还没有你的决定' in p for p in problems), problems)
+        role['decision'] = {'option': 'ABC200 加外置过压', 'source': 'user:2026-10-24'}
+        self.d.write('selection.json', sel)
+        _, problems = self.d.report()
+        self.assertTrue(any('不在你选的方案' in p for p in problems), problems)
+        role['decision'] = {'option': 'XYZ100 单芯片', 'source': 'user:2026-10-24'}
+        role['options'][1]['cons'] = role['options'][0]['cons']
+        role['options'][1]['recommended'] = True
+        self.d.write('selection.json', sel)
+        _, problems = self.d.report()
+        self.assertTrue(any('一字不差' in p for p in problems), problems)
+        self.assertTrue(any('恰好一个推荐方案' in p for p in problems), problems)
+        role['options'] = role['options'][:1]
+        self.d.write('selection.json', sel)
+        _, problems = self.d.report()
+        self.assertTrue(any('要列 2–3 个选型方案' in p for p in problems), problems)
+
+    def test_selected_candidate_declares_external_dependencies(self):
+        sel = json.loads(json.dumps(self.d.selection))
+        del sel['roles'][0]['candidates'][0]['external_dependencies']
+        self.d.write('selection.json', sel)
+        _, problems = self.d.report()
+        self.assertTrue(any('没有写 external_dependencies' in p for p in problems), problems)
 
     def test_selection_candidates_are_compared_and_traceable(self):
         sel = json.loads(json.dumps(self.d.selection))
@@ -543,14 +595,11 @@ class PackDesignTests(unittest.TestCase):
             intent if intent is not None else json.loads((self.d.record / 'electrical-intent.json').read_text())))
         return prev
 
-    def test_regression_against_previous_needs_a_reason(self):
+    def test_open_work_is_not_compared_with_previous(self):
         prev = self.previous([lambda c: c['work_items'][0].update(status='closed'),
                               lambda c: c['requirements'][0].update(status='design_supported')])
         errors, _ = pack(self.d.root, {'requirements': str(self.inputs), 'previous': str(prev)})
-        self.assertTrue(any('倒退' in e and '设计没做完的待办 0 → 1' in e and '有设计依据的需求 1 → 0' in e for e in errors), errors)
-        self.d.write('notes.json', {'regression_reason': '审查方把 W-CALC 从外部资料改判为设计项'})
-        errors, _ = pack(self.d.root, {'requirements': str(self.inputs), 'previous': str(prev)})
-        self.assertFalse(any('倒退' in e for e in errors), errors)
+        self.assertFalse(any(e.startswith('previous:') for e in errors), errors)
 
     def test_redesign_must_change_the_named_part_since_previous(self):
         prev = self.previous(intent={'components': [{'ref': 'U1'}, {'ref': 'R1'}]})

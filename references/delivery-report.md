@@ -20,7 +20,7 @@
 | `design-closure-audit.json` | `audit_design_closure.py` 的输出（`verify_schematic.py` 输出目录里的 `design-closure.json`，改名放入） |
 | `summary.json` | `verify_schematic.py` 的自动检查结果，原样复制 |
 | `page-plan.json` | 页面方案表：`{"schema_version": 1, "pages": [{"file", "reader_tasks": [...], "blocks": {块名: [位号]}, "patterns": {块名: "模式#做法"}}]}`；本页每个器件属于一个功能块，每块标注 `references/circuit-patterns/` 里的做法（第一页架构页免标） |
-| `selection.json` | 核心器件选型：每个角色的位号、决定性条件、候选来源、≥2 个候选（选中/淘汰理由、相对知识库的手册路径）；每个 U/Q/T 器件都要属于一个角色，格式见 [核心器件选型](core-part-selection.md) |
+| `selection.json` | 核心器件选型：每个角色的位号、决定性条件、候选来源、≥2 个候选（选中/淘汰理由、相对知识库的手册路径）；每个 U/Q/T 器件都要属于一个角色；选定候选写外部依赖，依赖未公开资料时附 2–3 个方案、建议和用户的决定，格式见 [核心器件选型](core-part-selection.md) |
 | `lessons.json` | 本版学到的东西：`{"schema_version": 1, "events": [{"source", "cause", "change" 或 "why_none", "why_not_rule"}]}`；来源只能是 `review:<审查目录>/<待办编号>`、`datasheet:<库内路径>#p<页>`、`test:<记录>`、`user:<日期>`；归因与改动位置的要求见 [处理审查意见](review-comments.md) |
 | `visual-review.json` | 看图检查：`{"status": "REVIEWED/REVIEW_PENDING/REWORK_REQUIRED", "pages": [{"page", "file", "paths", "problems", "render_review_items": [{"item", "disposition"}]}]}`；每页 `paths` 不少于读者任务数，每条引脚文字处置点名器件并写出看到了什么，同一句不能套用到不同器件 |
 | `delivery-evidence.json` | 导出后有没有再改过的核对记录 |
@@ -40,7 +40,7 @@
 
 1. **结论**：器件数、页数；图纸自动检查各项结果的数量；看图检查；需求状态；收到的审查意见及处理方式的数量；
    设计是否完成，没完成时逐条列出还差什么；有等用户定的需求时单列一行点名；有缺外部资料的待办时单列一行，
-   按负责方计数并给出受影响的有条件计算数。
+   按负责方计数并给出受影响的有条件计算数；有外部条件不确定的选型时单列一行，点名角色和你选的方案。
 2. **这版改了什么**：器件数变化，加上 notes 的 `changes`。
 3. **审查意见怎么处理的**：逐条列出意见、处理方式、说明。
 4. **待办**：`design-closure.json` 里未关闭的待办。等用户定需求（`requirement`）的排最前，其余按 `severity`
@@ -58,8 +58,7 @@
 {"summary": "1–3 句：这一版的状态和最要紧的一件事",
  "changes": "这版改了什么、为什么，一段话",
  "items": {"W1": "这件待办用白话说是什么问题"},
- "highlights": ["已经核对清楚、值得一提的设计结论（最多 8 条）"],
- "regression_reason": "只在比上一版倒退时写：为什么设计待办变多或有依据的需求变少"}
+ "highlights": ["已经核对清楚、值得一提的设计结论（最多 8 条）"]}
 ```
 
 `highlights` 写设计结论，不写流程（“第二轮审查将核销”这类句子会被报告拒绝）。报告的摘要后面会自动加一句本版多少条意见真正改图或补算、多少条只是登记。
@@ -77,8 +76,8 @@ python3 <skill>/scripts/pack_design.py <交付目录> --input requirements=<需�
   --input datasheets=<原厂资料目录> [--input previous=<前一版交付目录>]
 ```
 
-检查失败就修正后重跑，直到 PASS：给了 `previous` 时，设计阶段未关闭的待办数不能比上一版多、有设计依据的需求数不能比上一版少，
-除非 `record/notes.json` 的 `regression_reason` 说明原因；标为“改图”的审查回复点名的位号必须与上一版设计要求表不同。顶层只能有上面四样；`原理图/` 和 `record/` 的必需文件齐全；
+检查失败就修正后重跑，直到 PASS：给了 `previous` 时，标为“改图”的审查回复点名的位号必须与上一版设计要求表不同
+（待办和需求状态不与上一版比较，只由本版设计确认）。顶层只能有上面四样；`原理图/` 和 `record/` 的必需文件齐全；
 `设计资料/` 里的表格（有位号列的 CSV）和装配文件（JSON 的 `ref`/`refs`/`fit`/`dnp`）提到的位号都在设计要求表里，
 表格给出的型号（mpn）和值（value）与设计要求表一致——说明文字里提到的位号和描述不在自动检查范围，改版时要人工清理；
 `record/` 只有允许的子目录；没有日志和超大文件；`design-closure.json` 在交付目录内重新审核不出错；

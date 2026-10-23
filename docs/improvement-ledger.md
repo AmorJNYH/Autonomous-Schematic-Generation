@@ -8,6 +8,23 @@ knowledge_wrong, judgment); `Changed:` the files touched. An entry that
 changes the ASG 纲要 or the 绘图纲要 O1–O8 also carries `Approved:
 user:<date>` and `Outline:` the hash from `check_ledger.py --outline-hash`.
 
+## 待办只看本版；外部条件不确定时给出选型方案并先问再画 (2026-10-23)
+
+用户审视 R3–R6 后指出：待办编号是否跨版本一致不重要，重要的是内容；每次交付的待办只由本版设计过程中确认仍需做的事项决定，
+不需要版本之间的比较和收敛规则。原规则让每版比较未解决数与器件数、`pack_design.py` 在待办变多或有依据的需求变少时
+要求 `regression_reason`，R6 也因此把 R5 的待办整体搬过来（judgment：规则把版本比较当成了设计状态）。
+选型方面，RT7209B 一颗芯片带出 16 件外部资料待办中的 10 件，选型却不比较外部依赖，也不给用户可选方案（rule_missing）。
+现在删除版本间比较（review-comments §3、design-closure 的收敛估算与每轮比较、`pack_design` 的倒退检查、notes 的 `regression_reason`），
+保留“改图”点名的位号须与上一版不同这一核对；待办每版重新确认。每个选定候选写 `external_dependencies`；不为空时要有 2–3 个
+`options`、一个推荐和理由，以及用户的 `decision`，第 2 步结束时先问再画；报告新增“外部条件不确定的选型”一节。
+“上一版已审查的型号不换”改为作为候选之一同等比较。R4 的选型记录没写外部依赖，多一个报告问题（R1–R3 没有选型记录，原本就报缺失），按运行节奏第 5 步更新基线。
+
+- Event: user:2026-10-23
+- Causes: judgment 1, rule_missing 1
+- Changed: SKILL.md, references/design-closure.md, references/review-comments.md, references/delivery-report.md, references/core-part-selection.md, scripts/pack_design.py, scripts/render_design_report.py, tests/test_design_report.py, tests/regression/baseline.json, docs/improvement-ledger.md
+- Approved: user:2026-10-23
+- Outline: 01b2862ba30f8cfa
+
 ## 不依赖计算的资料缺口写明理由 (2026-10-23)
 
 把 R6 迁到 gap_version 1 时，W-VTR（固件上电行为确认）和 W-ISO（加强绝缘资格）没有任何数值计算依赖它们，

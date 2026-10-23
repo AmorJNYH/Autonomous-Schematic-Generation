@@ -66,6 +66,8 @@ OPS = ('<=', '>=', 'covers', 'equals', 'has')
 REJECT_KINDS = {'dependency': '依赖拿不到', 'data': '资料不足', 'availability': '可得性', 'cost': '成本',
                 'preference': '都能用，按优先规则落选'}
 CORE_REF = re.compile(r'^[UQT]\d')
+OPTION_FIELDS = (('name', '方案名'), ('parts', '涉及型号'), ('cost', '代价'), ('pros', '优点'), ('cons', '缺点'))
+USER_SOURCE = re.compile(r'^user:\d{4}-\d{2}-\d{2}$')
 
 
 def text(value):
@@ -295,6 +297,33 @@ def check_conditions(name, conds, cands):
     return problems, basis
 
 
+def check_options(name, role, selected):
+    """A selected part that rests on unpublished data comes with 2-3 options, a recommendation and the user's choice."""
+    problems = []
+    options = [o for o in role.get('options') or [] if isinstance(o, dict)]
+    if not 2 <= len(options) <= 3 or len(options) != len(role.get('options') or []):
+        return ['选型角色“%s”的选定候选依赖未公开资料，要列 2–3 个选型方案（options），现在 %d 个' % (name, len(options))]
+    for o in options:
+        label = o.get('name') if text(o.get('name')) else '?'
+        missing = [w for k, w in OPTION_FIELDS if not (text(o.get(k)) or (k == 'parts' and o.get(k)))]
+        if missing or not isinstance(o.get('external_dependencies'), list):
+            problems.append('选型角色“%s”的方案“%s”没有写%s' % (name, label, '、'.join(missing + (
+                [] if isinstance(o.get('external_dependencies'), list) else ['外部依赖']))))
+    if sum(1 for o in options if o.get('recommended') is True) != 1 or not text(role.get('recommendation')):
+        problems.append('选型角色“%s”要恰好一个推荐方案（recommended），并在 recommendation 写明理由' % name)
+    cons = [' '.join(o['cons'].split()) for o in options if text(o.get('cons'))]
+    if len(cons) != len(set(cons)):
+        problems.append('选型角色“%s”有方案的缺点写得一字不差，每个方案要写自己的缺点' % name)
+    decision = role.get('decision') if isinstance(role.get('decision'), dict) else {}
+    chosen = next((o for o in options if o.get('name') == decision.get('option')), None)
+    if not chosen or not (isinstance(decision.get('source'), str) and USER_SOURCE.match(decision['source'])):
+        problems.append('选型角色“%s”还没有你的决定：decision 要写 {option: 方案名, source: user:<日期>}，'
+                        '定下来之前不进入设计要求表' % name)
+    elif norm_mpn(selected.get('mpn', '')) not in {norm_mpn(p) for p in chosen.get('parts') or [] if text(p)}:
+        problems.append('选型角色“%s”选定的 %s 不在你选的方案“%s”里' % (name, selected.get('mpn'), chosen['name']))
+    return problems
+
+
 def check_selection(data, intent, root):
     """Every core part was chosen from compared candidates whose datasheets are in the library."""
     roles = data.get('roles') if isinstance(data, dict) else None
@@ -303,7 +332,7 @@ def check_selection(data, intent, root):
     problems = []
     comps = {c.get('ref'): c for c in intent.get('components') or [] if isinstance(c, dict)}
     library = Path(os.path.expanduser(data.get('library_root') if text(data.get('library_root')) else ''))
-    covered = set()
+    covered, undeclared = set(), []
     for i, role in enumerate(roles, 1):
         if not isinstance(role, dict):
             problems.append('selection.json 第 %d 个角色不是对象' % i)
@@ -328,6 +357,12 @@ def check_selection(data, intent, root):
         selected = [c for c in cands if c.get('status') == 'selected']
         if len(selected) != 1:
             problems.append('选型角色“%s”要恰好一个 selected 候选，现在 %d 个' % (name, len(selected)))
+        else:
+            deps = selected[0].get('external_dependencies')
+            if not isinstance(deps, list) or not all(text(x) for x in deps):
+                undeclared.append(name)
+            elif deps:
+                problems += check_options(name, role, selected[0])
         for c in cands:
             mpn = c.get('mpn') if text(c.get('mpn')) else '?'
             if c.get('status') not in SELECTION_STATUS:
@@ -346,6 +381,9 @@ def check_selection(data, intent, root):
                 value = next((comps[ref][k] for k in ('value', 'mpn') if text(comps[ref].get(k))), '')
                 if norm_mpn(mpn) not in norm_mpn(value):
                     problems.append('位号 %s 的 value “%s” 不含选定型号 %s' % (ref, value, mpn))
+    if undeclared:
+        problems.append('选型角色 %s 的选定候选没有写 external_dependencies（依赖的未公开资料，没有写空列表）'
+                        % '、'.join('“%s”' % n for n in undeclared))
     missing = sorted(r for r in comps if CORE_REF.match(r if text(r) else '') and r not in covered)
     if missing:
         problems.append('核心器件没有选型记录：%s' % '、'.join(missing))
@@ -613,6 +651,11 @@ def render(root, notes=None, title=None):
         out.append('- **缺外部资料**：%d 件（%s）%s。要问的问题汇总在“要向外部要的资料”一节。' % (
             len(external), '；'.join('%s %d 件' % kv for kv in owners.most_common()),
             '，影响有条件成立的计算 %d 项' % len(linked) if linked else ''))
+    optioned = [r for r in selection.get('roles') or [] if isinstance(r, dict) and r.get('options')]
+    if optioned:
+        out.append('- **外部条件不确定的选型**：%d 个角色（%s），方案与 ASG 的建议见“外部条件不确定的选型”一节。' % (
+            len(optioned), '、'.join('%s→%s' % (r.get('role', ''), (r.get('decision') or {}).get('option') or '未决定')
+                                    for r in optioned)))
     if open_work:
         out.append('- **待办**：%d 件，%s按可能后果从重到轻列在“待办”一节。'
                    % (len(open_work), '等你定的需求排最前，其余' if asks else ''))
@@ -636,6 +679,25 @@ def render(root, notes=None, title=None):
                 cell(chosen[0].get('reason', '')) if chosen else cell(r.get('single_candidate_reason', '')),
                 cell('；'.join(r.get('_basis') or []))))
         out.append('')
+        optioned = [r for r in roles if r.get('options')]
+        if optioned:
+            out += ['## 外部条件不确定的选型', '',
+                    '这些角色的推荐器件依赖未公开的资料，ASG 列出了可选方案和建议，按你的决定选用。', '']
+            for r in optioned:
+                decision = r.get('decision') if isinstance(r.get('decision'), dict) else {}
+                out += ['### %s（%s）' % (r.get('role', ''), '、'.join(r.get('refs') or [])), '',
+                        '| 方案 | 型号 | 外部依赖 | 代价 | 优点 | 缺点 |', '|---|---|---|---|---|---|']
+                for o in r['options']:
+                    if not isinstance(o, dict):
+                        continue
+                    deps = [d for d in o.get('external_dependencies') or [] if text(d)]
+                    out.append('| %s%s | %s | %s | %s | %s | %s |' % (
+                        cell(o.get('name', '')), '（ASG 推荐）' if o.get('recommended') is True else '',
+                        cell('、'.join(o.get('parts') or [])), cell('%d 项：%s' % (len(deps), '；'.join(deps)) if deps else '无'),
+                        cell(o.get('cost', '')), cell(o.get('pros', '')), cell(o.get('cons', ''))))
+                out += ['', '- **ASG 的建议**：%s' % (r.get('recommendation') or ''),
+                        '- **你的决定**：%s' % ('%s（%s）' % (decision['option'], decision.get('source', ''))
+                                              if text(decision.get('option')) else '还没有决定'), '']
 
     if notes.get('changes') or change:
         out += ['## 这版改了什么', '']
