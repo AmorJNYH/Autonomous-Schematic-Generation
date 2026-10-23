@@ -5,7 +5,7 @@ A skill change happens because of an event (a review comment, a datasheet
 page, a test result, a user correction), is attributed to a cause class, and
 touches files that exist. Older entries are history and are not checked.
 
-The ASG 纲要 (SKILL.md) and the 绘图纲要 O1-O8 (drawing-recipes.md) change only
+The ASG 纲要 and 主流程 (SKILL.md) and the 绘图纲要 O1-O8 (drawing-recipes.md) change only
 with a person's approval: the newest entry that carries `Outline:` must name
 the current outline hash and an `Approved: user:<date>`.
 """
@@ -20,7 +20,8 @@ LEDGER = ROOT / 'docs' / 'improvement-ledger.md'
 CAUSES = ('rule_missing', 'rule_not_enforced', 'knowledge_missing', 'knowledge_wrong', 'judgment')
 SOURCE = re.compile(r'(review:[^\s/,;]+/[^\s,;]+|datasheet:[^\s,;]+#p\d+|test:[^\s,;]+|user:\d{4}-\d{2}-\d{2})')
 # (file, heading) of each outline section; a section runs to the next level-2 heading.
-OUTLINE = (('SKILL.md', '## ASG 纲要（核心标准）'), ('references/drawing-recipes.md', '## Outline rules (how to decide the structure)'))
+OUTLINE = (('SKILL.md', '## ASG 纲要（核心标准）'), ('SKILL.md', '## 主流程'),
+           ('references/drawing-recipes.md', '## Outline rules (how to decide the structure)'))
 APPROVED = re.compile(r'user:\d{4}-\d{2}-\d{2}')
 
 

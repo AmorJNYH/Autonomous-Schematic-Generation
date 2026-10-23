@@ -148,8 +148,30 @@ components, the page-local part of every net, its NC pins and its `external`
 nets (nets with pins on another page that are not rails). Build each page with
 its own `power_ref_start`. For a redraw, restore the baseline identity (symbol
 properties, UUIDs, pin UUIDs, instance paths, page UUID, title block) before
-writing. Then run `scripts/verify_schematic.py` on the root with the board
-intent. The charger redraw (`design/v0.2.5-recipes/scripts/redraw.py` in that
+writing. Assemble the root with `schematic_layout.root.Root`:
+
+```python
+from schematic_layout.root import Root
+
+r = Root("PD100_R5", date="2026-10-23", rev="R5")          # paper defaults to A4
+r.page("02_Input", input_root, (25.4, 50.8), note="交流 / EMI / 整流")
+r.page("03_PFC", pfc_root, (119.38, 50.8))
+...                                                         # the other pages
+r.flow("RECT", "02_Input", "03_PFC")                        # same row: straight, arrow at 03_PFC
+r.flow("FB/FAULT", "07_PD", "05_Bias", kind="signal", via=[(345.44, 223.52), (157.48, 223.52)])
+r.isolation(x=302.26)                                       # straight line labelled 隔离
+r.write(out_dir, libraries={"PD100": "PD100.kicad_sym"})
+```
+
+`page` takes the root returned by `Sheet.build` (or a `.kicad_sch` path) and
+numbers pages in the order added, from 2. A flow without `via` needs the two
+blocks to share a row or column band; `via` points give an orthogonal route
+whose first and last legs leave and enter the blocks straight. The flow name
+sits beside its longest leg; `label_at` moves it. `write` rewrites every child
+symbol's instance path to the root project, writes the cover, pages,
+`.kicad_pro` and `sym-lib-table` into a fresh directory, and raises when a
+cover text sits on a line or the System_block audit fails. Then run
+`scripts/verify_schematic.py` on the root with the board intent. The charger redraw (`design/v0.2.5-recipes/scripts/redraw.py` in that
 project) is a worked example of nine hierarchical pages drawn this way.
 
 Native label styles (render-verified on KiCad 10.0.6): global labels extend

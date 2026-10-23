@@ -17,7 +17,9 @@ Both use `schematic_layout/` (standard-library runtime).
 Readable pages are drawn with `schematic_layout.recipes.Sheet`
 ([`drawing-recipes.md`](../references/drawing-recipes.md));
 `schematic_layout.pages.page_intents()` splits one board intent into page
-intents with their external nets and rails. `verify_schematic.py` runs every
+intents with their external nets and rails, and `schematic_layout.root.Root`
+assembles the built pages under a hierarchical root with the System_block
+cover. `verify_schematic.py` runs every
 automated drawing gate on a saved root sheet (ERC, intent partitions and
 identity, hierarchy/PDF, symbol integrity, readability, per-sheet geometry,
 optional reference and change contracts) and writes `summary.json`. See

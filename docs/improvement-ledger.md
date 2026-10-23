@@ -8,6 +8,22 @@ knowledge_wrong, judgment); `Changed:` the files touched. An entry that
 changes the ASG 纲要 or the 绘图纲要 O1–O8 also carries `Approved:
 user:<date>` and `Outline:` the hash from `check_ledger.py --outline-hash`.
 
+## 根图与 System_block 助手；纲要哈希覆盖主流程 (2026-10-23)
+
+框架复查发现：第 1 步强制 System_block，第 6 步却只写"由工程脚本组装根图"，技能里没有任何组装代码或样例。
+100 W PD R4 的 `record/scripts/assemble.py` 手写了层次图框坐标、子页实例路径改写、System_block
+箭头逐点坐标与文字对齐特判、`.kicad_pro` 和 `sym-lib-table`，每块新板都要重写一遍，System_block 只能事后审计。
+新增 `schematic_layout/root.py`：`Root.page/flow/isolation/write` 由页框推出流向线端点与箭头，
+能量流与控制链线宽不同，写盘前拒绝压线文字并跑 System_block 审计；两页小板端到端 `verify_schematic.py`
+为 AUTOMATED_PASS（`tests/test_root.py`）。同时纲要写明主流程步骤也须人确认，但哈希原先只覆盖纲要一节和 O1–O8，
+现把 SKILL.md「主流程」纳入；硬性规则中与 P1–P7 重复的说法改为引用 P 编号。三项均经用户确认后实施。
+
+- Event: user:2026-10-23
+- Causes: rule_missing 2, knowledge_missing 1
+- Changed: SKILL.md, README.md, references/drawing-recipes.md, scripts/README.md, scripts/schematic_layout/root.py, scripts/check_ledger.py, tests/test_root.py, docs/improvement-ledger.md
+- Approved: user:2026-10-23
+- Outline: 5c9fb9e09c709245
+
 ## ASG 纲要定为核心标准 (2026-10-23)
 
 用户要求整个架构体现在纲要里，纲要作为 ASG 的核心标准，后续改纲要须先和人确认。

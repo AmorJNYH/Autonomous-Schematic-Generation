@@ -197,7 +197,10 @@ for n, (key, page) in enumerate(page_intents(board, rails=RAILS).items(), 1):
 
 ### 6. 组装与一键验证
 
-多页工程由工程脚本组装根图（层次图框、`System_block`），ASG 不自动写多页层次。之后运行：
+多页工程用 `schematic_layout.root.Root` 组装根图：`page()` 放各页的层次图框，`flow()` 画带名字、两端落在图框上的流向线
+（`kind="power"` 能量流、`"signal"` 控制链，线宽不同），`isolation()` 画隔离边界，`write()` 写出根图 `System_block`、
+各页（实例路径改写到根工程）、`.kicad_pro` 和 `sym-lib-table`；文字压线或 System_block 审计不通过时直接报错。
+用法见 [drawing-recipes.md](references/drawing-recipes.md) 多页一节。之后运行：
 
 ```bash
 python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical-intent.json \
@@ -289,12 +292,14 @@ python3 <skill>/scripts/pack_design.py <交付目录> --input requirements=<需�
 
 ## 硬性规则
 
-- 设计要求表独立于几何：位号、值、MPN、引脚编号、装配状态和网络归属不因摆放改变；不为布图方便改符号的引脚映射。
-- 不手写辅助器件坐标；不把可读页面交给 MST/A* 自动路由；不用标签掩盖失败的连线。
+原则见「ASG 纲要」P1–P7；这里只列具体操作约束。
+
+- P2：位号、值、MPN、引脚编号、装配状态和网络归属不因摆放改变；不为布图方便改符号的引脚映射。
+- P4/P5：不手写辅助器件坐标；不把可读页面交给 MST/A* 自动路由；不用标签掩盖失败的连线。
 - 标签角色：全局标签只用于出页网络；电源轨和回路用 Value 等于网络名的电源符号；隔离的回路不能用通用 GND。
 - DNP 器件保留连线和焊盘，它不等于 IC 的 NC 引脚。
 - 不得静默拍平已有层次工程；草稿图生成在新目录，确认基线未变后才写回原工程。
-- `AUTOMATED_PASS` 只代表脚本自动检查通过；数据手册审查和看图检查另行完成。如实报告缺口。
+- P1：`AUTOMATED_PASS` 只代表脚本自动检查通过；数据手册审查和看图检查另行完成。如实报告缺口。
 - 给人看的文字一律用中文：`design-closure.json` 的假设、没算进去的项、核对项名称、待办、实现说明和 notes 都会原样进报告；
   器件型号、单位和缩写（PFC、OVP）可以保留。计算脚本里写的说明也按此写。`render_design_report.py` 发现英文句子会报问题。
 
