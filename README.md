@@ -3,7 +3,7 @@
 > ASG：从需求文档出发，基于 KiCad 自主绘制可读、电气正确、经原生验证的原理图
 
 Autonomous-Schematic-Generation（简称 **ASG**）是一套面向 Codex、Claude 等 Agent 的 Skill。
-从已确认的需求出发，建立板级电气意图，按纲要 O1–O8 用引脚几何画法（recipes）新建、新增或重画
+从已确认的需求出发，建立板级电气意图，按绘图纲要 O1–O8 用引脚几何画法（recipes）新建、新增或重画
 KiCad 原理图，并用一键门禁（`verify_schematic.py`）完成原生 ERC、逐脚网表、层次、符号、可读性和几何检查。
 ASG 只做出图自检；严格的电气审查交给 `schematic-review`。
 
@@ -54,6 +54,8 @@ git clone https://github.com/wenqiiizwq-creator/Autonomous-Schematic-Generation.
 PDF 目检渲染用 `pdftoppm`，完整 PDF 页数核对用 Poppler `pdfinfo`（未安装时明确返回检查不足）。
 
 ## 设计约定
+
+以 SKILL.md 的「ASG 纲要」为核心标准（含绘图纲要 O1–O8），修改纲要须先经人确认。
 
 - **数据手册是唯一真值**：值来自手册典型应用 / 设计公式，图纸只决定怎么摆；
 - **工具行为是约束而非风格**：KiCad 的坐标精确连接规则要机械遵守；

@@ -23,7 +23,7 @@ ASG 从需求文档出发，让 Agent 在 KiCad 中画出**可读、电气正确
 
 - **电气正确**：电路来自已确认的需求和确切 MPN 的数据手册，用一份独立写出的整板设计要求表表达；
   KiCad 网表必须与设计要求表逐脚一致。
-- **可读**：结构由 Agent 按纲要 O1–O8 决定，坐标由 `recipes.Sheet` 按真实引脚几何推出。
+- **可读**：结构由 Agent 按绘图纲要 O1–O8 决定，坐标由 `recipes.Sheet` 按真实引脚几何推出。
 - **经 KiCad 验证**：以 KiCad 导出的 ERC、XML 网表和 PDF 为准；JSON、脚本成功或 solver 的 `solved` 都不算证据。
 
 ASG 负责需求到电路的方案可行性、选型依据、设计计算和功能实现，不能把未做完的设计留给别人。
@@ -38,6 +38,38 @@ ASG 负责需求到电路的方案可行性、选型依据、设计计算和功�
 | 独立的电气审查和定稿结论 | 由审查方给出；ASG 只做自检，并处理收到的审查意见 |
 | PCB封装库、焊盘/孔/钢网、布局布线、DFM与散热实现 | 《结构与PCB设计要求》交接文档 |
 | 生产放行、PCB、SI/PI、EMC | 后续环节 |
+
+## ASG 纲要（核心标准）
+
+本节是 ASG 的核心标准。其余章节、`references/` 和 `scripts/` 都是它的展开与实现，不得与之冲突。
+
+### 架构
+
+- **输入**：需求、器件知识库、电路模式库、已有工程/审查意见
+- **设计**（第 0–3 步）：需求追溯 → 架构分页 → 选型与计算 → 整板设计要求表
+- **绘图**（第 4–5 步）：页面方案 → 按绘图纲要 O1–O8 写图页脚本
+- **验证**（第 6–7 步）：KiCad 一键门禁 → 看图检查
+- **交付**（第 8 步）：四件套目录 + 本版学到的东西
+- **支撑**：KiCad CLI（唯一证据来源）、`schematic_layout`（布图与检查）、`references/`（规则与知识）、
+  改进闭环（lessons → 归因 → 修改 → 回归）
+
+### 核心原则
+
+- **P1 证据**：只认 KiCad 导出的 ERC、XML 网表和 PDF；JSON、脚本成功都不算证据。
+- **P2 电气与几何分离**：设计要求表从需求和手册独立写出，不从图上回抄；摆放不改变电气。
+- **P3 真值**：电路以确切 MPN 的数据手册为准。
+- **P4 可读**：页面结构按绘图纲要 O1–O8 决定，坐标从引脚几何推出；可读性是交付标准。
+- **P5 失败改结构，不改计数**：不靠 PWR_FLAG、豁免、改引脚类型或标签来掩盖问题。
+- **P6 责任边界**：设计闭环由 ASG 负责，只做自检；独立审查交给 schematic-review。
+- **P7 进步**：每版必须记下学到的东西；技能只因有来源的事件而改，并跑回归保护。
+
+### 纲要的修改
+
+本节（架构、P1–P7、主流程步骤与各步门禁）以及绘图纲要 O1–O8，任何增、删、改或重排，都须先把改动草案交给人确认后才能写入。
+改进闭环中归因到纲要的事件，只在 `lessons.json` 和台账里登记为提案，不直接修改。
+`scripts/` 和 `references/` 中的实现细节可以按事件修改，但一旦与纲要冲突，就转为纲要提案。
+经确认的改动在 `docs/improvement-ledger.md` 的条目里写 `Approved: user:<日期>` 和 `Outline: <哈希>`
+（`python3 scripts/check_ledger.py --outline-hash` 输出当前哈希）；纲要文字与最新确认的哈希不一致时 `check_ledger.py` 报 FAIL。
 
 ## 选择工作流
 
@@ -129,7 +161,7 @@ ASG 负责需求到电路的方案可行性、选型依据、设计计算和功�
 
 - 按拓扑选结构（Buck、LDO、隔离反激、滤波、MCU 各不相同），见
   [schematic-drawing-standards.md](references/schematic-drawing-standards.md) 第 2 节。不得为别的拓扑编造 SW 节点或电感级。
-- 按纲要 O1–O8 决定页面流向、锚点、器件归属、画法、出线、标签、间距和修复顺序，见
+- 按绘图纲要 O1–O8 决定页面流向、锚点、器件归属、画法、出线、标签、间距和修复顺序，见
   [drawing-recipes.md](references/drawing-recipes.md)。
 
 ### 5. 写图页脚本
@@ -149,7 +181,7 @@ for n, (key, page) in enumerate(page_intents(board, rails=RAILS).items(), 1):
 ```
 
 - 先看 `s.plan` 给出的器件角色和网络标签角色。只给锚点写坐标，其余器件用与角色相符的画法从引脚推出。
-  有意偏离纲要时用 `s.justify(对象, 理由)` 记录。把方案表的功能块传给 `Sheet(..., blocks={块名: [位号]})`：
+  有意偏离绘图纲要时用 `s.justify(对象, 理由)` 记录。把方案表的功能块传给 `Sheet(..., blocks={块名: [位号]})`：
   同一块内的器件之间不许用局部连接标签代替导线（HR-01），审计会列出只连一块的标签。
 - 间距只为通过检查而加大，通过后缩回：gap、stub、pitch、lead 和电源符号/标签引线超过 12 格（约 15 mm）
   会进结构审计，要么缩小，要么 `justify(对象, 理由, conflict=避让的器件/引脚/text:字段)` 写明避让了什么；
@@ -282,7 +314,7 @@ python3 <skill>/scripts/pack_design.py <交付目录> --input requirements=<需�
 | 选符号、引脚表、外围电路要求 | [symbol-and-peripheral-contracts.md](references/symbol-and-peripheral-contracts.md) |
 | 计算条件记录 | [calculation-preflight.md](references/calculation-preflight.md) |
 | 非线性极值、条件匹配与插值边界 | [worst-case-bounds.md](references/worst-case-bounds.md) |
-| 纲要 O1–O8 与 recipes API | [drawing-recipes.md](references/drawing-recipes.md) |
+| 绘图纲要 O1–O8 与 recipes API | [drawing-recipes.md](references/drawing-recipes.md) |
 | 阅读路径、HR-01–HR-11、看图检查 | [human-readable-routing.md](references/human-readable-routing.md) |
 | 拓扑结构、标签策略、验证自动检查 | [schematic-drawing-standards.md](references/schematic-drawing-standards.md) |
 | 重画已有工程 | [existing-project-redraw.md](references/existing-project-redraw.md) |

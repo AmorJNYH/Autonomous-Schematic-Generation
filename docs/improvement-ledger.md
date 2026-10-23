@@ -4,7 +4,23 @@ Every entry from here on ends with three lines the test suite checks
 (`scripts/check_ledger.py`): `Event:` the review item, datasheet page, test
 record or user correction that caused the change; `Causes:` how many items
 fell in each cause class (rule_missing, rule_not_enforced, knowledge_missing,
-knowledge_wrong, judgment); `Changed:` the files touched.
+knowledge_wrong, judgment); `Changed:` the files touched. An entry that
+changes the ASG 纲要 or the 绘图纲要 O1–O8 also carries `Approved:
+user:<date>` and `Outline:` the hash from `check_ledger.py --outline-hash`.
+
+## ASG 纲要定为核心标准 (2026-10-23)
+
+用户要求整个架构体现在纲要里，纲要作为 ASG 的核心标准，后续改纲要须先和人确认。
+此前"纲要"只指绘图规则 O1–O8，核心原则分散在 SKILL.md 硬性规则、README 设计约定和改进计划三处；
+改进闭环第 4 步允许按归因直接改技能，没有任何东西保护纲要。现在 SKILL.md 增加「ASG 纲要（核心标准）」
+（架构、P1–P7、修改规则），O1–O8 改称绘图纲要并归入其中；`check_ledger.py` 对两段纲要文字取哈希，
+与最新一条带 `Outline:` 的已确认台账条目不一致即 FAIL。草案经用户逐项确认后写入。
+
+- Event: user:2026-10-23
+- Causes: rule_missing 1
+- Changed: SKILL.md, README.md, references/drawing-recipes.md, docs/operating-cadence.md, docs/improvement-ledger.md, scripts/check_ledger.py, tests/test_ledger.py
+- Approved: user:2026-10-23
+- Outline: 84c5b3a6360b1107
 
 ## Library lookup recognises renamed copies (2026-10-19)
 

@@ -42,6 +42,9 @@ placing support parts from their pins with explicit spines, had 0 crossings and
 
 ## Outline rules (how to decide the structure)
 
+These rules are the 绘图纲要 inside the ASG 纲要 of SKILL.md: any change to
+them needs a draft approved by a person first (SKILL.md, 纲要的修改).
+
 The agent owns the topology decisions; these rules make them repeatable. Apply
 them in order. A later rule refines an earlier one and never reverses it; only
 O8 changes an earlier decision, in the order it states.
