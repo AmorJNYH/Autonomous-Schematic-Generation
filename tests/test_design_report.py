@@ -44,7 +44,7 @@ class Delivery:
                   'reason': '最大 2 A 不满足', 'values': {'输出电流': {'value': 2, 'page': 1}}}]}]}
         self.write('selection.json', self.selection)
         self.closure = {
-            'schema_version': 1, 'coverage': 'complete', 'claim': 'candidate',
+            'schema_version': 1, 'parameter_version': 1, 'coverage': 'complete', 'claim': 'candidate',
             'intent_sha256': sha256(self.record / 'electrical-intent.json'),
             'evidence': [{'id': 'E1', 'path': 'record/evidence/design.md',
                           'sha256': sha256(self.record / 'evidence' / 'design.md'), 'locator': 'section 1'}],
@@ -60,6 +60,8 @@ class Delivery:
             'calculations': [{'id': 'C1', 'requirements': ['R-OUT'], 'evidence': ['E1'], 'refs': ['U1'],
                               'coverage': 'partial', 'conclusion': 'conditional', 'omitted_terms': ['ripple'],
                               'missing_guarantee': '纹波电流在 105°C 的额定',
+                              'parameters': [{'name': 'IOUT', 'ref': 'U1', 'value': 3.5, 'unit': 'A', 'basis': 'guaranteed',
+                                              'source': 'datasheet:设计资料/X - XYZ100.pdf#p1', 'locator': '电气特性表 IOUT'}],
                               'checks': [{'name': '输出纹波', 'value': 18, 'operator': '<=', 'limit': 30, 'unit': 'mV'}]}]}
         self.write('design-closure.json', self.closure)
         self.write('design-closure-audit.json', audit(self.closure, self.record / 'electrical-intent.json', self.root))
@@ -148,6 +150,25 @@ class DesignReportTests(unittest.TestCase):
         section = text.split('## 有条件成立的计算')[1].split('## ')[0]
         self.assertIn('| C1 | R-OUT | 输出纹波：18 ≤ 30 mV | ripple |', section)
         self.assertIn('不阻塞出图', section)
+
+    def test_calculations_without_parameter_sources_are_a_problem(self):
+        del self.d.closure['parameter_version']
+        self.d.write('design-closure.json', self.d.closure)
+        _, problems = self.d.report()
+        self.assertTrue(any('parameter_version 1' in p for p in problems), problems)
+
+    def test_kept_unspecified_operating_point_is_listed(self):
+        c = self.d.closure
+        c['operating_points'] = [{'id': 'OP-EN', 'refs': ['U1'], 'pins': ['EN'], 'mode': '开漏灌电流驱动光耦 LED',
+                                  'specified': False, 'source': 'datasheet:设计资料/X - XYZ100.pdf#p2', 'locator': 'EN 一节',
+                                  'work_item': 'W-FW', 'alternatives': [
+                                      {'approach': '小信号 MOS 缓冲', 'specified': True, 'feasible': False, 'reason': '板面不够'}]}]
+        self.d.write('design-closure.json', c)
+        self.d.write('design-closure-audit.json', audit(c, self.d.record / 'electrical-intent.json', self.d.root))
+        text, problems = self.d.report()
+        self.assertEqual([], problems)
+        section = text.split('## 手册未规定的工作点')[1].split('\n## ')[0]
+        self.assertIn('| U1 EN | 开漏灌电流驱动光耦 LED | 小信号 MOS 缓冲：板面不够 | W-FW |', section)
 
     def test_english_prose_in_records_is_a_problem(self):
         self.d.closure['calculations'][0]['assumptions'] = [

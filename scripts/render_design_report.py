@@ -523,6 +523,9 @@ def render(root, notes=None, title=None):
     if audit and audit.get('status') == 'FAIL':
         problems.append('设计待办记录自相矛盾（design-closure 审核 FAIL）：' +
                         '；'.join('%s %s' % (e.get('code'), e.get('item')) for e in (audit.get('errors') or [])[:5]))
+    if closure and closure.get('parameter_version') != 1:
+        problems.append('计算没有逐项登记参数来源：design-closure.json 要写 parameter_version 1，'
+                        '每条计算的 parameters 写明每个器件参数的值、依据和手册页码（见 design-closure.md）')
     if visual and visual.get('status') not in VISUAL:
         problems.append('visual-review.json 的 status 必须是 %s 之一' % '/'.join(VISUAL))
     lessons, events = {}, None
@@ -684,6 +687,18 @@ def render(root, notes=None, title=None):
             out.append('| %s | %s | %s | %s |' % (c.get('id'), '、'.join(c.get('requirements') or []),
                                             cell('；'.join(check_text(k) for k in c.get('checks') or [])),
                                             cell('；'.join((c.get('assumptions') or []) + (c.get('omitted_terms') or [])))))
+        out.append('')
+
+    unspecified = [p for p in closure.get('operating_points') or [] if isinstance(p, dict) and p.get('specified') is False]
+    if unspecified:
+        out += ['## 手册未规定的工作点', '',
+                '这些引脚工作在手册没有规定的方式下，手册规定内的替代做法都已评估且不可行，保留为厂家确认项。', '',
+                '| 器件引脚 | 工作方式 | 已评估的替代做法 | 厂家确认待办 |', '|---|---|---|---|']
+        for p in unspecified:
+            alts = '；'.join('%s：%s' % (a.get('approach'), a.get('reason')) for a in p.get('alternatives') or []
+                            if isinstance(a, dict))
+            out.append('| %s | %s | %s | %s |' % (cell('、'.join(p.get('refs') or []) + ' ' + '、'.join(p.get('pins') or [])),
+                                                  cell(p.get('mode') or ''), cell(alts), cell(p.get('work_item') or '')))
         out.append('')
 
     if shown:

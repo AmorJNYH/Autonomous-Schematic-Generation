@@ -28,10 +28,16 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
 - **不用加电路去关闭证据缺口。** “缺全温最大值”“缺实测波形”“只有典型值”不是电路缺陷：先用物理上限（供电轨、钳位、
   限流）或有依据的保守界限定界。不能为了让某条检查有保证值而增加隔离器、锁存、监控、独立辅助电源等新电路，
   除非用保守界限计算证明现电路确实不满足。
+  **例外：工作方式本身不在手册规定范围内。** 缺一个保证值，是手册规定了这种用法、只是没给某个参数；
+  而手册根本没有对应章节的用法（例如控制器 GPIO 只规定了开路电压和偏置电流档，却拿来灌电流驱动光耦）是设计缺陷，
+  不是证据缺口。改用规定范围内的做法（外加小信号管缓冲、规定的电流源档位、参考电路接法）属于设计修正，
+  按 SKILL.md 第 2 步“优先手册规定的工作方式”处理，记录在 `operating_points`。
 - **改图前做收敛估算。** 新增或替换电路前（包括采用审查意见附带的改法），在设计记录里写：预计解决哪些意见、
   新增多少器件和需要新审的状态/规则、新器件自身带来哪些新的证据需求。新增缺口多于关闭的不采用。
   每轮按 [是否在收敛](review-comments.md#3-是否在收敛) 记录未解决的意见数、未关闭的待办数和器件数；
   未解决数不降而器件数上升即停下重审，优先删减与合并；连续两轮如此，向用户报告并给出简化方案选项。
+  把手册未规定的工作方式改成规定范围内的做法不受“新增缺口多于关闭的不采用”限制：
+  新器件带来的待办按正常设计工作处理，不能以此为理由保留未规定的工作方式。
 
 新设计/电气改版在现有设计待办记录增加`convergence_version: 1`；每项工作有`blocked_by: []`（仅填真实前置工作ID，不含泛泛风险）。
 外部未关闭项增加`fallback_work: [可执行替代设计ID]`；若无可行替代，用空列表并以`fallback_evidence: [证据ID]`记录已完成的评估。
@@ -101,6 +107,26 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
     否则审计报 `threshold_part_uncalculated`。设计资料里写的阈值（如“对应30V包络”）必须与这条计算的数字一致。
   门槛按设计用途：`conditional` 必须用 `omitted_terms` 或 `assumptions`（字符串列表）写明假设，并在 `missing_guarantee` 里写明缺的是哪一项保证（哪个器件、哪个参数、哪个条件手册或需求没给）；写明后不阻塞设计完成，需求也可以据此记为 `design_supported`；报告把它们列在“有条件成立的计算”一节，交独立审查严格核对。只有 `failed` 计入未完成，且不能支撑 `design_supported` 的需求。
   `coverage: partial` 必须有非空 `omitted_terms`：说不出漏了什么就不是 partial。`conditional` 不是免责词：1.33 A < 3 A 这种没有缺失保证的核对要写 `bounded`/`supported`，审计报 `conditional_without_missing_guarantee` 和 `partial_without_omitted_terms`。
+- **参数来源**（`"parameter_version": 1`，新交付必填；没有时报告提出问题、`pack_design.py` 拒绝打包）：
+  每条计算加非空 `parameters`，每项 `{name, value, unit, basis, ref, source, locator}`。`basis` 取：
+  - `guaranteed`：手册保证的 MIN/MAX；`typical`：手册典型值。两者都要 `ref`（位号）和 `source`
+    `datasheet:<库内路径>#p<页>` 加 `locator`（表名/参数符号/条件）。
+  - `derived`：由其他值推出，写 `derivation`，`source` 是手册页或 `calc:<计算 id>`。
+  - `design_choice`：本设计选定的值（电阻阻值、容差档、匝数），写 `ref`。
+  - `model`：工程假设或折减（CTR 保持系数等），写 `reason`。
+  - `unspecified`：手册没给的器件参数。`source`/`locator` 写查过的位置，`operating_point` 指向一条 `specified: false` 的工作点；
+    `value` 可留空。含 `typical` 或 `unspecified` 的计算不能是 `supported`。
+- **工作点**（`operating_points`，与 `parameter_version` 一起检查）：`{id, refs, pins, mode, specified, source, locator}`。
+  `specified: true` 时 `source`/`locator` 指向手册规定这种用法的位置；`specified: false` 时指向查过但没有规定的位置，
+  还要 `alternatives`（每项 `{approach, specified, feasible, reason}`）和 `work_item`（external 厂家确认待办）。
+  有 `specified` 且 `feasible` 的替代做法时，审计报 `unspecified_operation_with_specified_alternative`（FAIL）。
+  保留下来的未规定工作点列在报告“手册未规定的工作点”一节。
+  ```json
+  {"id": "OP-GPIO1", "refs": ["U601"], "pins": ["GPIO1"], "mode": "开漏灌电流驱动光耦 LED", "specified": false,
+   "source": "datasheet:Datasheet/.../Richtek - RT7209.pdf#p12", "locator": "GPIO1 一节只有开路电压与偏置电流档",
+   "work_item": "W-OPTO",
+   "alternatives": [{"approach": "小信号 MOS 缓冲", "specified": true, "feasible": false, "reason": "……"}]}
+  ```
 - 待办的 `progress`：design 阶段未关闭的待办写本版做到哪（算了什么、定了什么、还差什么），不能等于 `action`；审查回复 `DESIGN` 引用的待办没有它就不算处理。
 - 所有证据 path 相对于 `--artifact-root`，不得逃逸该目录；必须有哈希和页码/章节/行号定位。需求源、数据手册和计算结论都纳入相应证据。`refs` 必须存在于设计要求表中；纯使用/验证条件可为空但须说明实现/交接。
 

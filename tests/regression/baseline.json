@@ -1,9 +1,9 @@
 {
-  "generated": "2026-10-19",
+  "generated": "2026-10-23",
   "boards": {
     "100W-PD-R1": {
-      "report_problems": 4,
-      "pack_errors": 8,
+      "report_problems": 5,
+      "pack_errors": 9,
       "gates": {
         "erc": "PASS",
         "intent_netlist": "PASS",
@@ -17,8 +17,8 @@
       "open_work": 2
     },
     "100W-PD-R2": {
-      "report_problems": 4,
-      "pack_errors": 7,
+      "report_problems": 5,
+      "pack_errors": 8,
       "gates": {
         "erc": "PASS",
         "intent_netlist": "PASS",
@@ -34,8 +34,8 @@
       "open_work": 2
     },
     "100W-PD-R3": {
-      "report_problems": 28,
-      "pack_errors": 31,
+      "report_problems": 29,
+      "pack_errors": 32,
       "gates": {
         "erc": "PASS",
         "intent_netlist": "PASS",
@@ -51,8 +51,8 @@
       "open_work": 15
     },
     "100W-PD-R4": {
-      "report_problems": 14,
-      "pack_errors": 14,
+      "report_problems": 15,
+      "pack_errors": 15,
       "gates": {
         "erc": "PASS",
         "intent_netlist": "PASS",

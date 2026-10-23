@@ -268,3 +268,81 @@ class CalculationChecksTests(unittest.TestCase):
             {'name': 'no false trip', 'side': 'no_false_trip', 'value': 71.0, 'operator': '<', 'limit': 69.4, 'unit': 'V'},
             {'name': 'protects', 'side': 'protection', 'value': 25.0, 'operator': '<=', 'limit': 35.0, 'unit': 'V'}])
         self.assertIn('conclusion_contradicts_checks', self.codes())
+
+
+class ParameterSourceTests(unittest.TestCase):
+    """Every number a calculation uses names where it came from; an unspecified pin mode needs its alternatives ruled out."""
+    setUp = DesignClosureTests.setUp
+    run_audit = DesignClosureTests.run_audit
+    codes = DesignClosureTests.codes
+    SHEET = 'datasheet:Datasheet/PD/Richtek - RT7209.pdf#p12'
+
+    def opto_board(self):
+        # The R5 case: a PD controller GPIO sinks an optocoupler LED; the datasheet gives no sink current or VOL.
+        self.intent.write_text(json.dumps({'components': [{'ref': 'U1'}, {'ref': 'U601'}, {'ref': 'R407'}]}))
+        self.record.update(parameter_version=1, intent_sha256=sha256(self.intent))
+        self.record['work_items'].append({'id': 'W-OPTO', 'stage': 'external', 'status': 'open', 'requirements': ['R1'],
+                                          'evidence': [], 'severity': 'P1', 'owner': '原厂', 'action': '取得 GPIO 灌电流保证',
+                                          'fallback': '见 OP-GPIO1'})
+        self.record['requirements'][0].update(status='conditional', depends_on=['W1', 'W-OPTO'])
+        self.record['calculations'][0].update(refs=['U601', 'R407'], coverage='partial', conclusion='conditional',
+                                              omitted_terms=['寿命 CTR'], missing_guarantee='GPIO1 灌电流时的 VOL', parameters=[
+            {'name': 'R407', 'ref': 'R407', 'value': 470, 'unit': 'ohm', 'basis': 'design_choice'},
+            {'name': 'CTR 寿命保持', 'value': 0.5, 'unit': '1', 'basis': 'model', 'reason': '设计折减'},
+            {'name': 'VOL', 'ref': 'U601', 'value': 0.4, 'unit': 'V', 'basis': 'unspecified',
+             'source': self.SHEET, 'locator': 'GPIO1 一节只有开路电压与偏置电流档', 'operating_point': 'OP-GPIO1'}])
+        self.record['operating_points'] = [{
+            'id': 'OP-GPIO1', 'refs': ['U601'], 'pins': ['GPIO1'], 'mode': '开漏灌电流驱动光耦 LED', 'specified': False,
+            'source': self.SHEET, 'locator': 'GPIO1 特性表无灌电流/VOL', 'work_item': 'W-OPTO',
+            'alternatives': [{'approach': '小信号 MOS 缓冲', 'specified': True, 'feasible': False, 'reason': '占位'}]}]
+        return self.record['calculations'][0], self.record['operating_points'][0]
+
+    def test_parameters_are_checked_only_with_parameter_version(self):
+        self.assertEqual('NOT_CHECKED', self.run_audit()['parameters'])
+        self.record['parameter_version'] = 1
+        self.assertIn('missing_parameters', self.codes())
+
+    def test_device_parameter_needs_a_datasheet_page(self):
+        calc, _ = self.opto_board()
+        calc['parameters'][2].update(basis='guaranteed', source='RT7209 datasheet')   # the invented VOL<=0.4 V
+        self.assertIn('parameter_without_datasheet_location', self.codes())
+        calc['parameters'][2].update(source=self.SHEET, locator='')
+        self.assertIn('parameter_without_datasheet_location', self.codes())
+
+    def test_model_and_derived_parameters_say_why(self):
+        calc, _ = self.opto_board()
+        del calc['parameters'][1]['reason']
+        calc['parameters'].append({'name': 'IF', 'value': 1e-3, 'unit': 'A', 'basis': 'derived', 'source': 'calc:C9'})
+        self.assertTrue({'model_parameter_without_reason', 'derived_parameter_without_basis'} <= self.codes())
+
+    def test_unspecified_parameter_ties_to_an_unspecified_operating_point(self):
+        calc, point = self.opto_board()
+        self.assertEqual(['OP-GPIO1'], self.run_audit()['unspecified_operations'])
+        self.assertNotIn('unspecified_parameter_without_operating_point', self.codes())
+        point['specified'] = True
+        self.assertIn('unspecified_parameter_without_operating_point', self.codes())
+
+    def test_unguaranteed_parameter_cannot_support_a_conclusion(self):
+        calc, _ = self.opto_board()
+        calc.update(coverage='bounded', conclusion='supported', omitted_terms=[])
+        self.assertIn('supported_with_unguaranteed_parameter', self.codes())
+
+    def test_feasible_specified_alternative_refuses_the_unspecified_mode(self):
+        _, point = self.opto_board()
+        self.assertNotIn('unspecified_operation_with_specified_alternative', self.codes())
+        self.assertEqual('INCOMPLETE', self.run_audit()['status'])
+        point['alternatives'][0]['feasible'] = True
+        result = self.run_audit()
+        self.assertEqual('FAIL', result['status'])
+        self.assertIn('unspecified_operation_with_specified_alternative', {e['code'] for e in result['errors']})
+
+    def test_kept_unspecified_mode_needs_alternatives_and_a_vendor_item(self):
+        _, point = self.opto_board()
+        point.update(alternatives=[], work_item='W1')
+        self.assertTrue({'unspecified_operation_without_alternatives', 'unspecified_operation_without_vendor_item'}
+                        <= self.codes())
+
+    def test_operating_point_cites_where_the_datasheet_was_read(self):
+        _, point = self.opto_board()
+        point['source'] = 'RT7209 p12'
+        self.assertIn('operating_point_source', self.codes())

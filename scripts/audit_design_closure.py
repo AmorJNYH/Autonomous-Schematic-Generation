@@ -20,6 +20,97 @@ OPERATORS = {'<=': lambda v, l: v <= l, '<': lambda v, l: v < l,
 # naming it, so a protection threshold cannot ship as prose only.
 THRESHOLD_PART = re.compile(r'zener|tvs|tl431|atl431|lm4040|shunt.?ref|voltage.?ref|^power:vref', re.I)
 WINDOW_SIDES = ('no_false_trip', 'protection')
+# Where each number in a calculation comes from (parameter_version 1). A device
+# parameter cites the datasheet page it was read from; one the datasheet does
+# not give is "unspecified" and ties to a recorded operating-point decision.
+PARAMETER_BASES = ('guaranteed', 'typical', 'derived', 'design_choice', 'model', 'unspecified')
+DATASHEET = re.compile(r'^datasheet:.+#p\d+$')
+
+
+def text(value):
+    return isinstance(value, str) and bool(value.strip())
+
+
+def audit_operating_points(record, work, refs, error, need):
+    """Pin operating modes: one the datasheet does not specify needs every specified alternative ruled out."""
+    points = {}
+    rows = record.get('operating_points', [])
+    if not isinstance(rows, list):
+        error('schema', 'operating_points must be a list')
+        return points
+    for row in rows:
+        if not isinstance(row, dict) or not text(row.get('id')):
+            error('schema', 'operating_points entry requires a nonempty string id')
+            continue
+        key = row['id']
+        if key in points:
+            error('duplicate_id', 'operating_points:' + key)
+        points[key] = row
+        if not isinstance(row.get('refs'), list) or not row['refs'] or any(r not in refs for r in row['refs']):
+            error('operating_point_refs', key)
+        if not isinstance(row.get('pins'), list) or not row['pins'] or not all(text(p) for p in row['pins']):
+            error('schema', key + ':pins must be a nonempty string list')
+        if not text(row.get('mode')) or not isinstance(row.get('specified'), bool):
+            error('schema', key + ':needs mode and specified (true/false)')
+            continue
+        # specified: where the datasheet specifies this mode; otherwise where it was looked for and is absent.
+        if not (isinstance(row.get('source'), str) and DATASHEET.match(row['source']) and text(row.get('locator'))):
+            error('operating_point_source', key)
+        if row['specified']:
+            continue
+        alternatives = row.get('alternatives')
+        if not isinstance(alternatives, list) or not alternatives:
+            error('unspecified_operation_without_alternatives', key)
+            alternatives = []
+        for i, alt in enumerate(alternatives):
+            if (not isinstance(alt, dict) or not text(alt.get('approach')) or not text(alt.get('reason'))
+                    or not isinstance(alt.get('specified'), bool) or not isinstance(alt.get('feasible'), bool)):
+                error('schema', key + ':alternatives[%d] needs approach, specified, feasible and reason' % i)
+            elif alt['specified'] and alt['feasible']:
+                error('unspecified_operation_with_specified_alternative', key + ':' + alt['approach'])
+        item = work.get(row.get('work_item'))
+        if not item or item.get('stage') != 'external':
+            error('unspecified_operation_without_vendor_item', key)
+        need('unspecified_operation', key)
+    return points
+
+
+def audit_parameters(key, row, refs, points, calculations, error):
+    params = row.get('parameters')
+    if not isinstance(params, list) or not params:
+        error('missing_parameters', key)
+        return
+    for i, p in enumerate(params):
+        where = key + ':parameters[%d]' % i
+        if not isinstance(p, dict) or not text(p.get('name')) or not isinstance(p.get('unit'), str):
+            error('schema', where + ' needs name and unit')
+            continue
+        where = key + ':' + p['name']
+        basis = p.get('basis')
+        if basis not in PARAMETER_BASES:
+            error('schema', where + ':basis must be one of ' + '/'.join(PARAMETER_BASES))
+            continue
+        if basis != 'unspecified' and not finite(p.get('value')):
+            error('schema', where + ':value must be a finite number')
+        if basis in ('guaranteed', 'typical', 'design_choice', 'unspecified') and p.get('ref') not in refs:
+            error('parameter_ref', where)
+        cited = isinstance(p.get('source'), str) and DATASHEET.match(p['source']) and text(p.get('locator'))
+        if basis in ('guaranteed', 'typical', 'unspecified') and not cited:
+            error('parameter_without_datasheet_location', where)
+        if basis == 'derived':
+            source = p.get('source')
+            if not text(p.get('derivation')) or not (
+                    (isinstance(source, str) and DATASHEET.match(source)) or
+                    (isinstance(source, str) and source.startswith('calc:') and source[5:] in calculations)):
+                error('derived_parameter_without_basis', where)
+        if basis == 'model' and not text(p.get('reason')):
+            error('model_parameter_without_reason', where)
+        if basis == 'unspecified':
+            point = points.get(p.get('operating_point'))
+            if not point or point.get('specified') is not False:
+                error('unspecified_parameter_without_operating_point', where)
+        if basis in ('typical', 'unspecified') and row.get('conclusion') == 'supported':
+            error('supported_with_unguaranteed_parameter', where)
 
 
 def finite(x):
@@ -157,7 +248,14 @@ def audit(record, intent_path, artifact_root, inputs=None):
             if state == 'design_supported' and not closed:
                 error('unsupported_requirement_claim', key + ':' + dep)
 
+    parameters = 'parameter_version' in record
+    if parameters and record['parameter_version'] != 1:
+        error('schema', 'parameter_version must be 1')
+        parameters = False
+    points = audit_operating_points(record, work, refs, error, need) if parameters else {}
     for key, row in calculations.items():
+        if parameters:
+            audit_parameters(key, row, refs, points, calculations, error)
         linked(row, 'requirements', requirements, True)
         linked(row, 'evidence', evidence, True)
         coverage, conclusion = row.get('coverage'), row.get('conclusion')
@@ -251,6 +349,8 @@ def audit(record, intent_path, artifact_root, inputs=None):
             'intent_sha256': sha256(intent_path), 'errors': errors, 'pending': pending,
             'pcb_handoffs': [k for k, v in work.items() if v.get('stage') == 'pcb' and v.get('status') == 'handoff'],
             'counts': {k: len(v) for k, v in tables.items()}, 'convergence': convergence,
+            'parameters': 'CHECKED' if parameters else 'NOT_CHECKED',
+            'unspecified_operations': sorted(k for k, v in points.items() if v.get('specified') is False),
             'downstream_handoffs': [k for k, v in work.items() if v.get('stage') in ('validation', 'pcb') and v.get('status') == 'handoff']}
 
 

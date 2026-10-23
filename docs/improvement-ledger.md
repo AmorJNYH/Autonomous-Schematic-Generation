@@ -8,6 +8,23 @@ knowledge_wrong, judgment); `Changed:` the files touched. An entry that
 changes the ASG 纲要 or the 绘图纲要 O1–O8 also carries `Approved:
 user:<date>` and `Outline:` the hash from `check_ledger.py --outline-hash`.
 
+## 计算参数逐项有来源；优先手册规定的工作方式 (2026-10-23)
+
+R5 的 U601（RT7209BGQW）GPIO1/GPIO3 用开漏灌电流直驱光耦 U403/U202。手册 GPIO 一节只有开路电压和偏置电流档，
+没有灌电流、VOL 或导通电阻，参考电路 GPIO 悬空；R4-OPTO 计算却写了"VOL≤0.4V"，W-OPTO 记为 external 后照样交付。
+归因：第 2 步已写"空白不能写成保证的 ≤/≥"，但 design-closure 的计算只有 checks 和自由文本假设，审计不查参数来源
+（rule_not_enforced）；没有"优先手册规定的工作方式"的规则，"不用加电路去关闭证据缺口"和收敛估算反而把外置缓冲判为不采用
+（rule_missing）；模式库"故障/许可信号光耦"把 GPIO 灌电流当默认驱动（knowledge_wrong）。
+现在 `parameter_version: 1` 的计算逐项列 `parameters`（basis 与 `datasheet:<路径>#p<页>` 定位），手册没给的标 `unspecified`
+并指向 `operating_points`；有可行的规定内替代却保留未规定方式即 FAIL、拒绝打包；缺 `parameter_version` 的交付报告提出问题。
+R1–R4 的旧记录因此各多一个报告问题，这是真问题（旧计算确实没有参数来源），按运行节奏第 5 步更新基线。
+
+- Event: review:SR-20261023-R5-从头审查-claude-5802e8c/F-GPIO-SINK, review:SR-20261023-R5-全新独立复审-1fe4df6/W-OPTO, user:2026-10-23
+- Causes: rule_not_enforced 1, rule_missing 1, knowledge_wrong 1
+- Changed: SKILL.md, references/design-closure.md, references/circuit-patterns/isolated-feedback.md, scripts/audit_design_closure.py, scripts/render_design_report.py, tests/test_design_closure.py, tests/test_design_report.py, tests/regression/baseline.json, docs/improvement-ledger.md
+- Approved: user:2026-10-23
+- Outline: 2c8f8fa9a4aa0bac
+
 ## 根图与 System_block 助手；纲要哈希覆盖主流程 (2026-10-23)
 
 框架复查发现：第 1 步强制 System_block，第 6 步却只写"由工程脚本组装根图"，技能里没有任何组装代码或样例。
