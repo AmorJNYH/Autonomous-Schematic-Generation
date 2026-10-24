@@ -122,14 +122,16 @@ ASG 负责需求到电路的方案可行性、选型依据、设计计算和功�
   分立器件的**符号含义**也按确切料号选：TVS 单向/双向、MOS N/P 沟道、NPN/PNP，脚名按手册（单向二极管用 K/A）。
   KiCad `Device:D_TVS` 只表示双向 TVS，不能用于单向器件。
   见 [symbol-and-peripheral-contracts.md](references/symbol-and-peripheral-contracts.md)。
-- 数值计算按 [calculation-preflight.md](references/calculation-preflight.md) 写明保证条件；上电/热插拔、关断/掉电、
-  全温角点和引脚应力四类按 [requirements-to-intent.md](references/requirements-to-intent.md) 第 4 节清单逐项核。
+- 数值计算按 [calculation-preflight.md](references/calculation-preflight.md) 写明保证条件；按
+  [requirements-to-intent.md](references/requirements-to-intent.md) 第 4 节清单逐项核这些工况：上电/热插拔、关断/掉电、
+  全温角点、引脚应力、工作包络角点（最低/最高输入 × 空载/轻载/满载 × 每个输出档位的组合）和单点故障
+  （反馈开路、光耦失效、检测电阻开路等：保护要在被保护对象越限前动作）。
 - 按 [worst-case-bounds.md](references/worst-case-bounds.md) 推导真正的上下界：非线性量检查区间端点、内部驻点和约束边界，
   保留变量依赖；重放同一算式只验证算术。源表条件须匹配实际电压、温度、电流及测试条件，
   仅在厂家明确许可的范围内使用其插值；工程估计和未知轴不能升为保证。
 - **计算门槛按设计用途**：计算的目的是把值选对、留出裕量，让图一次出对。手册保证条件覆盖不到时，
   写明假设、余量和没算进去的项，结论记为有条件成立（`conditional`），不阻塞出图；只有算出不满足（`failed`）
-  才是必须先解决的设计缺口。按最坏情况逐条证明属于独立审查，不在 ASG 内重复。
+  才是必须先解决的设计缺口。工作包络角点和单点故障由 ASG 算出数值；逐个参数的形式化最坏情况证明属于独立审查，ASG 不重复这一层。
 - 每条计算给出位号（`refs`）和算出的值对门槛（`checks`），结论由数字决定；保护/检测/钳位阈值两侧都算
   （不误动作 + 保护有效），稳压管/TVS/基准源都要有计算。`conditional` 要写明缺的是哪项保证（`missing_guarantee`），
   `partial` 要写明漏了什么；没有缺失保证的核对就是 `supported`，不拿“有条件”当免责。见 [设计待办记录](references/design-closure.md)。

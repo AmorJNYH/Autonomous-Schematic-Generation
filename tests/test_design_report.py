@@ -387,6 +387,16 @@ class DesignReportTests(unittest.TestCase):
         self.assertIn('## 改进记录', text)
         self.assertIn('| review:SR-R3/W-2 | 缺知识 | scripts/x.py |', text)
 
+    def test_a_deferred_comment_is_still_attributed(self):
+        # R6 marked nine deferred review comments cause=none "下一轮处理时再归因", among them the P1 F-SR-TONMIN.
+        self.d.write('lessons.json', {'schema_version': 1, 'events': [
+            {'source': 'review:SR-R5/F-SR-TONMIN', 'cause': 'none',
+             'why_none': '本版范围外暂缓，未做根因归类；已读该意见原文，下一轮处理时再归因。'},
+            {'source': 'review:SR-R5/W-REQ', 'cause': 'none', 'why_none': '需求取舍，用户决定本版暂缓；不反映技能缺口。'}]})
+        _, problems = self.d.report()
+        self.assertTrue(any(p.startswith('lessons.json 第 1 条 cause=none 只用于') for p in problems), problems)
+        self.assertFalse(any(p.startswith('lessons.json 第 2 条') for p in problems), problems)
+
     def test_review_comments_must_be_attributed_to_a_cause(self):
         self.d.write('review-responses.json', {'schema_version': 1, 'sources': [
             {'id': 'SR', 'path': 'r.md', 'sha256': 'x'}], 'items': [

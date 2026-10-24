@@ -8,6 +8,23 @@ in the library and have the cited page); `Changed:` the files touched.
 entry that changes the ASG 纲要 or the 绘图纲要 O1–O8 also carries `Approved:
 user:<date>` and `Outline:` the hash from `check_ledger.py --outline-hash`.
 
+## 按步审视的修正：工况角点、停产料号、暂缓意见归因 (2026-10-23)
+
+按步审视 ASG 第 0–8 步对照 R1–R6 记录：R5 验收与从头审查的电气错误全部出在第 2 步，画图一侧没有。
+其中三个 P1 不在原有工况清单里：21 V 轻载同步整流最短导通时间（F-SR-TONMIN）、90 Vac 被判为高线（F-PFC-90V）、
+反馈光耦单点开路时输出越过电容额定（F-A）。第 2 步与 requirements-to-intent.md 第 4 节的清单加入“工作包络角点”
+和“单点故障”两类，“最坏情况属于独立审查”改为只指逐参数的形式化证明，角点和单点故障由 ASG 算；
+三条写进对应模式文件的必算项与已知坑。D201 MUR550APFG 在手册订货表里列为 DISCONTINUED（F-D201），技能没有任何地方查：
+新增 `schematic_layout/lifecycle.py`，`render_design_report.py` 对设计要求表里有 `mpn` 和 `datasheet` 的每个器件读手册全文，
+列在停产/不推荐新设计标题下的料号算记录问题，`lifecycle_reason` 保留时在报告“停产料号”一节列出；R6 的 45 个这类器件里只查出 D201。
+R6 把 9 条暂缓的审查意见记为 `cause: none`、“下一轮再归因”，其中有 P1 的 F-SR-TONMIN：`cause: none` 的 `why_none`
+写推迟归因的话算记录问题。原生几何通道范围冻结，不再增加对象类型，新缺口交图面审阅。
+
+- Event: review:SR-20261023-R5-从头审查-claude-5802e8c/F-SR-TONMIN, review:SR-20261023-R5-验收-claude-6d74689/F-PFC-90V, review:SR-20261023-R5-验收-claude-6d74689/F-A, review:SR-20261023-R5-验收-claude-6d74689/F-D201, user:2026-10-23
+- Changed: SKILL.md, references/requirements-to-intent.md, references/core-part-selection.md, references/review-comments.md, references/native-geometry.md, references/circuit-patterns/synchronous-rectification.md, references/circuit-patterns/pfc-boost.md, references/circuit-patterns/isolated-feedback.md, scripts/schematic_layout/lifecycle.py, scripts/render_design_report.py, tests/test_lifecycle.py, tests/test_design_report.py, docs/improvement-ledger.md
+- Approved: user:2026-10-23
+- Outline: 3e5d2f9bf2a2a798
+
 ## 建图与几何检查共用一条导线判定，页边统一 5 mm (2026-10-23)
 
 `Sheet.build()` 手写了三条导线检查（离开 12 mm 内框、进标题栏、穿器件本体），几何检查又用 5 mm 边距和另一段

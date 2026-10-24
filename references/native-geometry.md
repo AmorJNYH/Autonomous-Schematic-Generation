@@ -6,6 +6,12 @@ hierarchical root. A standalone page can request the same channel with
 geometry CLI keep their existing estimate/contact behavior. The native channel
 does not change names, font sizes, electrical sources or native ERC/XML/PDF.
 
+**Scope is frozen (2026-10-23).** The native channel is not extended to new
+object profiles. An object outside the supported profiles stays an INSUFFICIENT
+gap and is covered by the render review (step 7) on the KiCad PDF; a new gap is
+not a reason to add a profile. Changes here are limited to fixing a wrong
+result on a supported profile, with a test that reproduces it.
+
 The job copies reachable native source files, project configuration and local
 library context to fresh output folders. It uses KiCad 10.0.6 full-project SVG
 exports with drawing sheets excluded. A baseline and replica must agree in

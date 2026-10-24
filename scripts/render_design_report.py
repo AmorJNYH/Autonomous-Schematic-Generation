@@ -17,6 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from audit_design_closure import severity_of  # noqa: E402
 from schematic_layout.citations import check as check_citation, check_source  # noqa: E402
+from schematic_layout import lifecycle  # noqa: E402
 from schematic_layout.sexpr import all_nodes, first, parse  # noqa: E402
 
 REPORT = '设计报告.md'
@@ -58,6 +59,8 @@ PAGE_PATTERN = re.compile(r'(?<![A-Za-z0-9])\d{2}_[A-Za-z][A-Za-z0-9_]*|System_b
 REQUIRED = ('electrical-intent.json', 'design-closure.json', 'design-closure-audit.json',
             'summary.json', 'visual-review.json', 'page-plan.json', 'selection.json', 'lessons.json')
 CAUSES = ('rule_missing', 'rule_not_enforced', 'knowledge_missing', 'knowledge_wrong', 'judgment')
+# A comment left unfixed this version still says why the skill missed it (R6: nine deferrals marked none).
+ATTRIBUTION_DEFERRED = re.compile(r'再归因|未归因|暂不归因|未做根因|没做根因|之后归因')
 CAUSE_WORDS = {'rule_missing': '缺规则', 'rule_not_enforced': '规则没执行', 'knowledge_missing': '缺知识',
                'knowledge_wrong': '知识有错', 'judgment': '判断失误', 'none': '无需改'}
 # Where a change for each cause class must land: rules become gates, knowledge goes to references or the library.
@@ -475,6 +478,9 @@ def check_lessons(data):
         if cause == 'none':
             if not text(e.get('why_none')):
                 problems.append('lessons.json 第 %d 条 cause=none 要在 why_none 里写明核对了什么' % i)
+            elif ATTRIBUTION_DEFERRED.search(e['why_none']):
+                problems.append('lessons.json 第 %d 条 cause=none 只用于不反映技能缺口的意见；'
+                                '本版暂缓修改的意见也要按“技能为什么没拦住”归因，不留到下一轮' % i)
             continue
         change = e.get('change') if text(e.get('change')) else ''
         if not any(t in change for t in CAUSE_TARGETS[cause]):
@@ -695,6 +701,11 @@ def render(root, notes=None, title=None):
     selection = data['selection.json'] or {}
     if data['selection.json'] is not None:
         problems += check_selection(selection, intent, root)
+    ordering = lifecycle.audit(intent, [root, root / 'record'])
+    for f in ordering['flagged']:
+        if not text(f['reason']):
+            problems.append('位号 %s 的料号 %s 在手册 %s 里列在“%s”下（停产或不推荐新设计）：换在售料号，'
+                            '或在设计要求表该器件写 lifecycle_reason 说明为什么保留' % (f['ref'], f['mpn'], f['datasheet'], f['marker']))
     cite_problems, cite_review, cite_unchecked = check_citations(selection, data['lessons.json'], root)
     problems += cite_problems
     cite_review = list((audit.get('citations') or {}).get('review') or []) + cite_review
@@ -953,6 +964,12 @@ def render(root, notes=None, title=None):
                                           '、'.join(num(v) for v in r.get('values') or [])) for r in cite_review]
             out.append('')
         out += ['- %s' % reason for reason in cite_unchecked] + ([''] if cite_unchecked else [])
+
+    kept = [f for f in ordering['flagged'] if text(f['reason'])]
+    if kept or ordering['not_checked']:
+        out += ['## 停产料号', '']
+        out += ['- %s %s：手册列在“%s”下，保留理由：%s' % (f['ref'], f['mpn'], f['marker'], f['reason']) for f in kept]
+        out += ['- %s' % reason for reason in ordering['not_checked']] + ['']
 
     if shown:
         out += ['## 自动检查明细', '', '| 检查 | 结果 |', '|---|---|']
