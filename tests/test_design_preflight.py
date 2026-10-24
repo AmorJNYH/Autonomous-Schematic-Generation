@@ -37,6 +37,32 @@ class PreflightTests(unittest.TestCase):
         self.assertEqual(result['status'], 'PASS', result)
         self.assertTrue(result['artifact_sha256'])
 
+    def test_extra_domains_are_checked_and_missing_ones_fail(self):
+        checks = self.manifest['impacts'][0]['checks']
+        checks['emc'] = dict(checks['supply'])
+        self.assertEqual('PASS', self.verify()['status'])
+        checks['emc'] = {'disposition': 'DOCUMENTED', 'reason': 'x', 'evidence': E}
+        self.assertTrue(any('emc: invalid disposition' in e for e in self.verify()['errors']))
+        del checks['emc'], checks['temperature']
+        self.assertTrue(any('classify at least' in e for e in self.verify()['errors']))
+
+    def test_documented_needs_a_bound_current_fact(self):
+        checks = self.manifest['impacts'][0]['checks']
+        checks['documentation'] = {'disposition': 'DOCUMENTED', 'reason': 'turns noted',
+                                   'evidence': [{'source': 'facts', 'locator': 'bias_turns'}]}
+        self.assertEqual('PASS', self.verify()['status'])
+        checks['documentation']['evidence'] = E          # a datasheet page, not a bound fact
+        result = self.verify()
+        self.assertEqual(('CONDITIONAL', ['T1/documentation']), (result['status'], result['open_impacts']), result)
+
+    def test_empty_bindings_list_is_judged_by_fact_coverage(self):
+        self.manifest['artifact_bindings'] = []
+        errors = self.verify()['errors']
+        self.assertIn('facts without artifact bindings: bias_turns', errors)
+        self.assertFalse(any('must be an array' in e for e in errors))
+        self.manifest['artifact_bindings'] = 'notes.txt'
+        self.assertIn('artifact_bindings must be an array', self.verify()['errors'])
+
     def test_stale_3t_note_rejected_after_4t_change(self):
         (self.root/'notes.txt').write_text('T1 bias turns=3\n')
         result = self.verify()
@@ -64,7 +90,7 @@ class PreflightTests(unittest.TestCase):
 
     def test_conditional_model_permits_only_conditional_candidate(self):
         c = self.manifest['calculations'][0]
-        c['inputs']['vz']['basis'] = 'ASSUMED'; c.update(claim='CONDITIONAL', closure='Obtain limit')
+        c['inputs']['vz']['basis'] = 'ASSUMED'; c.update(closure='Obtain limit')
         result = self.verify()
         self.assertEqual(result['status'], 'CONDITIONAL')
         self.assertTrue(result['open_impacts'])
@@ -85,7 +111,7 @@ class PreflightTests(unittest.TestCase):
         self.assertEqual(contract_objects(moved), {'U1', 'U2', 'C5', 'J1'})
 
     def test_failed_guaranteed_calculation_is_a_violation_not_conditional(self):
-        self.manifest['calculations'][0].update(acceptance={'operator': '>=', 'value': 6, 'unit': 'mA'}, claim='FAIL')
+        self.manifest['calculations'][0].update(acceptance={'operator': '>=', 'value': 6, 'unit': 'mA'})
         result = self.verify()
         self.assertEqual(result['status'], 'FAIL')
         self.assertTrue(any('fails acceptance: BIAS' in e for e in result['errors']), result['errors'])
@@ -124,7 +150,7 @@ class PreflightTests(unittest.TestCase):
         contract = {'schema_version': 1, 'baseline_sha256': baseline}
         manifest = self.manifest; manifest['baseline_sha256'] = baseline
         calc = manifest['calculations'][0]; calc['inputs']['vz']['basis'] = 'ASSUMED'
-        calc.update(claim='CONDITIONAL', closure='Get guaranteed bounds')
+        calc.update(closure='Get guaranteed bounds')
         for name, value in [('contract.json', contract), ('manifest.json', manifest)]:
             (self.root/name).write_text(json.dumps(value))
         command = [sys.executable, '-B', str(Path(__file__).resolve().parents[1]/'scripts/verify_design_change.py'),

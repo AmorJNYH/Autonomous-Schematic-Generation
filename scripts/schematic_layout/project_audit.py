@@ -13,7 +13,7 @@ import subprocess
 
 from .sexpr import all_nodes, first, value, dump
 from .native_hierarchy import NativeHierarchy
-from .design_change import _identity, native_inventory
+from .design_change import PINLESS_ROLES, native_inventory
 
 
 def properties(node):
@@ -38,119 +38,6 @@ def symbol_pin_signature(lib):
     return sorted(result)
 
 
-def source_flags(symbol):
-    return {key: str(value(symbol, key, "unspecified")) for key in
-            ("exclude_from_sim", "in_bom", "on_board", "dnp")}
-
-
-def _descendants(node):
-    for child in node:
-        if isinstance(child, list):
-            yield child
-            yield from _descendants(child)
-
-
-def validate_pinless_roles(context, contract):
-    """Validate externally reviewed roles against exact native source identity.
-
-    A role asserts mechanical/documentation intent; the cache proves absence
-    of pins in *every* unit/style. Neither statement is a BOM qualification.
-    Missing selected annotation or unresolved inheritance is a coverage gap.
-    """
-    keys = {"schema_version", "project", "file_sha256", "native_xml_sha256", "objects"}
-    fields = {"reference", "instance", "symbol_uuid", "lib_id", "lib_sha256",
-              "source_properties", "source_flags", "role", "native_identity"}
-    if (not isinstance(contract, dict) or set(contract) != keys or contract["schema_version"] != 1 or
-            not isinstance(contract["objects"], list) or not isinstance(contract["native_xml_sha256"], str) or
-            not re.fullmatch(r"[0-9a-f]{64}", contract["native_xml_sha256"])):
-        raise ValueError("Invalid pinless source-role contract schema")
-    errors, objects = [], []
-    if context.errors:
-        errors.append("Source native hierarchy has structural/annotation errors")
-    if contract["project"] != context.project or contract["file_sha256"] != context.file_sha256:
-        errors.append("Source-role project or native file SHA256 binding mismatch")
-    seen, seen_refs = set(), set()
-    for item in contract["objects"]:
-        if (not isinstance(item, dict) or set(item) != fields or
-                item["role"] not in ("mechanical", "documentation") or
-                any(not isinstance(item[k], str) or not item[k] for k in
-                    ("reference", "instance", "symbol_uuid", "lib_id", "lib_sha256")) or
-                not re.fullmatch(r"[0-9a-f]{64}", item["lib_sha256"]) or
-                not isinstance(item["source_properties"], dict) or not isinstance(item["source_flags"], dict)):
-            raise ValueError("Invalid pinless source-role object")
-        _identity(item["native_identity"])
-        key = (item["instance"], item["symbol_uuid"])
-        if key in seen or item["reference"] in seen_refs or item["reference"].startswith("#"):
-            errors.append("Duplicate or virtual source-role object")
-        seen.add(key)
-        seen_refs.add(item["reference"])
-        matches = [(p, s) for p in context.pages if p["instance"] == item["instance"]
-                   for s in all_nodes(context.tree_for(p), "symbol") if value(s, "uuid") == item["symbol_uuid"]]
-        row = {**item, "status": "INSUFFICIENT", "reason": "Source object or selected annotation unavailable"}
-        objects.append(row)
-        if len(matches) != 1:
-            errors.append(f"Source-role object identity absent/ambiguous: {item['reference']}")
-            continue
-        page, sym = matches[0]
-        ctx = context.symbol_context(page, sym)
-        if ctx is None:
-            continue  # No Reference-property or other-project fallback.
-        lid = str(value(sym, "lib_name", value(sym, "lib_id", "")))
-        propnodes = all_nodes(sym, "property")
-        if (ctx["reference"] != item["reference"] or lid != item["lib_id"] or
-                properties(sym) != item["source_properties"] or len(properties(sym)) != len(propnodes) or
-                source_flags(sym) != item["source_flags"] or
-                any(len(all_nodes(sym, key)) > 1 for key in source_flags(sym))):
-            errors.append(f"Source-role native identity/properties mismatch: {item['reference']}")
-            continue
-        identity, props = item["native_identity"], properties(sym)
-        # KiCad exports an exact '~' as empty in named fields, but preserves
-        # Reference/Value literally. Only these standard fields have native
-        # empty defaults; an absent custom field is never an empty assertion.
-        exported_props = {k: ("" if v == "~" and k not in ("Reference", "Value") else v)
-                          for k, v in props.items()}
-        for standard in ("Footprint", "Datasheet", "Description"):
-            exported_props.setdefault(standard, "")
-        if (any(identity[k] != exported_props.get(p, "") for k, p in
-                (("value", "Value"), ("footprint", "Footprint"), ("datasheet", "Datasheet"))) or
-                identity["lib_id"] != lid or identity["dnp"] != (value(sym, "dnp", "no") == "yes") or
-                any(exported_props.get(k) != v for k, v in identity["fields"].items())):
-            errors.append(f"Source-role export identity contradicts source: {item['reference']}")
-            continue
-        libs = [l for l in all_nodes(first(context.tree_for(page), "lib_symbols", []), "symbol") if str(l[1]) == lid]
-        if len(libs) != 1:
-            row["reason"] = "Missing/ambiguous cached symbol"
-            continue
-        lib = libs[0]
-        if hashlib.sha256(dump(lib).encode()).hexdigest() != item["lib_sha256"]:
-            errors.append(f"Source-role cached symbol SHA256 mismatch: {item['reference']}")
-            continue
-        try:
-            if any(n[0] == "extends" for n in _descendants(lib)):
-                raise ValueError("Unresolved symbol inheritance")
-            signature = symbol_pin_signature(lib)
-            if not all_nodes(lib, "symbol"):
-                raise ValueError("No resolved cache unit definitions")
-            style = int(value(sym, "body_style", value(sym, "convert", 1)))
-            units = [tuple(map(int, re.search(r"_(\d+)_(\d+)$", str(sub[1])).groups()))
-                     for sub in all_nodes(lib, "symbol")]
-            if len(units) != len(set(units)):
-                raise ValueError("Ambiguous cached unit/style definitions")
-            if (ctx["unit"] != int(value(sym, "unit", 1)) or
-                    not any(u in (0, ctx["unit"]) and s in (0, style) for u, s in units)):
-                errors.append(f"Source-role active unit/style is not defined: {item['reference']}")
-                continue
-            if signature or any(n[0] == "pin" for n in _descendants(lib)):
-                errors.append(f"Source-role object has cached physical pins: {item['reference']}")
-                continue
-        except ValueError as exc:
-            row["reason"] = str(exc)
-            continue
-        row.update(status="NA", reason="Externally reviewed role; all resolved cached units/styles are pinless")
-    return {"status": "FAIL" if errors else "INSUFFICIENT" if any(r["status"] != "NA" for r in objects) else "PASS",
-            "errors": errors, "objects": objects}
-
-
 def _instance(node, project, path):
     matches = [p for pr in all_nodes(first(node, "instances", []), "project")
                if pr[1] == project for p in all_nodes(pr, "path") if p[1] == path]
@@ -173,17 +60,12 @@ def pdf_page_count(path):
     return int(match[1])
 
 
-def audit_project(root, pdf=None, project=None, expected_pages=None, *, context=None, source_roles=None, netlist=None):
+def audit_project(root, pdf=None, project=None, expected_pages=None, *, context=None, netlist=None):
     root = Path(root).resolve()
     context = context or NativeHierarchy(root, project)
     project = context.project
     pages = context.pages
     errors, gaps = list(context.errors), list(context.coverage_gaps)
-    roles = validate_pinless_roles(context, source_roles) if source_roles is not None else None
-    role_objects = {(r["instance"], r["symbol_uuid"]): r for r in roles["objects"]} if roles else {}
-    if roles:
-        errors.extend({"kind": "invalid_source_role_evidence", "reason": e} for e in roles["errors"])
-        gaps.extend(r["reason"] for r in roles["objects"] if r["status"] != "NA")
     pinless_objects = []
     caches, definitions, refs = {}, {}, {}
     file_hashes = context.file_sha256
@@ -216,13 +98,14 @@ def audit_project(root, pdf=None, project=None, expected_pages=None, *, context=
                 continue
             style = int(value(symbol, "body_style", value(symbol, "convert", 1)))
             if not any(p[0] in (0, unit) and p[1] in (0, style) for p in signature):
-                role = role_objects.get((page["instance"], str(value(symbol, "uuid", ""))))
-                if not signature and role and role["status"] == "NA":
+                # A mounting hole, logo or note: declared by its ComponentRole, and no unit or style of its
+                # cached symbol has a pin. Anything else without active pins is a broken symbol.
+                role = properties(symbol).get("ComponentRole")
+                if not signature and role in PINLESS_ROLES:
                     pinless_objects.append({"reference": ref, "instance": page["instance"],
-                                            "symbol_uuid": role["symbol_uuid"], "role": role["role"],
-                                            "pin_integrity": "NA", "reason": role["reason"]})
-                elif not signature and role and role["status"] == "INSUFFICIENT":
-                    gaps.append(f"{ref}: {role['reason']}")
+                                            "symbol_uuid": str(value(symbol, "uuid", "")), "role": role,
+                                            "pin_integrity": "NA",
+                                            "reason": "Declared ComponentRole; no cached unit/style has pins"})
                 else:
                     errors.append({"kind": "missing_active_unit_pins", "ref": ref, "unit": unit, "style": style})
             if unit != int(value(symbol, "unit", 1)):
@@ -263,7 +146,7 @@ def audit_project(root, pdf=None, project=None, expected_pages=None, *, context=
                                      for r, s in sorted(definitions.items()) if not r.startswith("#")},
             "file_sha256": file_hashes, "pdf": pdf_result,
             "missing_symbol_annotations": context.missing_symbol_annotations,
-            "pinless_objects": pinless_objects, "source_role_evidence": roles,
+            "pinless_objects": pinless_objects,
             "component_count_domain": "Unique references in exact selected-project annotation contexts, including virtual refs",
             "native_inventory": inventory, "native_inventory_reconciliation": reconciliation,
             "errors": errors, "coverage_gaps": sorted(set(gaps))}

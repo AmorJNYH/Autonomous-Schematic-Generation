@@ -19,7 +19,7 @@ PAPER_ORDER = ("A4", "A3", "A2", "A1", "A0")
 CELL_MM = 25.4
 
 
-def _object_boxes(scene):
+def _object_boxes(scene, root=None):
     boxes = []
     for s in scene.symbols:
         if s.body is not None:
@@ -29,12 +29,21 @@ def _object_boxes(scene):
     boxes += [f.box() for _, f in scene.labels]
     boxes += [Box(min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1])) for a, b in scene.wires]
     boxes += [Box(x, y, x, y) for x, y in scene.junctions]
+    # Cover flow lines and page frames are drawn content too.
+    boxes += [Box(min(a[0], b[0]), min(a[1], b[1]), max(a[0], b[0]), max(a[1], b[1])).expanded(w / 2)
+              for _, a, b, w in scene.graphic_segments]
+    for node in all_nodes(root, "sheet") if root is not None else []:
+        (x, y), (w, h) = first(node, "at")[1:3], first(node, "size")[1:3]
+        boxes.append(Box(float(x), float(y), float(x) + float(w), float(y) + float(h)))
+    for node in all_nodes(root, "rectangle") if root is not None else []:
+        (ax, ay), (bx, by) = first(node, "start")[1:3], first(node, "end")[1:3]
+        boxes.append(Box(min(float(ax), float(bx)), min(float(ay), float(by)), max(float(ax), float(bx)), max(float(ay), float(by))))
     return boxes
 
 
-def content_box(scene):
-    """Bounding box of every drawn object: bodies, visible fields, wires, labels, junctions."""
-    boxes = _object_boxes(scene)
+def content_box(scene, root=None):
+    """Bounding box of every drawn object: bodies, visible fields, wires, labels, junctions, graphics, frames."""
+    boxes = _object_boxes(scene, root)
     if not boxes:
         return None
     return Box(min(b.x_min for b in boxes), min(b.y_min for b in boxes),
@@ -146,13 +155,13 @@ def measure(root):
     for ref in part_parent:
         groups.setdefault(part_find(ref), []).append(ref)
     part_groups = sorted((sorted(g) for g in groups.values()), key=lambda g: (-len(g), g))
-    content = content_box(scene)
+    content = content_box(scene, root)
     paper, fits = paper_fit(scene, content)
     drawing = scene.page.expanded(-FRAME_MM)
     # Share of 25.4 mm cells of the drawing area that hold any object: a sparse
     # page with notes in its corners has a large bounding box but few inked cells.
     cells = set()
-    for box in _object_boxes(scene):
+    for box in _object_boxes(scene, root):
         for cx in range(int((box.x_min - drawing.x_min) // CELL_MM), int((box.x_max - drawing.x_min) // CELL_MM) + 1):
             for cy in range(int((box.y_min - drawing.y_min) // CELL_MM), int((box.y_max - drawing.y_min) // CELL_MM) + 1):
                 cells.add((cx, cy))

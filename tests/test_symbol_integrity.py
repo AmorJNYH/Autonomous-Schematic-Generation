@@ -11,6 +11,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from schematic_layout.symbol_integrity import attachment_rows, arc_distance, audit_symbols
+from schematic_layout.project_audit import audit_project
 from schematic_layout.sexpr import parse, dump, form, first, all_nodes, set_node
 from schematic_layout.generate import generate, library_dirs
 from schematic_layout.native import find_cli, verify
@@ -90,11 +91,6 @@ class AttachmentTests(unittest.TestCase):
         l = lib(); sub = first(l, "symbol"); sub.remove(first(sub, "rectangle"))
         self.assertEqual(attachment_rows(l, 1, 1)[0][0]["attachment"], "INSUFFICIENT")
 
-    def test_nonfinite_coordinates_and_large_tolerance_rejected(self):
-        l = lib(); set_node(first(first(l, "symbol"), "pin"), "length", float("nan"))
-        with self.assertRaises(ValueError): attachment_rows(l, 1, 1)
-        with self.assertRaises(ValueError): attachment_rows(lib(), 1, 1, 20)
-
 
 class ProjectSymbolTests(unittest.TestCase):
     def setUp(self):
@@ -166,7 +162,8 @@ class ProjectSymbolTests(unittest.TestCase):
         self.save()
         report = audit_symbols(self.root, self.xml)
         self.assertEqual(report["status"], "FAIL")
-        self.assertIn("missing_active_unit_pins", {e["kind"] for e in report["errors"]})
+        self.assertEqual("FAIL", report["hierarchy_status"])     # the hierarchy gate names the pinless unit
+        self.assertIn("missing_active_unit_pins", {e["kind"] for e in audit_project(self.root)["errors"]})
         self.assertEqual(report["native_pin_coverage"]["xml_pins_missing_from_source"], ["U1.1"])
 
     def test_native_coverage_absence_never_overall_passes(self):

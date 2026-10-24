@@ -21,8 +21,9 @@ class HierLabelGeometryTests(unittest.TestCase):
     def test_wire_exits_opposite_label_text_without_false_crossing(self):
         r=check_scene(read_scene(parse((FIX/'positive.kicad_sch').read_text())))
         self.assertFalse([x for x in r['findings'] if x['code']=='wire_text'])
-        self.assertTrue(any('hierarchical_label' in g for g in r['coverage']['gaps']))
-        self.assertNotEqual('PASS',r['status'])
+        self.assertFalse(any('hierarchical_label' in g for g in r['coverage']['gaps']))   # verified style: render review only
+        self.assertTrue(any('hierarchical_label' in g for g in r['coverage']['render_review_items']))
+        self.assertEqual('PASS',r['status'],r['coverage']['gaps'])
     def test_foreign_wire_crossing_real_label_text_still_fails(self):
         r=check_scene(read_scene(parse((FIX/'negative.kicad_sch').read_text())))
         self.assertTrue([x for x in r['findings'] if x['code']=='wire_text'])

@@ -98,7 +98,7 @@ def compile_circuit(document, dirs=()):
     def visit(module, path, bindings, parameters, stack):
         keys(
             module,
-            "ports parameters components nets no_connect instances buses evidence",
+            "ports parameters components nets no_connect instances evidence",
             path or "root",
         )
         defaults = module.get("parameters", {})
@@ -218,27 +218,12 @@ def compile_circuit(document, dirs=()):
                 netpins[local_nets[n["name"]]].extend(endpoints(ep))
         for ep in module.get("no_connect", []):
             intent["no_connect"].extend(endpoints(ep))
-        # Buses are ordered scalar-net interfaces, not inferred graphical wires.
-        buses = []
-        for bus in module.get("buses", []):
-            keys(bus, "name members", "bus")
-            if not bus["members"] or len(set(bus["members"])) != len(bus["members"]):
-                raise ValueError("Bus members must be nonempty and distinct")
-            if set(bus["members"]) - set(local_nets):
-                raise ValueError("Bus references undeclared scalar nets")
-            buses.append(
-                {
-                    "name": bus["name"],
-                    "members": [local_nets[n] for n in bus["members"]],
-                }
-            )
         if members:
             blocks.append(
                 {
                     "id": path or "root",
                     "members": members,
                     "ports": {p: local_nets[p] for p in ports},
-                    "buses": buses,
                 }
             )
         hierarchy.append(
@@ -246,7 +231,6 @@ def compile_circuit(document, dirs=()):
                 "path": path,
                 "parent": path.rsplit("/", 1)[0] if "/" in path else "",
                 "ports": {p: local_nets[p] for p in ports},
-                "buses": buses,
                 "members": [m["id"] for m in members],
             }
         )

@@ -14,7 +14,7 @@ import subprocess
 import sys
 from schematic_layout.generate import generate
 from schematic_layout.sexpr import dump, form
-from schematic_layout.native import verify
+from schematic_layout.native import project_settings, verify
 
 
 def main():
@@ -61,7 +61,7 @@ def main():
                 )
             )
         (out / "sym-lib-table").write_text(dump(table) + "\n")
-        (out / (args.name + ".kicad_pro")).write_text("{}\n")
+        (out / (args.name + ".kicad_pro")).write_text(json.dumps(project_settings(), indent=2) + "\n")
         (out / "generation.json").write_text(
             json.dumps(manifest, indent=2, ensure_ascii=False) + "\n"
         )

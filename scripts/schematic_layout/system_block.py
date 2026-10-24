@@ -4,10 +4,13 @@ boundary that crosses no block, and no line that ends in the void.
 The cover is editable graphics (``sheet`` blocks, ``polyline`` lines, ``text``),
 never wires. The audit reads those nodes directly; it does not qualify stroke
 styles (the geometry gate covers only default strokes) and it establishes no
-electrical fact. A straight line labelled 隔离/isolation is the boundary.
+electrical fact. A line is the boundary when its label is 隔离/隔离边界/isolation, alone or
+followed by a space or colon and its rating ("隔离边界 4kV"), or when it is dashed;
+a flow line whose name merely contains the word ("隔离电源") stays a flow line.
 """
 
 import math
+import re
 
 from .geometry import Box
 from .routing import segment_hits_box
@@ -16,7 +19,8 @@ from .sexpr import all_nodes, first
 TOUCH_MM = 2.6        # a line end within one grid step of a block edge, arrowhead or line is attached
 TEXT_NEAR_MM = 6.0    # a text anchor this close to a line labels it
 HEAD_MAX_MM = 4.0     # arrowhead legs are shorter than this
-BOUNDARY_WORDS = ("隔离", "isolation")
+BOUNDARY_LABEL = re.compile(r"^(隔离边界|隔离|isolation boundary|isolation barrier|isolation)($|[\s:：,，(（])", re.IGNORECASE)
+DASHED = ("dash", "dot", "dash_dot", "dash_dot_dot")
 
 
 def _points(node):
@@ -61,12 +65,13 @@ def audit_system_block(root):
         points = _points(node)
         if len(points) < 2:
             continue
-        (heads if _is_head(points) else lines).append((i, points))
+        dashed = str(first(first(node, "stroke", []), "type", [None, None])[1]) in DASHED
+        (heads if _is_head(points) else lines).append((i, points, dashed))
     findings = []
     boundaries, arrows = [], []
-    for i, points in lines:
+    for i, points, dashed in lines:
         near = [t for t, at in texts if _dist_point_polyline(at, points) <= TEXT_NEAR_MM]
-        if any(w in t.lower() for t in near for w in BOUNDARY_WORDS):
+        if dashed or any(BOUNDARY_LABEL.match(t.strip()) for t in near):
             boundaries.append((i, points, near))
         else:
             arrows.append((i, points, near))
@@ -76,7 +81,7 @@ def audit_system_block(root):
             findings.append(f"polyline {i}: flow line carries no text naming the rail or signals it stands for")
         for end in (points[0], points[-1]):
             hit = [name for name, box in sheets if box.expanded(TOUCH_MM).contains_point(*end)]
-            joined = (any(math.hypot(end[0] - q[0], end[1] - q[1]) <= TOUCH_MM for _, pts in heads for q in pts)
+            joined = (any(math.hypot(end[0] - q[0], end[1] - q[1]) <= TOUCH_MM for _, pts, _ in heads for q in pts)
                       or any(math.hypot(end[0] - q[0], end[1] - q[1]) <= TOUCH_MM
                              for j, pts, _ in arrows if j != i for q in pts))
             touched.update(hit)

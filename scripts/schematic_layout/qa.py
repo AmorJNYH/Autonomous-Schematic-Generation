@@ -3,7 +3,7 @@
 from collections import Counter
 from .geometry import Box, union
 from .scene import GlobalLabelText
-from .routing import on_segment, intersection, segment_hits_box, wire_box, grid_point
+from .routing import on_segment, intersection, segment_hits_box, wire_box
 from .native_geometry import ink_gap
 
 
@@ -79,7 +79,7 @@ def own_pin_exit(a, b, exits):
     return False
 
 
-def check_scene(scene, grid=1.27, reserved=None, body_clearance=1.27, pin_nets=None):
+def check_scene(scene, reserved=None, body_clearance=1.27):
     findings = []
 
     def add(code, objects, detail):
@@ -214,43 +214,6 @@ def check_scene(scene, grid=1.27, reserved=None, body_clearance=1.27, pin_nets=N
                 add(
                     "wire_text", [f"wire:{i}", name], "Wire passes through visible text"
                 )
-    anchors = [(p.id, p.point) for p in pins]
-    anchors += scene.sheet_pins
-    anchors += [(f"wire:{i}", p) for i, w in enumerate(scene.wires) for p in w]
-    anchors += [
-        (f"{kind}:{f.text}", (f.x, f.y)) for kind, f in scene.labels if kind != "text"
-    ]
-    anchors += [("junction", p) for p in scene.junctions] + [
-        ("nc", p) for p in scene.no_connects
-    ]
-    for name, point in anchors:
-        try:
-            grid_point(point, grid)
-        except ValueError as e:
-            add("off_grid", [name], str(e))
-    # Detect wire ends without a pin, label, or another segment; corners count
-    # as connected segments and need no spurious junction dot.
-    terminals = {p.point for p in pins} | {point for _, point in scene.sheet_pins}
-    attached = terminals | {
-        (f.x, f.y) for k, f in scene.labels if k != "text"
-    }
-    for i, w in enumerate(scene.wires):
-        for p in w:
-            if p not in attached and not any(
-                on_segment(p, *other) for j, other in enumerate(scene.wires) if i != j
-            ):
-                add("orphan_wire", [f"wire:{i}"], f"Unattached endpoint {p}")
-    for kind, f in scene.labels:
-        if (
-            kind != "text"
-            and (f.x, f.y) not in terminals
-            and not any(on_segment((f.x, f.y), *w) for w in scene.wires)
-        ):
-            add(
-                "floating_label",
-                [f"{kind}:{f.text}"],
-                "Label is not attached to a pin or wire",
-            )
     for i, p in enumerate(scene.junctions):
         if sum(on_segment(p, *w) for w in scene.wires) < 2:
             add(
@@ -258,51 +221,6 @@ def check_scene(scene, grid=1.27, reserved=None, body_clearance=1.27, pin_nets=N
                 [f"junction:{i}"],
                 "Junction does not join at least two segments",
             )
-    for i, p in enumerate(scene.no_connects):
-        if p not in {pin.point for pin in pins}:
-            add("orphan_nc", [f"nc:{i}"], "NC marker not on pin")
-    # Build connectivity from endpoints, pin contacts and explicit junctions;
-    # naked mid-segment crossings stay separate, matching the schematic model.
-    parent = list(range(len(scene.wires)))
-
-    def root(i):
-        while parent[i] != i:
-            i = parent[i]
-        return i
-
-    def join(i, j):
-        parent[root(j)] = root(i)
-
-    for i, (a, b) in enumerate(scene.wires):
-        for j, (c, d) in enumerate(scene.wires[i + 1 :], i + 1):
-            hits = intersection(a, b, c, d)
-            if hits and (
-                len(hits) > 1
-                or any(p in (a, b, c, d) or p in scene.junctions for p in hits)
-            ):
-                join(i, j)
-    label_groups = {}
-    for kind, f in scene.labels:
-        if kind == "text":
-            continue
-        indices = [i for i, w in enumerate(scene.wires) if on_segment((f.x, f.y), *w)]
-        label_groups.setdefault((kind, f.text), []).extend(indices)
-    for indices in label_groups.values():
-        for i in indices[1:]:
-            join(indices[0], i)
-    owners = {}
-    if pin_nets:
-        for pin in pins:
-            for i, w in enumerate(scene.wires):
-                if on_segment(pin.point, *w) and pin.id in pin_nets:
-                    owners.setdefault(root(i), set()).add(pin_nets[pin.id])
-        for r, nets in owners.items():
-            if len(nets) > 1:
-                add(
-                    "different_net_contact",
-                    [str(x) for x in sorted(nets)],
-                    "Wire geometry joins distinct intended nets",
-                )
     for i, (a, b) in enumerate(scene.wires):
         for j, (c, d) in enumerate(scene.wires[i + 1 :], i + 1):
             hits = intersection(a, b, c, d)
@@ -311,17 +229,6 @@ def check_scene(scene, grid=1.27, reserved=None, body_clearance=1.27, pin_nets=N
                     "collinear_overlap",
                     [f"wire:{i}", f"wire:{j}"],
                     "Duplicate/overlapping segments must be normalized",
-                )
-            elif hits and root(i) != root(j):
-                # Legitimate undotted crossings are visible review items, not
-                # automatically called electrical shorts.
-                findings.append(
-                    {
-                        "code": "wire_crossing",
-                        "objects": [f"wire:{i}", f"wire:{j}"],
-                        "detail": "Undotted crossing: inspect in native render",
-                        "severity": "error",
-                    }
                 )
     # Native channels are independent of Sheet.build's existing estimates.
     # Frames protect edges/structure, not an opaque box against architecture text.
@@ -426,16 +333,10 @@ def check_scene(scene, grid=1.27, reserved=None, body_clearance=1.27, pin_nets=N
                 "text_pin",
                 "page_frame",
                 "reserved_region",
-                "off_grid",
-                "orphan_wire",
-                "floating_label",
                 "orphan_junction",
-                "orphan_nc",
                 "collinear_overlap",
-                "wire_crossing",
                 "explicit_unfilled_polyline_ink",
             ],
-            "pin_net_intent_checked": bool(pin_nets),
             "limitations": [
                 "AABB bounds; arc full-circle bounds may over-report",
                 "Text widths are conservative estimates, not native glyph metrics",

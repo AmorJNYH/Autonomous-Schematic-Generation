@@ -125,23 +125,12 @@ class CircuitIRTests(unittest.TestCase):
         intent, _ = compile_circuit(doc)
         self.assertEqual(intent["nets"][0]["pins"], ["U1.3", "U1.5"])
 
-    def test_symbol_lock_and_bus_members(self):
+    def test_symbol_lock(self):
         doc, _ = fixture()
-        doc["root"]["buses"] = [{"name": "CHANNEL_IN", "members": ["IN_A", "IN_B"]}]
         _, compiled = compile_circuit(doc)
-        self.assertEqual(
-            next(h for h in compiled["hierarchy"] if h["path"] == "")["buses"][0][
-                "members"
-            ],
-            ["IN_A", "IN_B"],
-        )
+        self.assertIn("filter_a/input", compiled["resolved_components"])
         doc["modules"]["rc"]["components"][0]["symbol_sha256"] = "bad"
         with self.assertRaisesRegex(ValueError, "symbol hash changed"):
-            compile_circuit(doc)
-        self.assertIn("filter_a/input", compiled["resolved_components"])
-        doc, _ = fixture()
-        doc["root"]["buses"] = [{"name": "DATA", "members": ["IN_A", "TYPO"]}]
-        with self.assertRaisesRegex(ValueError, "undeclared scalar"):
             compile_circuit(doc)
 
     def test_automatic_field_budget_grows_and_packing_fails_safely(self):
@@ -274,7 +263,10 @@ class NativeCircuitTests(unittest.TestCase):
             doc["root"]["instances"][1]["parameters"] = {"resistance": "2k"}
             result = build(doc, policy, new, baseline_path=base, locks=["filter_a"])
             self.assertEqual(result["status"], "AUTOMATED_PASS", result)
-            self.assertEqual(result["locked_blocks"][0]["status"], "UNCHANGED")
+            placed = lambda d: {k: v for k, v in json.loads((d / "layout_plan.json").read_text())["placements"].items()
+                                if k.split(":")[0] in {"R1", "C1"}}
+            self.assertTrue(placed(base))
+            self.assertEqual(placed(base), placed(new))   # the locked block keeps its positions
             intent, compiled = compile_circuit(doc)
             doc["root"]["instances"][0]["parameters"] = {"resistance": "3k"}
             altered, compilation = compile_circuit(doc)

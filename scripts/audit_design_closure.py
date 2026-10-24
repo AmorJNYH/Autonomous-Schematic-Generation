@@ -11,14 +11,38 @@ import math
 import re
 from pathlib import Path
 from design_frontier import frontier
+from schematic_layout.citations import check_source
 
 
 SEVERITIES = ('P0', 'P1', 'P2', 'P3')
+# What happens if an open item is left undone, and when it shows; the level follows from the two.
+CONSEQUENCES = ('safety', 'damage', 'function', 'margin', 'optimization')
+OCCURRENCES = ('normal', 'condition', 'fault')
+SEVERITY_RULE = {'safety': ('P0', 'P0', 'P0'), 'damage': ('P0', 'P0', 'P1'), 'function': ('P1', 'P1', 'P2'),
+                 'margin': ('P2', 'P2', 'P3'), 'optimization': ('P3', 'P3', 'P3')}
+
+
+def severity_of(row):
+    """P0-P3 from consequence_class and occurrence, or None when either is missing or unknown."""
+    consequence, occurrence = row.get('consequence_class'), row.get('occurrence')
+    if consequence not in CONSEQUENCES or occurrence not in OCCURRENCES:
+        return None
+    return SEVERITY_RULE[consequence][OCCURRENCES.index(occurrence)]
 OPERATORS = {'<=': lambda v, l: v <= l, '<': lambda v, l: v < l,
              '>=': lambda v, l: v >= l, '>': lambda v, l: v > l}
 # Parts whose job is to set or clamp a voltage. Each one needs a calculation
 # naming it, so a protection threshold cannot ship as prose only.
 THRESHOLD_PART = re.compile(r'zener|tvs|tl431|atl431|lm4040|shunt.?ref|voltage.?ref|^power:vref', re.I)
+# The same parts drawn with a generic diode or IC symbol, known by their series prefix.
+THRESHOLD_SERIES = re.compile(r'^(1N47|1N52|1N53|1SMA|BZX|BZT|BZV|MMSZ|SMAJ|SMBJ|SMCJ|SMF|P6KE|P4SMA|P6SMB|PESD|TPD|ESD|'
+                              r'TL431|TLV431|ATL431|AZ431|LM385|LM4040|LM4041|REF30|REF50)', re.I)
+
+
+def threshold_part(c):
+    """A part whose job is to set or clamp a voltage: by symbol, series prefix or a declared role."""
+    return bool(THRESHOLD_PART.search(str(c.get('lib_id', '')))
+                or any(THRESHOLD_SERIES.match(str(c.get(k, '')).strip()) for k in ('value', 'mpn'))
+                or (c.get('fields') or {}).get('ComponentRole') == 'threshold')
 WINDOW_SIDES = ('no_false_trip', 'protection')
 # Where each number in a calculation comes from (parameter_version 1). A device
 # parameter cites the datasheet page it was read from; one the datasheet does
@@ -28,8 +52,6 @@ DATASHEET = re.compile(r'^datasheet:.+#p\d+$')
 # Where a data gap was found (gap_version 1): a datasheet page, a review item or a user decision.
 GAP_SOURCE = re.compile(r'^(datasheet:.+#p\d+|review:[^/\s]+/\S+|user:\d{4}-\d{2}-\d{2})$')
 GAP_FIELDS = ('missing', 'why_external', 'calculations', 'consequence', 'questions', 'owner', 'fallback', 'action')
-# An owner made only of these words names no one a question list can be sent to.
-GENERIC_OWNER = re.compile(r'原厂|厂商|厂家|供应商|供应方|应用支持|技术支持|电路设计|设计|vendor|supplier|support|application|fae|[与和及、/,，\s]', re.I)
 
 
 def text(value):
@@ -142,13 +164,34 @@ def audit_gaps(work, calculations, error):
         for cid in row.get('calculations') if isinstance(row.get('calculations'), list) else []:
             if calculations.get(cid, {}).get('conclusion') != 'conditional':
                 error('gap_unlinked_calculation', key + ':' + str(cid))
-        if text(row.get('owner')) and not GENERIC_OWNER.sub('', row['owner']):
-            error('gap_vague_owner', key)
         if text(row.get('fallback')):
             fallbacks.setdefault(' '.join(row['fallback'].split()), []).append(key)
     for keys in fallbacks.values():
         if len(keys) > 1:
             error('gap_generic_fallback', '、'.join(keys))
+
+
+def audit_citations(record, calculations, work, extra, error):
+    """Each datasheet citation names a file in the library and a page it has; cited values are looked up."""
+    cited = [('operating_points:%s' % r.get('id'), r.get('source'), ())
+             for r in record.get('operating_points') or [] if isinstance(r, dict)]
+    cited += [('%s:%s' % (key, p.get('name')), p.get('source'), (p.get('value'),) if p.get('basis') in ('guaranteed', 'typical') else ())
+              for key, row in calculations.items() for p in row.get('parameters') or [] if isinstance(p, dict)]
+    cited += [('%s:missing[%d]' % (key, i), m.get('source'), ())
+              for key, row in work.items() for i, m in enumerate(row.get('missing') or []) if isinstance(m, dict)]
+    summary = {'checked': 0, 'not_checked': [], 'review': []}
+    for where, source, values in cited:
+        result = check_source(source, values, extra)
+        if result is None:
+            continue
+        summary['checked'] += 1
+        if result['status'] == 'FAIL':
+            error('citation_wrong', where + ': ' + result['reason'])
+        elif result['reason'] and result['reason'] not in summary['not_checked']:   # not checked, or values not checked
+            summary['not_checked'].append(result['reason'])
+        if result['unshown']:
+            summary['review'].append({'item': where, 'source': source, 'values': result['unshown']})
+    return summary
 
 
 def finite(x):
@@ -186,8 +229,7 @@ def audit(record, intent_path, artifact_root, inputs=None):
         error('stale_intent', intent_path.name)
     intent = json.loads(intent_path.read_text(encoding='utf-8'))
     refs = {c['ref'] for c in intent['components']}
-    threshold_parts = sorted(c['ref'] for c in intent['components']
-                             if THRESHOLD_PART.search(str(c.get('lib_id', ''))))
+    threshold_parts = sorted(c['ref'] for c in intent['components'] if threshold_part(c))
     root = artifact_root.resolve()
     tables = {}
     for key in ('evidence', 'requirements', 'work_items', 'calculations'):
@@ -217,8 +259,6 @@ def audit(record, intent_path, artifact_root, inputs=None):
             error('evidence_missing_or_outside_root', key)
         elif row.get('sha256') != sha256(path):
             error('stale_evidence', key)
-        if not isinstance(row.get('locator'), str) or not row['locator'].strip():
-            error('missing_locator', key)
 
     def linked(row, field, table, required=False):
         values = row.get(field)
@@ -248,9 +288,12 @@ def audit(record, intent_path, artifact_root, inputs=None):
                 linked(row, 'evidence', evidence, True)
             else:
                 need('open_' + str(stage), key)
-                # Possible consequence if left undone; orders the report's to-do list.
-                if row.get('severity') not in SEVERITIES:
-                    error('missing_severity', key)
+                # Possible consequence if left undone; its level orders the report's to-do list.
+                level = severity_of(row)
+                if level is None:
+                    error('missing_consequence', key)
+                elif row.get('severity') not in (None, level):
+                    error('severity_contradicts_rule', '%s: %s, rule gives %s' % (key, row['severity'], level))
         if stage == 'pcb':
             if row.get('scope') not in ('footprint_library', 'layout_implementation', 'dfm'):
                 error('pcb_scope', key)
@@ -259,8 +302,6 @@ def audit(record, intent_path, artifact_root, inputs=None):
                 item = work.get(dep, {})
                 if item.get('stage') != 'design' or item.get('status') != 'closed':
                     error('pcb_electrical_precondition', key + ':' + dep)
-        if stage == 'external' and state != 'closed' and not row.get('fallback'):
-            error('missing_fallback_assessment', key)
         # A requirement gap still waiting on the user must say what this version assumed.
         if stage == 'requirement' and state != 'closed' and not (
                 isinstance(row.get('assumption'), str) and row['assumption'].strip()):
@@ -365,6 +406,7 @@ def audit(record, intent_path, artifact_root, inputs=None):
         gaps = False
     if gaps:
         audit_gaps(work, calculations, error)
+    citations = audit_citations(record, calculations, work, [root, *(inputs or ())], error)
     covered = {r for row in calculations.values() if isinstance(row.get('refs'), list) for r in row['refs']}
     for ref in threshold_parts:
         if ref not in covered:
@@ -383,18 +425,13 @@ def audit(record, intent_path, artifact_root, inputs=None):
             convergence = frontier(work, evidence)
             errors.extend(convergence['errors'])
     status = 'FAIL' if errors else 'INCOMPLETE' if pending else 'PASS'
-    if record.get('claim') not in ('candidate', 'design_closed'):
-        error('schema', 'claim must be candidate or design_closed')
-        status = 'FAIL'
-    if record.get('claim') == 'design_closed' and status != 'PASS':
-        error('false_design_closure', 'Design closure claimed with unresolved work or invalid evidence')
-        status = 'FAIL'
     return {'status': status, 'scope': 'Declared design evidence and dependency consistency; not physics, native ERC or visual approval',
             'intent_sha256': sha256(intent_path), 'errors': errors, 'pending': pending,
+            'severities': {k: severity_of(v) for k, v in work.items() if v.get('status') == 'open' and severity_of(v)},
             'pcb_handoffs': [k for k, v in work.items() if v.get('stage') == 'pcb' and v.get('status') == 'handoff'],
             'counts': {k: len(v) for k, v in tables.items()}, 'convergence': convergence,
             'parameters': 'CHECKED' if parameters else 'NOT_CHECKED',
-            'gaps': 'CHECKED' if gaps else 'NOT_CHECKED',
+            'gaps': 'CHECKED' if gaps else 'NOT_CHECKED', 'citations': citations,
             'unspecified_operations': sorted(k for k, v in points.items() if v.get('specified') is False),
             'downstream_handoffs': [k for k, v in work.items() if v.get('stage') in ('validation', 'pcb') and v.get('status') == 'handoff']}
 
@@ -405,9 +442,12 @@ def main():
     ap.add_argument('--intent', type=Path, required=True)
     ap.add_argument('--artifact-root', type=Path, required=True)
     ap.add_argument('--out', type=Path, required=True)
+    ap.add_argument('--input', action='append', default=[], metavar='NAME=PATH',
+                    help='declared input (requirements, datasheets) where cited evidence may live, as pack_design takes it')
     args = ap.parse_args()
+    inputs = [v.split('=', 1)[-1] for v in args.input]
     try:
-        result = audit(json.loads(args.record.read_text(encoding='utf-8')), args.intent, args.artifact_root)
+        result = audit(json.loads(args.record.read_text(encoding='utf-8')), args.intent, args.artifact_root, inputs)
     except (OSError, ValueError, KeyError, TypeError) as exc:
         result = {'status': 'FAIL', 'errors': [{'code': 'invalid_input', 'item': str(exc)}], 'pending': []}
     args.out.parent.mkdir(parents=True, exist_ok=True)

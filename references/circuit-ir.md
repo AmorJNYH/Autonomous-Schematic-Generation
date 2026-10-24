@@ -10,7 +10,6 @@
 | --- | --- | --- |
 | SKiDL `Circuit/Part/Pin/Net` | 电路是器件与真实引脚构成的连接图，图面属性是另一个层次 | `circuit_ir.py` 编译器；真实库引脚解析；独立 presentation JSON |
 | SKiDL `Node`、`@subcircuit`、`tag` | 子电路复用；实例路径和稳定标签；父子接口 | `modules/root/instances/bindings`；稳定 component ID、明确 reference map 和 UUID |
-| SKiDL `Bus/Interface` | 有序网络集合及命名接口 | 模块端口和有序 scalar bus；编译记录保持每一位的网络身份 |
 | SKiDL `generate_schematic` | 按功能分块、放置布线、有限重试 | 按块选模板，测量占用，拼入允许纸张；3 次有限扩距重排并保留失败记录 |
 | circuit-synth `Component.to_dict`、`NetlistExporter.to_dict` | 器件字典、引脚号/名称/类型、网络连接、递归子电路、属性元数据 | `import_circuit_synth.py` 导入；`importers.py` 适配两种已核实的 net 形式 |
 | circuit-synth 连接感知放置 | 使用已知连接组织器件 | `functional` 按连接遍历，高扇出网络不支配顺序；外加本体/字段/出线区硬占用 |
@@ -65,9 +64,7 @@ SKiDL 对象桥读取已建立的真实对象；circuit-synth JSON 不区分局�
 - 库中多个单元自动展开为 `U1:1/U1:2/U1:3` 图形视图，同一物理器件仍是 U1。
   全部单元都必须有位置。支持已覆盖的可见独立脚单元；重复/叠加编号、隐式
   隐藏脚仍拒绝。LM358 只含电源脚的独立单元用真实内部引脚坐标形成保守包络。
-- `buses:[{"name":"DATA","members":["DATA0","DATA1"]}]` 保存位序与标量网络。
-  它不会自动生成 KiCad 图形 bus/entry。`class/constraints/evidence` 等电气
-  依据保存在编译记录，电气审查仍为 PENDING，不会因属性齐全变成 PASS。
+- `class/constraints/evidence` 等电气依据保存在编译记录，电气审查仍为 PENDING，不会因属性齐全变成 PASS。
 
 ID/网络名使用字母、数字、`_+-`；层次分隔符由编译器管理。复杂外部名称需
 显式映射并保留来源。未知结构字段报错，不静默丢弃拼写错误。
@@ -94,10 +91,10 @@ ID/网络名使用字母、数字、`_+-`；层次分隔符由编译器管理。
 | template | 支持角色 | 验证范围 |
 | --- | --- | --- |
 | `rc_filter` | input, series, shunt, output | 两组重复 RC、参数变化、KiCad 逐脚验证 |
-| `divider` | input, upper, lower, output | 角色位置模板；须对目标器件跑完整 KiCad 回归 |
-| `capacitor_bank` | capacitor | 12 只长 Value 电容、额定值、MPN、DNP 回读 |
+| `divider` | input, upper, lower, output | 角色位置模板；须对目标器件跑 KiCad 逐脚验证 |
+| `capacitor_bank` | capacitor（其他角色按序排入阵列） | 12 只长 Value 电容、额定值、MPN、DNP 回读 |
 | `ldo` | input, input_cap, regulator, output_cap, output, control, feedback | 角色模板；不构成某款 LDO 的电气设计验证 |
-| `buck_async` | input, input_cap, regulator, diode, inductor, output_cap, output, bootstrap, feedback, compensation, control | 必须有 regulator/inductor/diode；不是通用 Buck 电路生成器 |
+| `buck_async` | input, input_cap, regulator, diode, inductor, output_cap, output, bootstrap, feedback, compensation, control | 角色位置模板；不是通用 Buck 电路生成器 |
 | `integrated_power` | input, input_cap, regulator, output_cap, output, feedback, control | 不强加外部电感/开关节点 |
 | `functional`（默认） | 任意功能角色 | 连接遍历组织、真实边界预算；LM358 三单元 KiCad 验证 |
 
@@ -128,7 +125,7 @@ KiCad 验证还自动执行内部引脚与符号图形衔接检查，并输出 `
 可用 `--reference-contract path/to/contract.json` 将资料、封装引脚及外围事实纳入通过条件；
 格式与边界见 [符号与外围约束](symbol-and-peripheral-contracts.md)。未提供记录不代表资料已核验。
 引脚网表之外，还回读 Value、Footprint、MPN、额定值、自定义字段、DNP、单元
-数量和全部物理引脚（含 NC）。精确字形/引脚名称与编号仍需 KiCad 全页及局部看图检查。
+数量和全部物理引脚（含 NC）。精确字形/引脚名称与编号仍需 KiCad 全页及局部图面审阅。
 
 ```bash
 python3 scripts/build_circuit.py revised.circuit.json presentation.json \
@@ -137,9 +134,8 @@ python3 scripts/build_circuit.py revised.circuit.json presentation.json \
 ```
 
 基线必须是本构建器已通过自动验证的结果，工程 ID 和源文件 hash 一致。
-锁定模块电气内容、库脚表或模板配置改变即失败。保留其位置，重新生成后
-逐一比较符号、字段、导线、标签、注释及 UUID；有任何漂移仍失败。
-输出 `electrical-diff.json`。这提供新目录中的**受保护再生成**，并非任意已有
+锁定模块电气内容或库脚表改变即失败；保留其位置。锁定只保证电气内容不变，
+图面每版都按本版 PDF 重新看图，不因锁定而免看。输出 `electrical-diff.json`。这提供新目录中的**受保护再生成**，并非任意已有
 KiCad 工程的原位增量编辑；其他模块加入后若无法同时满足锁定和几何约束，
 必须调整候选或换合适 writer，不能移动锁定模块来取得通过。
 

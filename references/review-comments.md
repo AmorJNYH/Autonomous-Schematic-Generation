@@ -26,7 +26,7 @@
 |---|---|---|
 | `REDESIGN` | 改图 | `changes`：改了哪些位号/网络/页（每条点名位号或页名），及复验证据 `evidence`；打包时对照前一版设计要求表，点名的位号必须真的变了 |
 | `CALC_DOC` | 补计算/补文档 | `changes`：补的计算编号或 `设计资料/` 里的文件名；没有改到电路的不叫改图 |
-| `DESIGN` | 补设计（计算、选型、配置） | `work_items`：design 阶段的待办，待办里写 `progress`（本版算到哪、定了什么），不能只抄意见 |
+| `DESIGN` | 补设计（计算、选型、配置） | `work_items`：design 阶段的待办，待办里写 `progress`（本版算到哪、定了什么），报告在待办下列出 |
 | `OBTAIN_DATA` | 补资料 | `work_items`：external 阶段的待办（含替代方案评估） |
 | `ASK_USER` | 请用户定需求 | `detail`：要用户决定的具体取舍；引用的 `work_items` 须为 requirement 阶段 |
 | `HANDOFF` | 交给后续环节 | `work_items`：validation 或 pcb 阶段、状态 handoff 的待办 |
@@ -36,7 +36,7 @@
 - 意见里说“缺资料”“证据不足”时，先在已有资料里读算；能回答的直接给出结论（`DECLINE` 并附依据，
   或 `REDESIGN`），不要原样变成待办。意见写着“已读某页，再按 … 复算”的，是审查方没算完的计算，
   按 `DESIGN` 自己算完给结论；标准规定的量（预期短路电流、海拔系数）按条款取值后 `DECLINE` 或 `REDESIGN`。
-- 意见要固件镜像、读回、量产校准结果的：配置表按 `DESIGN` 定稿，镜像验证按 `HANDOFF` 交固件/生产；
+- 意见要固件镜像、读回、量产校准结果的：配置表按 `DESIGN` 定型，镜像验证按 `HANDOFF` 交固件/生产；
   意见只要“厂家保证寿命末期参数”这类不会有人给的数据，用声明的折减系数计算后 `DECLINE` 并附依据。
 - 同一方法套在几个对象上的几条意见（几路光耦 CTR、几只电解寿命）合并成一个 design 待办、列全位号。
 - 意见只要求实物测试结果（能效、EMC、闭壳热、寿命、实际寄生）时用 `HANDOFF`，写清验证方法，不改图。
@@ -47,8 +47,8 @@
 
   | cause | 含义 | 必须随之发生的事 |
   |---|---|---|
-  | `rule_missing` | 没有规则或门禁检查这件事 | 在 `scripts/` 加检查，`lessons.json` 写明文件 |
-  | `rule_not_enforced` | 规则有，但没有脚本强制，被跳过了 | 把规则做成门禁，`lessons.json` 写明文件 |
+  | `rule_missing` | 没有规则或自动检查覆盖这件事 | 在 `scripts/` 加检查，`lessons.json` 写明文件 |
+  | `rule_not_enforced` | 规则有，但没有脚本强制，被跳过了 | 把规则做成自动检查，`lessons.json` 写明文件 |
   | `knowledge_missing` | 技能和知识库都没有这条知识 | 补 `references/` 或知识库，`lessons.json` 写明文件和行 |
   | `knowledge_wrong` | 有这条知识但是错的 | 改正并记来源，`lessons.json` 写明文件和行 |
   | `judgment` | 规则和知识都在，判断还是错了 | `lessons.json` 写 `why_not_rule`：为什么规则和知识拦不住 |
@@ -57,6 +57,9 @@
   `cause` 不是 `none` 时，`record/lessons.json` 里必须有 `source` 为 `review:<审查目录>/<意见编号>` 的事件，归因一致，
   `change` 指向对应目录下的具体文件；报告会核对。归因先于修改：归因错了，修的就是错的地方。
 
+  上一轮审查提过的同一问题再次出现时，该条写 `recurs_from: "review:<上一轮审查目录>/<意见编号>"`。标了复发的意见
+  不能归因为 `judgment`：上一轮没有拦住，说明缺规则、规则没执行或知识有缺口。报告在处理说明后注明“复发自 …”。
+
 ### 审查方对选型与归因的复核
 
 SR 按其 `references/selection-review.md` 独立复核 `selection.json` 和上一轮的归因，结果以待办编号回到报告里：
@@ -64,7 +67,7 @@ SR 按其 `references/selection-review.md` 独立复核 `selection.json` 和上�
 - 角色 `DISAGREE` 并给出候选之外的型号：按 `DESIGN` 登记，把该型号加进候选、按决定性条件判定后再定；改了选定型号的记 `REDESIGN`。
 - `DISAGREE` 指出淘汰理由有误：改 `selection.json` 里该候选的 `values`/`reason`，`cause` 多为 `knowledge_wrong`。
 - `conditions_complete: false`：缺的决定性条件补进 `references/core-part-selection.md` 或 `part-roles.md`，`cause` 为 `knowledge_missing`。
-- 归因不同意：改 `lessons.json` 与 `review-responses.json` 的 `cause`，按新的归因改对应文件；同一条意见复发而上一轮归因为 `judgment` 的，本轮不能再归 `judgment`。
+- 归因不同意：改 `lessons.json` 与 `review-responses.json` 的 `cause`，按新的归因改对应文件；复发的意见按上面的 `recurs_from` 处理，不能归 `judgment`。
 
 ## 2. 意见附带的改法
 
@@ -82,4 +85,5 @@ SR 按其 `references/selection-review.md` 独立复核 `selection.json` 和上�
 `render_design_report.py` 会检查这份登记：每条意见必须有处理方式和对应的必填内容，
 引用的待办必须存在于 `design-closure.json`，阶段也要对得上；`detail` 不能重复；`DESIGN` 引用的未关闭待办要有 `progress`；
 `REDESIGN` 的 `changes` 要点名位号或页；`CALC_DOC` 的 `changes` 要是计算编号或设计资料文件。
+`sources` 的 `path` 读得到时核对 `sha256`，不一致算记录问题；读不到时报告写明“来源未核对”。
 报告在摘要后会写明本版多少条意见真正改了图或补了计算、多少条只是登记。

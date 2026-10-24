@@ -72,6 +72,22 @@ class RailRoleTests(unittest.TestCase):
                 self.assertEqual({'role': 'decoupling', 'why': 'both pins on rails'},
                                  sheet.plan['parts']['R_TEST'])
 
+    def test_declared_net_role_overrides_the_glyph_and_component_role_names_a_resistor(self):
+        rails = {'SUPPLY_A': 'power:+5V', 'SUPPLY_B': 'power:+3V3'}
+        intent = two_pin()
+        intent['net_roles'] = {'SUPPLY_B': 'return'}       # drawn with an upward glyph, declared a return
+        self.assertEqual('decoupling', Sheet(intent, rails=rails).plan['parts']['R_TEST']['role'])
+        intent = two_pin(lib='Device:Fuse')   # a library part outside Device:R
+        self.assertEqual('decoupling', Sheet(intent, rails=rails).plan['parts']['R_TEST']['role'])
+        intent['components'][0]['fields'] = {'ComponentRole': 'resistor'}
+        self.assertEqual('series', Sheet(intent, rails=rails).plan['parts']['R_TEST']['role'])
+
+    def test_power_flag_needs_a_supply_declaration_however_it_is_placed(self):
+        sheet = Sheet(two_pin(), rails={'SUPPLY_A': 'power:+5V'})
+        sheet.place('R_TEST', (50.8, 50.8))
+        with self.assertRaisesRegex(ValueError, 'no approved supply declaration'):
+            sheet.power('R_TEST.1', symbol='power:PWR_FLAG')
+
     def test_existing_bank_divider_lane_anchor_and_net_roles_snapshot(self):
         sheet = Sheet(copy.deepcopy(INTENT), rails=RAILS, external=EXTERNAL)
         self.assertEqual({

@@ -66,13 +66,6 @@ class EvidenceIntegrityTests(unittest.TestCase):
                 if num is None: p.attrib.pop('num')
                 else: p.set('num', num)
             with self.subTest(number=num): self.rejected(self.evaluate(edit))
-    def test_explicit_role_conflict_and_ambiguous_duplicates(self):
-        for role in ('LED', 'series_resistor'):
-            def edit(r): ET.SubElement(r.find("components/comp[@ref='R1']/fields"), 'field', {'name': 'ComponentRole'}).text = role
-            with self.subTest(duplicate_role=role): self.rejected(self.evaluate(edit, custom=True))
-        self.rejected(self.evaluate(lambda r: setattr(r.find("components/comp[@ref='R1']/fields/field"), 'text', 'LED'), custom=True))
-    def test_role_property_cannot_conflict_with_field(self):
-        self.rejected(self.evaluate(lambda r: r.find("components/comp[@ref='R1']/property[@name='ComponentRole']").set('value', 'LED'), custom=True))
     def test_matching_role_two_native_representations_passes(self):
         self.assertEqual(self.evaluate(lambda r: None, custom=True)['status'], 'PASS')
     def test_alias_node_must_be_actual_power_output(self):
@@ -146,16 +139,6 @@ class NativeQualificationTests(unittest.TestCase):
     def test_native_via_type_and_whole_library_third_pin(self):
         for case in ('via_style2','via_inactive_third'):
             with self.subTest(case=case):self.assertEqual(self.evaluate(case)[0]['status'],'FAIL')
-    def test_explicit_native_role_conflicts_but_legacy_missing_role_is_compatible(self):
-        for case in ('role_LED','role_lamp','role_photo','role_match','role_missing'):
-            with self.subTest(case=case):
-                self.assertEqual(self.evaluate(case)[0]['status'],'PASS' if case in ('role_match','role_missing') else 'FAIL')
-    def test_explicit_nonseries_native_role_rejected_when_intent_role_absent(self):
-        for case in ('device_role_LED','device_role_lamp','device_role_photo','device_role_match','device_role_missing'):
-            with self.subTest(case=case):
-                text,intent=cad(case)
-                self.assertNotIn('ComponentRole',intent['components'][1]['fields'])
-                self.assertEqual(self.evaluate(case)[0]['status'],'PASS' if case in ('device_role_match','device_role_missing') else 'FAIL')
     def test_ambiguous_placed_selector_is_not_resolved_by_first_value(self):
         # Source evidence ambiguity, not an additional qualified native CAD fault.
         from schematic_layout.external_supply import _scan

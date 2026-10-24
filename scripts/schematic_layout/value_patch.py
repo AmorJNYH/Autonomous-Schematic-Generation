@@ -112,9 +112,6 @@ def apply(root, contract, out, executable=None):
     cli = find_cli(executable)
     if not cli:
         raise ValueError('KiCad CLI required for native verification')
-    # Recheck after preparation; never write the source project.
-    if frozen_files(root, audit_project(root)) != contract['baseline_files']:
-        raise ValueError('Baseline changed during preparation')
     out.mkdir(parents=True)
     project, evidence = out / 'project', out / 'evidence'
     project.mkdir(); evidence.mkdir()

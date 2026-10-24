@@ -35,8 +35,8 @@ ASG 负责需求到电路的方案可行性、选型依据、设计计算和功�
 
 | 事项 | 交给 |
 | --- | --- |
-| 独立的电气审查和定稿结论 | 由审查方给出；ASG 只做自检，并处理收到的审查意见 |
-| PCB封装库、焊盘/孔/钢网、布局布线、DFM与散热实现 | 《结构与PCB设计要求》交接文档 |
+| 独立的电气审查和设计定型结论 | 由审查方给出；ASG 只做自检，并处理收到的审查意见 |
+| PCB封装库、焊盘/孔/钢网、布局布线、DFM与散热实现 | 《结构与PCB设计要求》技术转交文档 |
 | 生产放行、PCB、SI/PI、EMC | 后续环节 |
 
 ## ASG 纲要（核心标准）
@@ -48,10 +48,10 @@ ASG 负责需求到电路的方案可行性、选型依据、设计计算和功�
 - **输入**：需求、器件知识库、电路模式库、已有工程/审查意见
 - **设计**（第 0–3 步）：需求追溯 → 架构分页 → 选型与计算 → 整板设计要求表
 - **绘图**（第 4–5 步）：页面方案 → 按绘图纲要 O1–O8 写图页脚本
-- **验证**（第 6–7 步）：KiCad 一键门禁 → 看图检查
+- **验证**（第 6–7 步）：KiCad 一键自动检查 → 图面审阅
 - **交付**（第 8 步）：四件套目录 + 本版学到的东西
 - **支撑**：KiCad CLI（唯一证据来源）、`schematic_layout`（布图与检查）、`references/`（规则与知识）、
-  改进闭环（lessons → 归因 → 修改 → 回归）
+  持续改进（lessons → 归因 → 修改 → 合成测试）
 
 ### 核心原则
 
@@ -60,13 +60,13 @@ ASG 负责需求到电路的方案可行性、选型依据、设计计算和功�
 - **P3 真值**：电路以确切 MPN 的数据手册为准。
 - **P4 可读**：页面结构按绘图纲要 O1–O8 决定，坐标从引脚几何推出；可读性是交付标准。
 - **P5 失败改结构，不改计数**：不靠 PWR_FLAG、豁免、改引脚类型或标签来掩盖问题。
-- **P6 责任边界**：设计闭环由 ASG 负责，只做自检；独立审查交给 schematic-review。
-- **P7 进步**：每版必须记下学到的东西；技能只因有来源的事件而改，并跑回归保护。
+- **P6 责任边界**：设计完成由 ASG 负责，只做自检；独立审查交给独立审查方（schematic-review 技能）。
+- **P7 进步**：每版必须记下学到的东西；技能只因有来源的事件而改；每处改动附复现该事件的合成测试，全部测试通过后才提交。
 
 ### 纲要的修改
 
-本节（架构、P1–P7、主流程步骤与各步门禁）以及绘图纲要 O1–O8，任何增、删、改或重排，都须先把改动草案交给人确认后才能写入。
-改进闭环中归因到纲要的事件，只在 `lessons.json` 和台账里登记为提案，不直接修改。
+本节（架构、P1–P7、主流程步骤与各步自动检查）以及绘图纲要 O1–O8，任何增、删、改或重排，都须先把改动草案交给人确认后才能写入。
+持续改进中归因到纲要的事件，只在 `lessons.json` 和台账里登记为提案，不直接修改。
 `scripts/` 和 `references/` 中的实现细节可以按事件修改，但一旦与纲要冲突，就转为纲要提案。
 经确认的改动在 `docs/improvement-ledger.md` 的条目里写 `Approved: user:<日期>` 和 `Outline: <哈希>`
 （`python3 scripts/check_ledger.py --outline-hash` 输出当前哈希）；纲要文字与最新确认的哈希不一致时 `check_ledger.py` 报 FAIL。
@@ -144,7 +144,7 @@ ASG 负责需求到电路的方案可行性、选型依据、设计计算和功�
   有可行的就必须采用；确实没有才保留，在 `operating_points` 写明已评估的替代做法和不可行的理由，并挂 external 厂家确认待办。
   有可行替代却保留手册未规定的方式，审计 FAIL，`pack_design.py` 拒绝打包。
 - 核实决定架构的确切型号/固件能力；未证实的依赖保持条件状态，并评估替代实现。损耗预算列出主要遗漏项及有依据的边界，不能用子总和证明达标。
-- 原理图阶段 `footprint` 可以留空。必须核实所选订货变体、实际物理脚号（含EP/Kelvin）及电气/热额定适用条件；PCB封装库制作、焊盘尺寸、孔径、钢网、courtyard、布线与DFM交给PCB阶段，不能作为原理图定稿门槛。既有封装候选仅作为未确认的后续环节输入，不用填充率证明电气选型完成。
+- 原理图阶段 `footprint` 可以留空。必须核实所选订货变体、实际物理脚号（含EP/Kelvin）及电气/热额定适用条件；PCB封装库制作、焊盘尺寸、孔径、钢网、courtyard、布线与DFM交给PCB阶段，不能作为原理图设计定型的门槛。既有封装候选仅作为未确认的后续环节输入，不用填充率证明电气选型完成。
 - **资料规则**：新下载的器件数据手册存入工程，同时复制到
   `~/Documents/知识库/HardwareWiki/raw/Datasheet/<分类>/<子类>/`，文件名为 `Vendor - PartNumber.pdf`
   （厂商简称按 `raw/Datasheet/VENDORS.yaml`，分类按 `raw/Datasheet/元器件体系/器件统一分类大表.md`，
@@ -166,7 +166,7 @@ ASG 负责需求到电路的方案可行性、选型依据、设计计算和功�
 功能块及每块的位号、主路径、rails、出页网络及目的功能/页码、标签边界。先保证一条功能路径易读，再决定拆页或加大纸张。
 方案表随交付保存为 `record/page-plan.json`（每页 `file`、`reader_tasks`、`blocks`、`patterns`），本页每个器件都要属于一个功能块，
 每个功能块标注所用模式与做法 `"<模式文件名>#<做法名>"`（方案表第一页是架构页，免标；没有模式的块要在 `lessons.json` 登记）；
-看图检查按它逐条追路径。见 [human-readable-routing.md](references/human-readable-routing.md) 第 1 节。
+图面审阅按它逐条追路径。见 [human-readable-routing.md](references/human-readable-routing.md) 第 1 节。
 纸张在画完后定：内容能放进 A4 就用 A4；一页只剩零散小块时并页，不把小电路摊在 A3 上。
 
 - 按拓扑选结构（Buck、LDO、隔离反激、滤波、MCU 各不相同），见
@@ -194,7 +194,7 @@ for n, (key, page) in enumerate(page_intents(board, rails=RAILS).items(), 1):
   有意偏离绘图纲要时用 `s.justify(对象, 理由)` 记录。把方案表的功能块传给 `Sheet(..., blocks={块名: [位号]})`：
   同一块内的器件之间不许用局部连接标签代替导线（HR-01），审计会列出只连一块的标签。
 - 间距只为通过检查而加大，通过后缩回：gap、stub、pitch、lead 和电源符号/标签引线超过 12 格（约 15 mm）
-  会进结构审计，要么缩小，要么 `justify(对象, 理由, conflict=避让的器件/引脚/text:字段)` 写明避让了什么；
+  会进结构审计，要么缩小，要么 `justify(对象, 理由)` 写明为什么需要这段间距；
   一页超过 3 处间距豁免本身就是审计不通过，改为折行或重新锚定。不得用加大间距把一页摊满。
 - 先列真实 planned 局部网名及其字号。在相应 series 段或 own-pin stub 放置前，显式用
   `max(原gap, s.name_run_steps(原net, font=原字号))` 预留直段，之后仍调用原 `s.name`。
@@ -224,6 +224,7 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
 符号引脚完整性，分立器件符号含义与手册/型号后缀是否一致（`discrete_semantics`），可读性自动检查（零异网交叉、零三折以上两端连线、
 内容放得进更小纸张的页算 FAIL），以及每个有效页面的几何检查，汇总到 `summary.json`。
 只有全部自动检查为 PASS 时结果才是 `AUTOMATED_PASS`。
+可以用 `scripts/deliver.py <交付目录>` 一次跑完出图、验证到打包，参数记在 `record/deliver.json`，见 [交付与设计报告](references/delivery-report.md)。
 
 - 新设计提供 `--design-closure`，核对需求实现、外部依赖、计算覆盖和证据是否最新；格式与边界见 [设计待办记录](references/design-closure.md)。未提供时明确为 NOT_CHECKED，不能据此声明全流程完成。
 - 新设计要求 ERC 零违规。重画工程时保留基线和最终两份原始 ERC，逐条确认没有新增违规，并披露继承的问题。
@@ -231,14 +232,15 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
   不凭位号或网名文字猜问题对象。无法对应时保留原违规与待核边界，见 [project-verification.md](references/project-verification.md#erc-summary-object-binding)。
 - 几何检查只覆盖本次 KiCad 导出中已合格的对象，范围与未支持对象见 [native-geometry.md](references/native-geometry.md)；
   外部 JSON 回执不能授权放行。`geometry` 为 INSUFFICIENT 时保留缺口并在 KiCad 渲染图上核对，有限 PASS 不等于整案通过。
-  库里隐藏的引脚号/脚名不计；可见但无法原生核对的引脚文字列在 `geometry.render_review_items`，
-  不算缺口，第 7 步看图检查必须逐页覆盖这些对象并在 visual-review.json 里写明。
+  库里隐藏的引脚号/脚名不计；可见但无法由 KiCad 导出核对的引脚文字列在 `geometry.render_review_items`，
+  不算缺口，第 7 步图面审阅必须逐页覆盖这些对象并在 visual-review.json 里写明。
 - 图面检查只有三种结果：PASS、FAIL（画图问题，如外框间距不足 1.27 mm、导线交叉不打点、注释压线）、
   INSUFFICIENT（检查器覆盖不到的对象）。FAIL 由 ASG 改图关闭，不交给人复核；可读性或几何 FAIL 时
-  `pack_design.py` 拒绝打包。只有 INSUFFICIENT 缺口留给看图检查核对。
-- 板级 `Net-(...)` 式网名须有来源证据，仅有 XML 时保持 INSUFFICIENT，见
-  [project-verification.md](references/project-verification.md#automatic-looking-names-need-source-evidence)；
+  `pack_design.py` 拒绝打包。只有 INSUFFICIENT 缺口留给图面审阅核对。
+- KiCad 自动生成的 `Net-(...)` 网名不与设计要求表比名；设计要求表里的网名必须显式标注在图上，与网表一致，见
+  [project-verification.md](references/project-verification.md#automatic-names-are-not-compared)；
   编码斜杠层次字段只用 [schematic-drawing-standards.md](references/schematic-drawing-standards.md) 的有限回退，不推广。
+- 工程的 ERC 规则不得设为忽略（`simulation_model_issue`、`footprint_filter` 除外），一键验证读取工程设置核对。
 - 失败时修改相应页面脚本，在新的运行目录重新生成并验证。不得为了降低计数而加 PWR_FLAG、加排除项或改引脚类型。
 - 受控的自动结构资格有两类，都在设计要求表中逐网声明、用 `Sheet.power_flag()` 每网放一个 PWR_FLAG，由 `external_supply` 自动检查核对：
   只由连接器引入、板上没有电源输出脚驱动的电源或地（`external_supply`）；经一颗串联电阻、电感、磁珠或保险丝
@@ -252,14 +254,15 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
   列出的每个器件（不限核心器件）都要在外围电路核对记录里按数据手册名字逐脚对应，并在设计报告中列出这些脚；
   否则按脚名核对时会对不上。
 
-### 7. 看图检查
+### 7. 图面审阅
 
 打开导出的 PDF，逐页按 `page-plan.json` 的读者任务追一遍：主路径、每个支持网络到对应引脚和正确回路、
 重复通道、每个回路域和隔离跨越。每页记录的路径条数不少于读者任务数；“看过所有页”“与上一版像素一致”都不算证据。
-`geometry.render_review_items` 里的引脚文字逐器件处置：每条处置点名该器件并写出在图上看到了什么
-（脚号在引脚外侧、脚名未被导线压住……），同一句话不能套用到不同器件；`render_design_report.py` 会检查这两点。
-状态写 待返工（REWORK_REQUIRED）、待看图检查（REVIEW_PENDING）或 已看图检查（REVIEWED）。
-用户否决会重新打开看图检查。见 [human-readable-routing.md](references/human-readable-routing.md) 第 4 节。
+`geometry.render_review_items` 里的待看图对象逐条处置：每条处置写出在本版 PDF 上看到了什么
+（脚号在引脚外侧、脚名未被导线压住……）；没改动的页面也按本版 PDF 重新审阅，不沿用上一版的处置。
+`render_design_report.py` 核对每个待看图对象都有处置，且处置不写“沿用”“同上一版”。
+状态写 待返工（REWORK_REQUIRED）、待图面审阅（REVIEW_PENDING）或 已完成图面审阅（REVIEWED）。
+用户否决会重新打开图面审阅。见 [human-readable-routing.md](references/human-readable-routing.md) 第 4 节。
 
 ### 8. 交付
 
@@ -271,16 +274,16 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
   （`rule_missing`/`rule_not_enforced` 改 `scripts/`，`knowledge_missing`/`knowledge_wrong` 改 `references/` 或知识库，
   `judgment` 写 `why_not_rule`）和改了哪个文件的哪一行；确实没学到的写 `cause: none` 并引用核对过的页码。
   泛泛的总结不算，报告会拒绝。审查意见的归因同时写进 `review-responses.json` 的 `cause`，见 [处理审查意见](references/review-comments.md)。
-  技能或知识库改完后，在 `docs/improvement-ledger.md` 加条目（Event/Causes/Changed 三行，`scripts/check_ledger.py` 检查），
-  再跑 `scripts/run_regression.py` 确认已登记的板子没有变差。
+  技能或知识库改完后，在 `docs/improvement-ledger.md` 加条目（Event/Changed 两行，`scripts/check_ledger.py` 检查），
+  再跑全部合成测试。
 - 交付目录只有下面四样，由 [交付与设计报告](references/delivery-report.md) 规定，`pack_design.py` 检查：
 
 ```
 <交付目录>/
-  设计报告.md     唯一给人看的文件：render_design_report.py 生成，agent 只通过 notes.json 补白话
+  设计报告.md     唯一给人看的文件：render_design_report.py 由记录生成，notes.json 的摘要与说明和记录按同一套专业术语写
   原理图/         KiCad 工程（根图、各页、项目符号库与封装库）、schematic.pdf、netlist.xml、BOM.csv
   设计资料/       跨版本有效、每版更新的设计文档（方案与选型依据、PCB与结构要求、磁件设计单等）
-  record/         设计要求表、页面方案表、待办处理情况、自检结果、看图检查、审查意见处理、本版用到的计算、
+  record/         设计要求表、页面方案表、待办处理情况、自检结果、图面审阅、审查意见处理、本版用到的计算、
                   图页脚本、manifest.json（需求、原厂资料、前一版设计按路径+SHA-256 登记，不复制）
 ```
 
@@ -290,6 +293,7 @@ python3 <skill>/scripts/pack_design.py <交付目录> --input requirements=<需�
   --input datasheets=<资料目录> [--input previous=<前一版交付目录>]
 ```
 
+也可以用 `deliver.py <交付目录>` 按固定顺序一次跑完生成报告、写交付证据、新鲜度检查和打包，见第 6 步。
 报告如实写出各项自检的 PASS/FAIL/INSUFFICIENT 及数量（含零）。历史版本快照、日志、仿真中间文件、
 审查方的结果都不放进交付目录。
 
@@ -308,7 +312,7 @@ python3 <skill>/scripts/pack_design.py <交付目录> --input requirements=<需�
 - 标签角色：全局标签只用于出页网络；电源轨和回路用 Value 等于网络名的电源符号；隔离的回路不能用通用 GND。
 - DNP 器件保留连线和焊盘，它不等于 IC 的 NC 引脚。
 - 不得静默拍平已有层次工程；草稿图生成在新目录，确认基线未变后才写回原工程。
-- P1：`AUTOMATED_PASS` 只代表脚本自动检查通过；数据手册审查和看图检查另行完成。如实报告缺口。
+- P1：`AUTOMATED_PASS` 只代表脚本自动检查通过；数据手册审查和图面审阅另行完成。如实报告缺口。
 - 给人看的文字一律用中文：`design-closure.json` 的假设、没算进去的项、核对项名称、待办、实现说明和 notes 都会原样进报告；
   器件型号、单位和缩写（PFC、OVP）可以保留。计算脚本里写的说明也按此写。`render_design_report.py` 发现英文句子会报问题。
 
@@ -322,14 +326,14 @@ python3 <skill>/scripts/pack_design.py <交付目录> --input requirements=<需�
 | 从需求写设计要求表 | [requirements-to-intent.md](references/requirements-to-intent.md) |
 | 架构页、参考设计外围、学习工程师图面 | [reference-driven-board-design.md](references/reference-driven-board-design.md) |
 | 核心器件从哪找候选、怎么比较、`selection.json` | [core-part-selection.md](references/core-part-selection.md) |
-| 技能怎样持续改进：事件、归因、台账、回归 | [docs/improvement-plan.md](docs/improvement-plan.md)、每版的固定动作 [docs/operating-cadence.md](docs/operating-cadence.md) |
+| 技能怎样持续改进：事件、归因、台账、合成测试 | [docs/improvement-plan.md](docs/improvement-plan.md)、每版的固定动作 [docs/operating-cadence.md](docs/operating-cadence.md) |
 | 每类器件干什么、选它看什么参数（按知识库分类） | [part-roles.md](references/part-roles.md) |
 | 一个功能通常怎么实现、有几种做法、各自的必算项与已知坑 | [circuit-patterns.md](references/circuit-patterns.md) 与 `references/circuit-patterns/` |
 | 选符号、引脚表、外围电路要求 | [symbol-and-peripheral-contracts.md](references/symbol-and-peripheral-contracts.md) |
 | 计算条件记录 | [calculation-preflight.md](references/calculation-preflight.md) |
 | 非线性极值、条件匹配与插值边界 | [worst-case-bounds.md](references/worst-case-bounds.md) |
 | 绘图纲要 O1–O8 与 recipes API | [drawing-recipes.md](references/drawing-recipes.md) |
-| 阅读路径、HR-01–HR-11、看图检查 | [human-readable-routing.md](references/human-readable-routing.md) |
+| 阅读路径、HR-01–HR-11、图面审阅 | [human-readable-routing.md](references/human-readable-routing.md) |
 | 拓扑结构、标签策略、验证自动检查 | [schematic-drawing-standards.md](references/schematic-drawing-standards.md) |
 | 重画已有工程 | [existing-project-redraw.md](references/existing-project-redraw.md) |
 | 电气改版与预检 | [electrical-redesign.md](references/electrical-redesign.md)、[change-preflight.md](references/change-preflight.md)、[project-verification.md](references/project-verification.md) |

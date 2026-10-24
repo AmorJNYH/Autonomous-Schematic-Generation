@@ -1,5 +1,6 @@
 """Finite same-job native controls: unique source causality, never visual guesses."""
 import json
+import subprocess
 import os
 import sys
 import tempfile
@@ -9,7 +10,7 @@ from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from schematic_layout.scratch import scratch_base
 from schematic_layout.native import find_cli
-from schematic_layout.native_geometry_context import prepare_geometry_context,load_page_context,page_context_from_job,sha,spans,hidden,visible_name
+from schematic_layout.native_geometry_context import prepare_geometry_context,page_context_from_job,sha,spans,hidden,visible_name
 from schematic_layout.sexpr import form as f,Atom as A,dump,parse,first,all_nodes
 from schematic_layout.scene import read_scene
 from schematic_layout.qa import check_scene
@@ -113,7 +114,6 @@ class NativeContextTests(unittest.TestCase):
         self.assertEqual('PASS',report['status'],report)
     def test_sidecar_sha_and_original_input_drift_rejected(self):
         folder=self.base/'clear';p=folder/'context/context.json'
-        with self.assertRaises(ValueError):load_page_context(p,folder/'native.kicad_sch','wrong')
         child=folder/'child.kicad_sch';old=child.read_bytes();child.write_bytes(old+b'\n')
         with self.assertRaises(ValueError):page_context_from_job(self.rows['clear'][0],folder/'native.kicad_sch')
         child.write_bytes(old)
@@ -121,15 +121,10 @@ class NativeContextTests(unittest.TestCase):
         folder=self.base/'clear';p=folder/'context/context.json';svg=next((folder/'context/baseline/svg').glob('*.svg'));old=svg.read_bytes();svg.write_bytes(old+b'\n')
         with self.assertRaises(ValueError):page_context_from_job(self.rows['clear'][0],folder/'native.kicad_sch')
         svg.write_bytes(old)
-    def test_recomputed_sidecar_sha_does_not_authorize_fake_derived_ink(self):
-        folder=self.base/'clear';p=folder/'context/context.json';old=p.read_bytes();data=json.loads(old)
-        data['pages']['native.kicad_sch']['texts'][0]['box'][0]-=50
-        p.write_text(json.dumps(data))
-        with self.assertRaises(ValueError):load_page_context(p,folder/'native.kicad_sch',sha(p))
-        p.write_bytes(old)
-    def test_self_declared_pass_without_native_witnesses_rejected(self):
-        folder=self.base/'clear';p=folder/'fake.json';p.write_text(json.dumps({'schema':'native-geometry-context-v1','status':'PASS','root':str(folder/'native.kicad_sch')}))
-        with self.assertRaises(ValueError):load_page_context(p,folder/'native.kicad_sch',sha(p))
+    def test_geometry_cli_takes_no_serialized_context(self):
+        cli=[sys.executable,str(Path(__file__).resolve().parents[1]/'scripts/check_schematic_geometry.py'),
+             str(self.base/'clear/native.kicad_sch'),'--native-context',str(self.base/'clear/context/context.json')]
+        self.assertEqual(2,subprocess.run(cli,capture_output=True).returncode)
     def test_live_job_derived_lists_and_gaps_cannot_be_modified(self):
         ctx=self.rows['clear'][0];page=ctx['pages']['native.kicad_sch'];original=page['texts'];page['texts']=[]
         with self.assertRaises(ValueError):page_context_from_job(ctx,self.base/'clear/native.kicad_sch')

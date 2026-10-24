@@ -66,8 +66,6 @@ def verify_preflight(manifest, root, contract=None, artifacts=True):
     errors, pending = [], []
     if not isinstance(manifest, dict) or manifest.get('schema_version') != 1:
         return {'status': 'FAIL', 'errors': ['preflight schema_version must be 1']}
-    if not text(manifest.get('revision')):
-        errors.append('revision required')
     changed = manifest.get('changed_objects')
     if not isinstance(changed, list) or not changed or not all(text(x) for x in changed) or len(set(changed)) != len(changed):
         errors.append('changed_objects must be nonempty unique strings'); changed = []
@@ -88,6 +86,7 @@ def verify_preflight(manifest, root, contract=None, artifacts=True):
     if not isinstance(impacts, list):
         errors.append('impacts must be an array'); impacts = []
     covered = set()
+    facts = manifest.get('facts')
     for impact in impacts:
         if not isinstance(impact, dict) or impact.get('trigger') not in changed:
             errors.append('impact needs a declared changed trigger'); continue
@@ -99,8 +98,8 @@ def verify_preflight(manifest, root, contract=None, artifacts=True):
         if not isinstance(affected, list) or not affected or not all(text(x) for x in affected):
             errors.append(trigger + ': affected_objects required (include electrically dependent unchanged parts)')
         checks = impact.get('checks')
-        if not isinstance(checks, dict) or set(checks) != set(DOMAINS):
-            errors.append(trigger + ': classify all impact domains: ' + '/'.join(DOMAINS)); continue
+        if not isinstance(checks, dict) or not set(DOMAINS) <= set(checks):
+            errors.append(trigger + ': classify at least the impact domains: ' + '/'.join(DOMAINS)); continue
         for domain, check in checks.items():
             label = trigger + '/' + domain
             if not isinstance(check, dict) or not text(check.get('reason')):
@@ -125,18 +124,21 @@ def verify_preflight(manifest, root, contract=None, artifacts=True):
             elif disposition == 'DOCUMENTED' and domain == 'documentation':
                 if not evidence(check.get('evidence')):
                     errors.append(label + ': documentation needs current source')
+                elif not any(e['source'] == 'facts' and isinstance(facts, dict) and e['locator'] in facts
+                             for e in check['evidence']):
+                    pending.append(label)   # documented only once a bound current fact carries it
             else:
                 errors.append(label + ': invalid disposition')
     if set(changed) != covered:
         errors.append('every changed object needs impact coverage')
-    facts, bindings = manifest.get('facts'), manifest.get('artifact_bindings')
+    bindings = manifest.get('artifact_bindings')
     if not isinstance(facts, dict) or not facts:
         errors.append('facts must be a nonempty current-design map'); facts = {}
     for key, fact in facts.items():
         if not isinstance(fact, dict) or not text(fact.get('value')) or not evidence(fact.get('evidence')):
             errors.append(key + ': fact requires canonical string value and evidence')
-    if not isinstance(bindings, list) or not bindings:
-        errors.append('artifact_bindings must cover current facts'); bindings = []
+    if not isinstance(bindings, list):
+        errors.append('artifact_bindings must be an array'); bindings = []
     bound, hashes = set(), {}
     for binding in bindings:
         if not isinstance(binding, dict) or not text(binding.get('fact')) or binding['fact'] not in facts or not text(binding.get('path')):

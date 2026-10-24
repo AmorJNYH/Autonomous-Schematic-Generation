@@ -157,27 +157,12 @@ state the unresolved attribution rather than inventing a rail diagnosis or
 quieting it. This is a review instruction, not a new required schema field or a
 change to ERC thresholds, power flags or existing gates.
 
-### Automatic-looking names need source evidence
+### Automatic names are not compared
 
-For board verification, XML alone cannot distinguish a hand-written `Net-(...)`
-(or `unconnected-(...)`) label from a KiCad generated name. `verify_schematic.py`
-and the native board verifier use a same-source native naming counterfactual
-when such a name differs from the intent: re-export the unchanged hierarchy,
-then consistently rename scalar labels, sheet interfaces, power names and hidden
-power-pin names in a diagnostic copy. Both exports must retain the complete
-physical partitions and component identity, including UUID sheet paths. A
-copy-location `Sheetfile` property is excluded from identity comparison; ordinary
-component fields are retained. No source design is edited.
-
-A changed native name carrying the unique diagnostic marker proves an explicit
-name on that partition. A proven automatic name may differ from the intent,
-including when its pin name contains `/`. The origin audit leaves bus, encoded/variable interface names,
-inherited or missing embedded symbol definitions and unbound source/XML
-unqualified; this does not qualify the separate encoding contract. The public
-XML-only `compare_netlist` API returns `INSUFFICIENT` for a differing automatic-
-looking name without source evidence. Page layout checks retain their existing
-scope. Inspect `net-name-origin.json` and its source hashes and native commands;
-a passing partition comparison alone does not establish name provenance.
+A name KiCad makes up for an unnamed net (`Net-(...)`, `unconnected-(...)`) is
+not compared with the intent name; the pin partition still is. Every net name
+the intent requires is drawn as an explicit label or rail and must match exactly.
+A hand-written label that only looks automatic is therefore not caught by name.
 # Finite hierarchy geometry
 
 The runner's fresh hierarchy SVG channel can qualify supported no-sheet-pin

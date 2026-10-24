@@ -6,6 +6,7 @@ text only through notes.json {summary, changes, items{work_id: text}, highlights
 Records that are missing or inconsistent are reported at the top instead of guessed.
 """
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -14,13 +15,19 @@ from collections import Counter, OrderedDict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from audit_design_closure import severity_of  # noqa: E402
+from schematic_layout.citations import check as check_citation, check_source  # noqa: E402
 from schematic_layout.sexpr import all_nodes, first, parse  # noqa: E402
 
 REPORT = '设计报告.md'
 SEVERITIES = ('P0', 'P1', 'P2', 'P3')
 SEVERITY_WORDS = {'P0': '可能损坏器件或危及安全', 'P1': '必需功能可能不达标',
                   'P2': '局部或次要问题', 'P3': '可选优化'}
-SEVERITY_LEGEND = '可能后果：P0 可能损坏器件或危及安全；P1 必需功能可能不达标；P2 局部或次要问题；P3 可选优化。'
+SEVERITY_LEGEND = ('可能后果：P0 可能损坏器件或危及安全；P1 必需功能可能不达标；P2 局部或次要问题；P3 可选优化。'
+                   '等级由后果类别和出现条件推出：安全 P0；器件损坏 P0（仅故障时 P1）；功能失效 P1（仅故障时 P2）；'
+                   '性能余量 P2（仅故障时 P3）；优化 P3。')
+CONSEQUENCE_WORDS = {'safety': '安全', 'damage': '器件损坏', 'function': '功能失效', 'margin': '性能余量', 'optimization': '优化'}
+OCCURRENCE_WORDS = {'normal': '正常工作', 'condition': '特定工况', 'fault': '仅故障时'}
 GATES = OrderedDict([
     ('erc', 'KiCad 电气规则检查（ERC）'),
     ('intent_netlist', '网表与设计要求表逐脚对照'),
@@ -36,19 +43,18 @@ GATES = OrderedDict([
 ])
 GATE_RESULTS = OrderedDict([('PASS', '通过（PASS）'), ('FAIL', '没通过（FAIL）'),
                             ('INSUFFICIENT', '资料不足（INSUFFICIENT）'), ('CONDITIONAL', '有条件通过')])
-VISUAL = {'REVIEWED': '已完成', 'REVIEW_PENDING': '还没做完', 'REWORK_REQUIRED': '发现要返工的地方'}
-STAGES = {'requirement': '等用户定需求', 'design': '设计没做完', 'external': '缺外部资料', 'validation': '样机或试验验证', 'pcb': 'PCB 实现'}
+VISUAL = {'REVIEWED': '已完成', 'REVIEW_PENDING': '未完成', 'REWORK_REQUIRED': '发现需返工的问题'}
+STAGES = {'requirement': '待用户确认需求', 'design': '设计未完成', 'external': '外部资料缺口', 'validation': '样机或试验验证', 'pcb': 'PCB 实现'}
 REQUIREMENTS = OrderedDict([('design_supported', '有设计依据'), ('conditional', '有条件成立'), ('open', '还没有设计')])
 RESPONSES = OrderedDict([
     ('REDESIGN', ('改图', 'changes')), ('CALC_DOC', ('补计算/补文档', 'changes')), ('DESIGN', ('补设计', 'work_items')),
     ('OBTAIN_DATA', ('补资料', 'work_items')), ('ASK_USER', ('请用户定需求', 'detail')),
-    ('HANDOFF', ('交给后续环节', 'work_items')), ('DECLINE', ('不采纳', 'evidence')),
+    ('HANDOFF', ('技术转交', 'work_items')), ('DECLINE', ('不采纳', 'evidence')),
     ('DEFERRED', ('已暂缓', 'detail'))])
 RESPONSE_STAGE = {'ASK_USER': ('requirement',), 'DESIGN': ('design',), 'OBTAIN_DATA': ('external',), 'HANDOFF': ('validation', 'pcb')}
 REF_PATTERN = re.compile(r'(?<![A-Za-z0-9])[A-Z]{1,3}\d{1,4}(?![A-Za-z0-9])')
 PAGE_PATTERN = re.compile(r'(?<![A-Za-z0-9])\d{2}_[A-Za-z][A-Za-z0-9_]*|System_block')
 # Words that describe the review process, not a design basis.
-PROCESS_WORDS = ('审查', '第一轮', '第二轮', '下一轮', '下一版', '核销', '复审')
 REQUIRED = ('electrical-intent.json', 'design-closure.json', 'design-closure-audit.json',
             'summary.json', 'visual-review.json', 'page-plan.json', 'selection.json', 'lessons.json')
 CAUSES = ('rule_missing', 'rule_not_enforced', 'knowledge_missing', 'knowledge_wrong', 'judgment')
@@ -59,7 +65,6 @@ CAUSE_TARGETS = {'rule_missing': ('scripts/',), 'rule_not_enforced': ('scripts/'
                  'knowledge_missing': ('references/', 'wiki/', 'raw/'), 'knowledge_wrong': ('references/', 'wiki/', 'raw/'),
                  'judgment': ('SKILL.md', 'references/')}
 SOURCE_PATTERN = re.compile(r'^(review:[^/\s]+/\S+|datasheet:.+#p\d+|test:\S+|user:\d{4}-\d{2}-\d{2})$')
-PAGE_REF = re.compile(r'(p\.?\s?\d+|第\s?\d+\s?页|W-[A-Z0-9-]+)')
 SELECTION_STATUS = ('selected', 'rejected', 'alternate')
 OPS = ('<=', '>=', 'covers', 'equals', 'has')
 # A rejection that is not a failed decisive condition must say what kind it is.
@@ -67,6 +72,11 @@ REJECT_KINDS = {'dependency': '依赖拿不到', 'data': '资料不足', 'availa
                 'preference': '都能用，按优先规则落选'}
 CORE_REF = re.compile(r'^[UQT]\d')
 OPTION_FIELDS = (('name', '方案名'), ('parts', '涉及型号'), ('cost', '代价'), ('pros', '优点'), ('cons', '缺点'))
+# Words that carry an earlier version's review over instead of looking at this version's PDF.
+CARRIED_OVER = ('沿用', '同上一版', '同上版', '与上一版相同', '上一版已审')
+TERMINOLOGY = Path(__file__).resolve().parent.parent / 'references' / 'terminology.md'
+# A written total and what it is counted against (references/terminology.md).
+COUNT_PATTERN = re.compile(r'(?:共|全部)\s*(\d+)\s*(项计算|件未关闭项|条需求|条审查意见|个器件|页)')
 USER_SOURCE = re.compile(r'^user:\d{4}-\d{2}-\d{2}$')
 
 
@@ -88,38 +98,81 @@ def english_sentence(value):
     return len(words) >= 4 and cjk < 2 * len(words)
 
 
-def check_language(closure, notes):
-    """Everything the report shows to engineers is written in Chinese."""
+def prose(closure, notes, responses=None):
+    """(where, text) for every piece of record and notes text the report shows to engineers."""
     found = []
-    def scan(where, value):
-        if english_sentence(value):
-            found.append('%s：“%s”' % (where, value.strip()[:40] + ('…' if len(value.strip()) > 40 else '')))
     for c in closure.get('calculations') or []:
         if not isinstance(c, dict):
             continue
         for field, word in (('assumptions', '假设'), ('omitted_terms', '没算进去的项')):
             for i, v in enumerate(c.get(field) or []):
-                scan('计算 %s %s %d' % (c.get('id'), word, i + 1), v)
+                found.append(('计算 %s %s %d' % (c.get('id'), word, i + 1), v))
         for i, chk in enumerate(c.get('checks') or []):
             if isinstance(chk, dict):
-                scan('计算 %s 核对项 %d' % (c.get('id'), i + 1), chk.get('name'))
+                found.append(('计算 %s 核对项 %d' % (c.get('id'), i + 1), chk.get('name')))
     for w in closure.get('work_items') or []:
         if isinstance(w, dict):
-            for field in ('action', 'owner', 'fallback', 'assumption'):
-                scan('待办 %s %s' % (w.get('id'), field), w.get(field))
+            for field in ('action', 'owner', 'fallback', 'assumption', 'progress'):
+                found.append(('待办 %s %s' % (w.get('id'), field), w.get(field)))
     for r in closure.get('requirements') or []:
         if isinstance(r, dict):
-            scan('需求 %s 实现说明' % r.get('id'), r.get('implementation'))
+            found.append(('需求 %s 实现说明' % r.get('id'), r.get('implementation')))
+    for i in (responses or {}).get('items') or []:
+        if isinstance(i, dict):
+            found.append(('审查意见 %s 处置说明' % i.get('id'), i.get('detail')))
     for field in ('summary', 'changes'):
-        scan('notes %s' % field, notes.get(field))
+        found.append(('notes %s' % field, notes.get(field)))
     for key, v in (notes.get('items') or {}).items():
-        scan('notes 待办 %s' % key, v)
+        found.append(('notes 待办 %s' % key, v))
     for i, v in enumerate(notes.get('highlights') or []):
-        scan('notes 关键依据 %d' % (i + 1), v)
+        found.append(('notes 关键依据 %d' % (i + 1), v))
+    return [(where, v) for where, v in found if text(v)]
+
+
+def quote(where, value):
+    return '%s：“%s”' % (where, value.strip()[:40] + ('…' if len(value.strip()) > 40 else ''))
+
+
+def check_language(texts):
+    """Everything the report shows to engineers is written in Chinese."""
+    found = [quote(where, v) for where, v in texts if english_sentence(v)]
     if not found:
         return []
     return ['下列给人看的文字是英文，要改成中文（器件型号、单位和缩写可以保留）：' + '；'.join(found[:6])
             + ('；等共 %d 处' % len(found) if len(found) > 6 else '')]
+
+
+def banned_terms(path=TERMINOLOGY):
+    """Words the terminology table says not to use: its first table's last column."""
+    words = []
+    table = path.read_text(encoding='utf-8').split('## 术语', 1)[-1].split('\n## ', 1)[0]
+    for line in table.splitlines()[2:]:
+        cells = [c.strip() for c in line.strip().strip('|').split('|')]
+        if len(cells) == 3:
+            words += [w for w in re.split(r'[、,，]', cells[2]) if w.strip()]
+    return words
+
+
+def check_terms(texts):
+    """Records and notes use the terms in references/terminology.md."""
+    words = banned_terms()
+    found = ['%s（%s）' % (quote(where, v), '、'.join(w for w in words if w in v))
+             for where, v in texts if any(w in v for w in words)]
+    if not found:
+        return []
+    return ['下列文字用了术语表不用的词，按 references/terminology.md 改：' + '；'.join(found[:6])
+            + ('；等共 %d 处' % len(found) if len(found) > 6 else '')]
+
+
+def check_counts(texts, actual):
+    """A total written as 共/全部 N … matches the records; partial counts are not checked."""
+    problems = []
+    for where, v in texts:
+        for m in COUNT_PATTERN.finditer(v):
+            n, unit = int(m.group(1)), m.group(2)
+            if actual.get(unit) is not None and n != actual[unit]:
+                problems.append('%s 写“%s”，记录里是 %d' % (where, m.group(0), actual[unit]))
+    return problems
 
 
 def symbol_refs(sch_path):
@@ -203,45 +256,53 @@ def check_page_plan(plan, intent, visual, lessons=None, patterns_dir=PATTERNS_DI
             errors.append('%s：这些器件不属于任何功能块：%s' % (name, '、'.join(missing[:6])))
         review = reviewed.get(name)
         if review is None:
-            errors.append('%s：看图检查没有这一页的记录' % name)
+            errors.append('%s：图面审阅没有这一页的记录' % name)
         elif isinstance(tasks, list) and len(review.get('paths') or []) < len(tasks):
-            errors.append('%s：读者任务 %d 条，看图检查只追了 %d 条路径' % (name, len(tasks), len(review.get('paths') or [])))
+            errors.append('%s：读者任务 %d 条，图面审阅只追了 %d 条路径' % (name, len(tasks), len(review.get('paths') or [])))
     return errors
 
 
-def check_visual_items(root, visual):
-    """Pin-text items handed to the render review are dispositioned per symbol, naming what was seen."""
+def check_visual_items(root, visual, summary=None):
+    """Every object handed to the render review is dispositioned from this version's PDF.
+
+    Each item in summary.json geometry.render_review_items has a nonempty disposition on its page,
+    the symbol it names is on that page, and no disposition carries over an earlier version's review.
+    """
     errors = []
+    done = {}
     for page in visual.get('pages') or []:
-        items = page.get('render_review_items') if isinstance(page, dict) else None
-        if not items:
+        if not isinstance(page, dict):
             continue
         name = page.get('file')
+        notes = [x for x in (page.get('paths') or []) + (page.get('problems') or []) if text(x)]
+        items = [i for i in page.get('render_review_items') or [] if isinstance(i, dict)]
+        carried = [x for x in notes + [str(i.get('disposition', '')) for i in items] if any(w in x for w in CARRIED_OVER)]
+        if carried:
+            errors.append('%s：处置“%s”沿用上一版：没改动的页面也要按本版 PDF 重新看' % (name, carried[0][:30]))
+        if not items:
+            continue
         sch = root / '原理图' / str(name)
         if not text(name) or not sch.is_file():
-            errors.append('第 %s 页：有引脚文字条目但找不到原理图/%s' % (page.get('page'), name))
+            errors.append('第 %s 页：有待看图对象但找不到原理图/%s' % (page.get('page'), name))
             continue
         try:
             refs = symbol_refs(sch)
         except (OSError, ValueError) as error:
             errors.append('原理图/%s 读不出来：%s' % (name, error))
             continue
-        by_text = {}
         for item in items:
-            key = str(item.get('item', '')) if isinstance(item, dict) else ''
+            key = str(item.get('item', ''))
             parts = key.split(':')
-            ref = refs.get(parts[1]) if len(parts) > 1 else None
-            disposition = item.get('disposition', '') if isinstance(item, dict) else ''
-            if ref is None:
+            if len(parts) > 1 and parts[1] not in refs and parts[0] != 'hierarchical_label':
                 errors.append('%s：条目“%s”的符号在图里找不到' % (name, key[:48]))
-            elif not text(disposition) or ref not in disposition:
-                errors.append('%s：%s 的引脚文字处置要写明在图上看到了什么，并点名 %s' % (name, ref, ref))
-            else:
-                by_text.setdefault(disposition, set()).add(ref)
-        for disposition, group in by_text.items():
-            if len(group) > 1:
-                errors.append('%s：同一句处置用在了 %s：要逐个器件写看到了什么' % (name, '、'.join(sorted(group))))
-    return list(OrderedDict.fromkeys(errors))  # one line per symbol, not per pin
+            elif text(item.get('disposition')):
+                done.setdefault(name, set()).add(key)
+    listed = ((summary or {}).get('gates') or {}).get('geometry', {}).get('render_review_items') or {}
+    for name, keys in listed.items():
+        left = [k for k in keys if k not in done.get(name, set())]
+        if left:
+            errors.append('%s：%d 个待看图对象在 visual-review.json 里没有处置（如 %s）' % (name, len(left), left[0][:48]))
+    return list(OrderedDict.fromkeys(errors))
 
 
 def norm_mpn(value):
@@ -340,7 +401,7 @@ def check_selection(data, intent, root):
         name = role.get('role') if text(role.get('role')) else '第 %d 个角色' % i
         refs = [r for r in role.get('refs') or [] if text(r)]
         cands = [c for c in role.get('candidates') or [] if isinstance(c, dict)]
-        for key, label in (('refs', '位号'), ('decisive', '决定性条件'), ('sources', '候选来源')):
+        for key, label in (('refs', '位号'), ('decisive', '决定性条件')):
             if not role.get(key):
                 problems.append('选型角色“%s”没有写%s' % (name, label))
         conds = [d for d in role.get('decisive') or [] if isinstance(d, dict)]
@@ -376,11 +437,13 @@ def check_selection(data, intent, root):
             covered.add(ref)
             if ref not in comps:
                 problems.append('选型角色“%s”的位号 %s 不在设计要求表里' % (name, ref))
-            elif selected:
+            elif len(selected) == 1:
                 mpn = selected[0].get('mpn') if text(selected[0].get('mpn')) else ''
-                value = next((comps[ref][k] for k in ('value', 'mpn') if text(comps[ref].get(k))), '')
-                if norm_mpn(mpn) not in norm_mpn(value):
-                    problems.append('位号 %s 的 value “%s” 不含选定型号 %s' % (ref, value, mpn))
+                fields = [str(comps[ref][k]) for k in ('value', 'mpn') if text(comps[ref].get(k))]
+                if not mpn:
+                    problems.append('选型角色“%s”的选定候选没有写 mpn' % name)
+                elif not any(norm_mpn(mpn) in norm_mpn(f) for f in fields):
+                    problems.append('位号 %s 的 value/mpn “%s” 都不含选定型号 %s' % (ref, '、'.join(fields), mpn))
     if undeclared:
         problems.append('选型角色 %s 的选定候选没有写 external_dependencies（依赖的未公开资料，没有写空列表）'
                         % '、'.join('“%s”' % n for n in undeclared))
@@ -410,9 +473,8 @@ def check_lessons(data):
             problems.append('lessons.json 第 %d 条的 cause 必须是 %s 或 none' % (i, '/'.join(CAUSES)))
             continue
         if cause == 'none':
-            why = e.get('why_none') if text(e.get('why_none')) else ''
-            if not PAGE_REF.search(why):
-                problems.append('lessons.json 第 %d 条 cause=none 要在 why_none 里引用核对过的页码或待办编号' % i)
+            if not text(e.get('why_none')):
+                problems.append('lessons.json 第 %d 条 cause=none 要在 why_none 里写明核对了什么' % i)
             continue
         change = e.get('change') if text(e.get('change')) else ''
         if not any(t in change for t in CAUSE_TARGETS[cause]):
@@ -420,6 +482,37 @@ def check_lessons(data):
         if cause == 'judgment' and not text(e.get('why_not_rule')):
             problems.append('lessons.json 第 %d 条归因 judgment 要写 why_not_rule：为什么规则和知识都拦不住' % i)
     return problems, by_source
+
+
+def check_citations(selection, lessons, root):
+    """Selection values are on the datasheet pages they cite; lesson sources name a real file and page.
+
+    Returns (problems, review, not_checked): a wrong file or page is a problem, a value the page
+    text does not show is listed for a person to check.
+    """
+    problems, review, unchecked = [], [], []
+    def note(result, where, source):
+        if result['status'] == 'FAIL':
+            problems.append('%s：手册引用不对，%s' % (where, result['reason']))
+        elif result['reason'] and result['reason'] not in unchecked:
+            unchecked.append(result['reason'])
+        if result['unshown']:
+            review.append({'item': where, 'source': source, 'values': result['unshown']})
+    library = Path(os.path.expanduser(selection.get('library_root') if text(selection.get('library_root')) else ''))
+    for role in selection.get('roles') or []:
+        for c in (role.get('candidates') or []) if isinstance(role, dict) else []:
+            sheet = c.get('datasheet') if isinstance(c, dict) and text(c.get('datasheet')) else ''
+            for param, entry in ((c.get('values') or {}) if sheet else {}).items():
+                page = re.match(r'\d+', str(entry.get('page'))) if isinstance(entry, dict) else None
+                if page:
+                    page = int(page.group())
+                    note(check_citation(sheet, page, [entry.get('value')], [library, root]),
+                         '候选 %s 的“%s”' % (c.get('mpn', '?'), param), '%s#p%d' % (sheet, page))
+    for i, e in enumerate((lessons or {}).get('events') or [], 1):
+        result = check_source(e.get('source'), (), [root]) if isinstance(e, dict) else None
+        if result:
+            note(result, 'lessons.json 第 %d 条' % i, e['source'])
+    return problems, review, unchecked
 
 
 def num(value):
@@ -454,6 +547,22 @@ def load(path):
         return None, 'record/%s 读不出来：%s' % (path.name, error)
 
 
+def review_sources(data, root=None):
+    """Registered review sources whose file no longer matches its sha256, and those that could not be read."""
+    changed, unread = [], []
+    for s in (data or {}).get('sources') or []:
+        if not (isinstance(s, dict) and text(s.get('id')) and text(s.get('path'))):
+            continue
+        path = Path(os.path.expanduser(s['path']))
+        if not path.is_absolute() and root is not None:
+            path = Path(root) / path
+        if not path.is_file():
+            unread.append(s['id'])
+        elif hashlib.sha256(path.read_bytes()).hexdigest() != s.get('sha256'):
+            changed.append(s['id'])
+    return changed, unread
+
+
 def check_responses(data, work, intent=None, closure=None, root=None, lessons=None):
     """Each review comment has one allowed response and what that response requires.
 
@@ -475,6 +584,9 @@ def check_responses(data, work, intent=None, closure=None, root=None, lessons=No
                and text(s.get('id')) and text(s.get('path')) and text(s.get('sha256'))}
     if not sources:
         errors.append('review-responses.json 没有登记意见来源（id、path、sha256）')
+    changed, _ = review_sources(data, root)
+    for sid in changed:
+        errors.append('审查意见来源 %s 的文件与登记的 sha256 不一致：意见原文改过，要按现在的原文重新登记' % sid)
     seen = set()
     for item in data.get('items') or []:
         key = item.get('id') if isinstance(item, dict) else None
@@ -490,6 +602,12 @@ def check_responses(data, work, intent=None, closure=None, root=None, lessons=No
             errors.append('%s：要写明来源、在原文中的位置和意见内容' % key)
         if not text(item.get('detail')):
             errors.append('%s：要说明怎么处理、为什么' % key)
+        # A comment raised again was not stopped by a rule or by knowledge the first time: not a judgment slip.
+        if 'recurs_from' in item:
+            if not (text(item['recurs_from']) and SOURCE_PATTERN.match(item['recurs_from']) and item['recurs_from'].startswith('review:')):
+                errors.append('%s：recurs_from 要写成 review:<上一轮审查目录>/<意见编号>' % key)
+            elif item.get('cause') == 'judgment':
+                errors.append('%s：意见复发自 %s，不能归因为判断失误（judgment）：复发说明规则或知识没有拦住' % (key, item['recurs_from']))
         if lessons is not None:
             cause = item.get('cause')
             if cause not in CAUSES and cause != 'none':
@@ -517,9 +635,8 @@ def check_responses(data, work, intent=None, closure=None, root=None, lessons=No
                 errors.append('%s：引用的待办 %s 不在 design-closure.json 里' % (key, wid))
             elif response in RESPONSE_STAGE and row.get('stage') not in RESPONSE_STAGE[response]:
                 errors.append('%s：待办 %s 的阶段与处理方式“%s”不符' % (key, wid, RESPONSES[response][0]))
-            elif response == 'DESIGN' and row.get('status') != 'closed' and (
-                    not text(row.get('progress')) or row.get('progress') == row.get('action')):
-                errors.append('%s：“补设计”引用的待办 %s 没有写本版做了什么（progress），只抄了意见' % (key, wid))
+            elif response == 'DESIGN' and row.get('status') != 'closed' and not text(row.get('progress')):
+                errors.append('%s：“补设计”引用的待办 %s 没有写本版进展（progress）' % (key, wid))
     if not seen:
         errors.append('review-responses.json 没有登记任何意见')
     return errors
@@ -558,9 +675,6 @@ def render(root, notes=None, title=None):
     work = {w['id']: w for w in closure.get('work_items') or [] if isinstance(w, dict) and text(w.get('id'))}
     requirements = [r for r in closure.get('requirements') or [] if isinstance(r, dict)]
     calculations = [c for c in closure.get('calculations') or [] if isinstance(c, dict)]
-    if audit and audit.get('status') == 'FAIL':
-        problems.append('设计待办记录自相矛盾（design-closure 审核 FAIL）：' +
-                        '；'.join('%s %s' % (e.get('code'), e.get('item')) for e in (audit.get('errors') or [])[:5]))
     if closure and closure.get('parameter_version') != 1:
         problems.append('计算没有逐项登记参数来源：design-closure.json 要写 parameter_version 1，'
                         '每条计算的 parameters 写明每个器件参数的值、依据和手册页码（见 design-closure.md）')
@@ -577,16 +691,22 @@ def render(root, notes=None, title=None):
         lessons = data['lessons.json']
     if data['page-plan.json'] is not None:
         problems += check_page_plan(data['page-plan.json'], intent, visual, lessons)
-    problems += check_visual_items(root, visual)
+    problems += check_visual_items(root, visual, summary)
     selection = data['selection.json'] or {}
     if data['selection.json'] is not None:
         problems += check_selection(selection, intent, root)
+    cite_problems, cite_review, cite_unchecked = check_citations(selection, data['lessons.json'], root)
+    problems += cite_problems
+    cite_review = list((audit.get('citations') or {}).get('review') or []) + cite_review
+    cite_unchecked = list((audit.get('citations') or {}).get('not_checked') or []) + cite_unchecked
     if responses is not None:
         problems += check_responses(responses, work, intent, closure, root, events)
-    problems += check_language(closure, notes)
-    for i, h in enumerate(notes.get('highlights') or []):
-        if text(h) and any(w in h for w in PROCESS_WORDS):
-            problems.append('关键设计依据第 %d 条写的是审查流程，不是设计依据：“%s”' % (i + 1, h.strip()[:40]))
+    texts = prose(closure, notes, responses)
+    problems += check_language(texts) + check_terms(texts)
+    problems += check_counts(texts, {
+        '项计算': len(calculations), '件未关闭项': sum(1 for w in work.values() if w.get('status') == 'open'),
+        '条需求': len(requirements), '条审查意见': len((responses or {}).get('items') or []) if responses else None,
+        '个器件': len(intent.get('components') or []), '页': len(summary.get('sheets') or []) if summary else None})
 
     gates = summary.get('gates') or {}
     shown = [(key, label, (gates.get(key) or {}).get('status')) for key, label in GATES.items() if key in gates]
@@ -613,7 +733,7 @@ def render(root, notes=None, title=None):
     out.append('- **图纸自动检查**：共 %d 项。%s。' % (len(shown), '，'.join(
         '%s %d 项' % (label, gate_counts.get(key, 0)) for key, label in GATE_RESULTS.items()
         if key != 'CONDITIONAL' or gate_counts.get(key))))
-    out.append('- **看图检查**：%s。' % VISUAL.get(visual.get('status'), '没有记录'))
+    out.append('- **图面审阅**：%s。' % VISUAL.get(visual.get('status'), '没有记录'))
     out.append('- **需求**：共 %d 条。%s。' % (len(requirements), '，'.join(
         '%s %d 条' % (label, req_counts.get(key, 0)) for key, label in REQUIREMENTS.items())))
     if items:
@@ -625,30 +745,34 @@ def render(root, notes=None, title=None):
     if failed:
         missing.append('%d 项图纸自动检查没通过：%s' % (len(failed), '、'.join(failed)))
     if short:
-        missing.append('%d 项图纸自动检查资料不足或没做：%s' % (len(short), '、'.join(short)))
+        missing.append('%d 项图纸自动检查资料不足或未执行：%s' % (len(short), '、'.join(short)))
+    # Step 2 checks every core part's peripherals against its datasheet; not doing it leaves the design unfinished.
+    reference_skipped = summary.get('reference_contract') == 'NOT_CHECKED'
+    if reference_skipped:
+        missing.append('外围电路按手册核对：未执行')
     if visual.get('status') != 'REVIEWED':
-        missing.append('看图检查%s' % VISUAL.get(visual.get('status'), '没有记录'))
+        missing.append('图面审阅%s' % VISUAL.get(visual.get('status'), '没有记录'))
     by_stage = Counter(w.get('stage') for w in open_work)
     if open_work:
-        missing.append('%d 件待办没做完（%s）' % (len(open_work), '，'.join(
+        missing.append('%d 件未关闭项（%s）' % (len(open_work), '，'.join(
             '%s %d 件' % (STAGES[s], by_stage[s]) for s in STAGES if by_stage.get(s))))
     if problems:
         missing.append('设计记录有问题，见开头')
     if missing:
-        out.append('- **设计是否完成**：还没完成。还差：')
+        out.append('- **设计完成状态**：未完成。未完成项：')
         out += ['  %d. %s；' % (i, m) for i, m in enumerate(missing, 1)]
         out[-1] = out[-1][:-1] + '。'
     else:
-        out.append('- **设计是否完成**：已完成。自动检查、看图检查和设计待办都已处理完。')
+        out.append('- **设计完成状态**：已完成。自动检查、图面审阅和设计待办都已处理完。')
     asks = [w for w in open_work if w.get('stage') == 'requirement']
     if asks:
-        out.append('- **请你定的需求**：%d 件（%s）。本版先按写明的假设设计，定下来后可能要改图，列在“待办”最前面。'
+        out.append('- **待用户确认的需求**：%d 件（%s）。本版先按写明的假设设计，定下来后可能要改图，列在“未关闭项”最前面。'
                    % (len(asks), '、'.join(w['id'] for w in asks)))
     external = [w for w in open_work if w.get('stage') == 'external']
     if external:
         owners = Counter(w.get('owner') or '未指定' for w in external)
         linked = {c for w in external for c in w.get('calculations') or [] if isinstance(c, str)}
-        out.append('- **缺外部资料**：%d 件（%s）%s。要问的问题汇总在“要向外部要的资料”一节。' % (
+        out.append('- **外部资料缺口**：%d 件（%s）%s。待确认问题汇总在“外部资料需求”一节。' % (
             len(external), '；'.join('%s %d 件' % kv for kv in owners.most_common()),
             '，影响有条件成立的计算 %d 项' % len(linked) if linked else ''))
     optioned = [r for r in selection.get('roles') or [] if isinstance(r, dict) and r.get('options')]
@@ -657,15 +781,15 @@ def render(root, notes=None, title=None):
             len(optioned), '、'.join('%s→%s' % (r.get('role', ''), (r.get('decision') or {}).get('option') or '未决定')
                                     for r in optioned)))
     if open_work:
-        out.append('- **待办**：%d 件，%s按可能后果从重到轻列在“待办”一节。'
-                   % (len(open_work), '等你定的需求排最前，其余' if asks else ''))
-    out.append('- 这份报告只说明 ASG 自己的设计和自检做到哪一步，不代替独立审查。')
+        out.append('- **未关闭项**：共 %d 件，%s按后果等级从重到轻列在“未关闭项”一节。'
+                   % (len(open_work), '待用户确认的需求排最前，其余' if asks else ''))
+    out.append('- 本报告只说明 ASG 的设计与自检完成情况，不代替独立审查。')
     out.append('')
     if notes.get('summary'):
         out += [notes['summary'], '']
     if items:
         redrawn = reply_counts.get('REDESIGN', 0) + reply_counts.get('CALC_DOC', 0)
-        out += ['本版收到 %d 条审查意见：改图或补计算/补文档 %d 条，其余 %d 条登记为待办、交给后续环节或不采纳。'
+        out += ['本版共收到 %d 条审查意见：改图或补计算/补文档 %d 条，其余 %d 条登记为待办、技术转交或不采纳。'
                 % (len(items), redrawn, len(items) - redrawn), '']
 
     roles = [r for r in selection.get('roles') or [] if isinstance(r, dict)]
@@ -696,78 +820,85 @@ def render(root, notes=None, title=None):
                         cell('、'.join(o.get('parts') or [])), cell('%d 项：%s' % (len(deps), '；'.join(deps)) if deps else '无'),
                         cell(o.get('cost', '')), cell(o.get('pros', '')), cell(o.get('cons', ''))))
                 out += ['', '- **ASG 的建议**：%s' % (r.get('recommendation') or ''),
-                        '- **你的决定**：%s' % ('%s（%s）' % (decision['option'], decision.get('source', ''))
-                                              if text(decision.get('option')) else '还没有决定'), '']
+                        '- **用户决定**：%s' % ('%s（%s）' % (decision['option'], decision.get('source', ''))
+                                              if text(decision.get('option')) else '未决定'), '']
 
     if notes.get('changes') or change:
-        out += ['## 这版改了什么', '']
+        out += ['## 本版变更', '']
         if change:
             out += ['器件数：%s → %s。' % (change.get('old_components', '?'), change.get('new_components', '?')), '']
         if notes.get('changes'):
             out += [notes['changes'], '']
 
     if items:
-        out += ['## 审查意见怎么处理的', '', '| 编号 | 意见 | 处理 | 说明 |', '|---|---|---|---|']
+        out += ['## 审查意见处置', '', '| 编号 | 意见 | 处理 | 说明 |', '|---|---|---|---|']
         for i in items:
             label = RESPONSES.get(i.get('response'), ('?',))[0]
             out.append('| %s | %s | %s | %s |' % (cell(i.get('id', '')), cell(i.get('comment', '')), label,
-                                                   cell(i.get('detail', ''))))
+                                                   cell(i.get('detail', '') + ('（复发自 %s）' % i['recurs_from']
+                                                                              if text(i.get('recurs_from')) else ''))))
         out.append('')
+        _, unread = review_sources(responses, root)
+        if unread:
+            out += ['意见来源 %s 的原文读不到，来源未核对：上面的意见内容按登记照录。' % '、'.join(unread), '']
 
     events_list = [e for e in (lessons.get('events') or []) if isinstance(e, dict)]
     if events_list:
-        out += ['## 本版学到的东西', '', '| 来源 | 归因 | 改了什么 |', '|---|---|---|']
+        out += ['## 改进记录', '', '| 来源 | 归因 | 改了什么 |', '|---|---|---|']
         for e in events_list:
             out.append('| %s | %s | %s |' % (cell(e.get('source', '')), CAUSE_WORDS.get(e.get('cause'), cell(e.get('cause', ''))),
                                             cell(e.get('change') or e.get('why_none') or '')))
         out.append('')
 
     if open_work:
-        out += ['## 待办', '', SEVERITY_LEGEND, '']
-        order = lambda w: (w.get('stage') != 'requirement', SEVERITIES.index(w['severity']) if w.get('severity') in SEVERITIES else len(SEVERITIES),
+        out += ['## 未关闭项', '', SEVERITY_LEGEND, '']
+        order = lambda w: (w.get('stage') != 'requirement', SEVERITIES.index(severity_of(w)) if severity_of(w) else len(SEVERITIES),
                            -len(w.get('requirements') or []))
         item_notes = notes.get('items') or {}
         for w in sorted(open_work, key=order):
-            level = w.get('severity')
-            out += ['### %s（%s）' % (w['id'], ('%s：%s' % (level, SEVERITY_WORDS[level])) if level in SEVERITY_WORDS else '未定后果'), '']
+            level = severity_of(w)
+            out += ['### %s（%s）' % (w['id'], '%s：%s；%s，%s' % (
+                level, SEVERITY_WORDS[level], CONSEQUENCE_WORDS[w['consequence_class']], OCCURRENCE_WORDS[w['occurrence']])
+                if level else '后果等级未定'), '']
             if item_notes.get(w['id']):
                 out += [item_notes[w['id']], '']
             gap = w.get('stage') == 'external' and isinstance(w.get('missing'), list)
             if gap:
-                fields = (('类型', STAGES['external']), ('找谁', w.get('owner')), ('为什么只能找他', w.get('why_external')),
-                          ('搞错的后果', w.get('consequence')), ('资料到手后怎么关', w.get('action')),
-                          ('拿不到时的替代做法', w.get('fallback')), ('要先完成', '、'.join(w.get('blocked_by') or [])),
-                          ('影响的需求', '、'.join(w.get('requirements') or [])))
+                fields = (('类型', STAGES['external']), ('责任方', w.get('owner')), ('外部依赖原因', w.get('why_external')),
+                          ('失效后果', w.get('consequence')), ('关闭方式', w.get('action')),
+                          ('替代方案', w.get('fallback')), ('前置项', '、'.join(w.get('blocked_by') or [])),
+                          ('关联需求', '、'.join(w.get('requirements') or [])))
             else:
                 fields = (('类型', STAGES.get(w.get('stage'), w.get('stage'))),
-                          ('本版按什么假设设计', w.get('assumption')), ('要做什么', w.get('action')),
-                          ('找谁', w.get('owner')), ('拿不到时的替代做法', w.get('fallback')),
-                          ('要先完成', '、'.join(w.get('blocked_by') or [])),
-                          ('影响的需求', '、'.join(w.get('requirements') or [])))
+                          ('设计假设', w.get('assumption')), ('本版进展', w.get('progress')),
+                          ('处理措施', w.get('action')),
+                          ('责任方', w.get('owner')), ('替代方案', w.get('fallback')),
+                          ('前置项', '、'.join(w.get('blocked_by') or [])),
+                          ('关联需求', '、'.join(w.get('requirements') or [])))
             for label, value in fields:
                 if text(value):
                     out.append('- **%s**：%s' % (label, value))
             if gap:
-                out.append('- **缺什么**：')
+                out.append('- **缺失资料**：')
                 for m in w['missing']:
                     if isinstance(m, dict):
-                        out.append('  - 手册给了：%s；设计还需要：%s（%s）' % (m.get('given', ''), m.get('needed', ''), m.get('source', '')))
+                        out.append('  - 手册已给出：%s；设计所需：%s（%s）' % (m.get('given', ''), m.get('needed', ''), m.get('source', '')))
                 calcs = {c.get('id'): c for c in calculations}
                 if w.get('calculations'):
-                    out.append('- **影响的计算**：')
+                    out.append('- **关联计算**：')
                     out += ['  - %s：%s' % (cid, calcs.get(cid, {}).get('missing_guarantee') or '（计算不存在）')
                             for cid in w['calculations']]
                 elif text(w.get('no_calculation_reason')):
-                    out.append('- **影响的计算**：无。%s' % w['no_calculation_reason'])
+                    out.append('- **关联计算**：无。%s' % w['no_calculation_reason'])
                 if w.get('questions'):
-                    out.append('- **要问的问题**：')
+                    out.append('- **待确认问题**：')
                     out += ['  %d. %s' % (i, q) for i, q in enumerate(w['questions'], 1)]
             out.append('')
 
         asked = [w for w in sorted(open_work, key=order) if w.get('stage') == 'external' and w.get('questions')]
         if asked:
-            out += ['## 要向外部要的资料', '',
-                    '按负责方汇总缺外部资料的待办要问的问题，每组可以整段发给对应负责方；括号里是对应待办。', '']
+            out += ['## 外部资料需求', '',
+                    '按责任方汇总外部资料缺口的待确认问题，每组可整段发给对应责任方；括号里是对应待办。', '']
             for owner in OrderedDict.fromkeys(w.get('owner') or '未指定' for w in asked):
                 out += ['### %s' % owner, '']
                 n = 0
@@ -779,9 +910,9 @@ def render(root, notes=None, title=None):
                 out.append('')
 
     if handoffs:
-        out += ['## 交给后续环节的要求', '',
-                '下面这些要在 PCB、结构、样机测试等后续环节落实，不是原理图没做完。原理图交出时把这张表一起交给对应负责方。', '',
-                '| 负责方 | 环节 | 要落实的要求 |', '|---|---|---|']
+        out += ['## 技术转交要求', '',
+                '下列要求在 PCB、结构、样机测试等后续环节落实，不属于原理图未完成项。原理图交付时将本表一并转交对应责任方。', '',
+                '| 责任方 | 环节 | 要落实的要求 |', '|---|---|---|']
         for w in handoffs:
             out.append('| %s | %s | %s |' % (cell(w.get('owner') or '未指定'), STAGES.get(w.get('stage'), ''),
                                             cell(w.get('action') or '')))
@@ -813,17 +944,31 @@ def render(root, notes=None, title=None):
                                                   cell(p.get('mode') or ''), cell(alts), cell(p.get('work_item') or '')))
         out.append('')
 
+    if cite_review or cite_unchecked:
+        out += ['## 引用待人工核对', '',
+                '下面的数值在所引手册页的文字里没有找到（表格、单位换算或扫描页都可能读不出），请对照原页确认。', '']
+        if cite_review:
+            out += ['| 位置 | 手册页 | 数值 |', '|---|---|---|']
+            out += ['| %s | %s | %s |' % (cell(r.get('item', '')), cell(r.get('source', '')),
+                                          '、'.join(num(v) for v in r.get('values') or [])) for r in cite_review]
+            out.append('')
+        out += ['- %s' % reason for reason in cite_unchecked] + ([''] if cite_unchecked else [])
+
     if shown:
         out += ['## 自动检查明细', '', '| 检查 | 结果 |', '|---|---|']
         for key, label, status in shown:
             detail = gates[key]
             extra = '，'.join('%s %s' % (k, v) for k, v in detail.items() if k in ('violations', 'errors') and v)
+            if detail.get('ignored_rules'):
+                extra = '，'.join(x for x in (extra, '工程设为忽略的规则：%s' % '、'.join(detail['ignored_rules'])) if x)
             if key == 'geometry':
                 gaps = sum(len(v) for v in (detail.get('coverage_gaps') or {}).values())
                 pins = sum(len(v) for v in (detail.get('render_review_items') or {}).values())
-                extra = '，'.join(x for x in (extra, '没覆盖的对象 %d 项' % gaps if gaps else '',
-                                              '%d 个引脚文字交看图检查' % pins if pins else '') if x)
+                extra = '，'.join(x for x in (extra, '未覆盖对象 %d 项' % gaps if gaps else '',
+                                              '%d 个对象交图面审阅' % pins if pins else '') if x)
             out.append('| %s | %s%s |' % (label, GATE_RESULTS.get(status, status), ('（%s）' % extra) if extra else ''))
+        if reference_skipped:
+            out.append('| %s | 未执行 |' % GATES['reference_contract'])
         out.append('')
 
     docs = sorted(p.relative_to(root).as_posix() for p in (root / '设计资料').rglob('*') if p.is_file()) \
@@ -836,20 +981,20 @@ def render(root, notes=None, title=None):
     cov = Counter(c.get('coverage') for c in calculations)
     con = Counter(c.get('conclusion') for c in calculations)
     stage_status = Counter((w.get('stage'), w.get('status')) for w in work.values())
-    out += ['## 数字一览', '', '| 项目 | 数量 |', '|---|---|',
+    out += ['## 统计', '', '| 项目 | 数量 |', '|---|---|',
             '| 器件 / 图纸页数 | %d / %d |' % (parts, sheets),
             '| 需求：%s | %s |' % (' / '.join(REQUIREMENTS.values()), ' / '.join(str(req_counts.get(k, 0)) for k in REQUIREMENTS)),
             '| 计算：上下界完整 / 只算了一部分 | %d / %d |' % (cov.get('bounded', 0), cov.get('partial', 0)),
             '| 计算结论：满足 / 有条件满足 / 不满足 | %d / %d / %d |' % (con.get('supported', 0), con.get('conditional', 0), con.get('failed', 0)),
-            '| 待办：设计没做完 / 缺外部资料（未关闭） | %d / %d |' % (stage_status.get(('design', 'open'), 0), stage_status.get(('external', 'open'), 0)),
-        ] + (['| 待办：等用户定需求（未关闭） | %d |' % stage_status[('requirement', 'open')]]
+            '| 未关闭项：设计未完成 / 外部资料缺口 | %d / %d |' % (stage_status.get(('design', 'open'), 0), stage_status.get(('external', 'open'), 0)),
+        ] + (['| 未关闭项：待用户确认需求 | %d |' % stage_status[('requirement', 'open')]]
              if stage_status.get(('requirement', 'open')) else []) + [
-            '| 交给后续环节的要求 | %d |' % len(handoffs),
+            '| 技术转交要求 | %d |' % len(handoffs),
             '| 已关闭的待办 | %d |' % sum(v for (s, st), v in stage_status.items() if st == 'closed'), '']
     out += ['## 详细记录', '',
             '原理图在 `原理图/`（KiCad 工程、PDF、网表、BOM）。`record/` 里是生成这份报告用的记录：'
             '`electrical-intent.json` 是设计要求表，`design-closure.json` 是需求、待办和计算的处理情况，'
-            '`summary.json` 是自动检查结果，`visual-review.json` 是看图检查，`manifest.json` 记录用到的需求、'
+            '`summary.json` 是自动检查结果，`visual-review.json` 是图面审阅记录，`manifest.json` 记录用到的需求、'
             '原厂资料和前一版设计的位置与校验码。', '']
     return '\n'.join(out), problems
 

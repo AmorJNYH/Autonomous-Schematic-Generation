@@ -584,8 +584,6 @@ def route_root(root, intent, layout, uid, reserved, dirs=()):
             raise ValueError(f"Shared terminal split across routing groups: {pid}")
         terminal_groups[p.point] = mapping.get(pid)
     policies = layout.get("nets", {})
-    if set(policies) - {n["name"] for n in intent["nets"]}:
-        raise ValueError("Unknown net in layout policies")
     for name, policy in policies.items():
         unknown = set(policy) - {"mode", "rail_y", "label", "priority", "symbol",
                                  "label_kind", "label_font_mm", "label_at", "label_hint"}
@@ -1089,9 +1087,7 @@ def generate(intent, layout, name, dirs=()):
     # electrical PASS. The CLI re-reads the serialized file and uses native CLI.
     manifest["routing"] = route_root(root, intent, layout, uid, reserved, dirs)
     scene = read_scene(parse(dump(root)))
-    report = check_scene(
-        scene, grid=manifest["grid_mm"], reserved=reserved, pin_nets=pin_net_map(intent)
-    )
+    report = check_scene(scene, reserved=reserved)
     manifest["geometry"] = report
     manifest["resolved_placements"] = [
         {

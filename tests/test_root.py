@@ -12,6 +12,9 @@ from schematic_layout.native import find_cli
 from schematic_layout.pages import page_intents
 from schematic_layout.recipes import LEFT, RIGHT, UP, DOWN, Sheet, add
 from schematic_layout.root import Root
+from schematic_layout.project_audit import audit_project
+from schematic_layout.qa import check_scene
+from schematic_layout.scene import read_scene
 from schematic_layout.sexpr import all_nodes, first, parse
 
 VERIFY = HERE.parent / 'scripts' / 'verify_schematic.py'
@@ -108,10 +111,19 @@ class RootTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'neither horizontal nor vertical'):
             r.flow('Y', 'A', 'B', via=[(63.5, 101.6), (165.1, 110.49)])
 
+    def test_isolation_label_must_read_as_a_boundary(self):
+        r = Root('t')
+        r.page('A', self.built[0], (25.4, 50.8))
+        with self.assertRaisesRegex(ValueError, 'must start with'):
+            r.isolation(x=114.3, label='隔离电源')
+        r.isolation(x=114.3, label='隔离 1500 Vrms')
+
     def test_label_on_another_line_and_bad_layout_are_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
-            with self.assertRaisesRegex(ValueError, 'Cover text on a line'):
-                root(self.built, label_at=None).write(Path(tmp) / 'p')   # default name lands on the boundary
+            # The geometry gate on the written cover reports the label sitting on the boundary.
+            written = root(self.built, label_at=None).write(Path(tmp) / 'p')
+            cover = check_scene(read_scene(parse(Path(written['root']).read_text())))
+            self.assertIn('graphic_text', cover['counts'], cover)
         r = Root('t')
         r.page('A', self.built[0], (25.4, 50.8))
         with self.assertRaisesRegex(ValueError, 'closer than'):
@@ -134,6 +146,23 @@ class RootTests(unittest.TestCase):
                                  capture_output=True, text=True)
             summary = json.loads((tmp / 'v' / 'summary.json').read_text(encoding='utf-8'))
             self.assertEqual('AUTOMATED_PASS', summary['status'], run.stdout + run.stderr)
+            self.assertEqual([], summary['gates']['erc']['ignored_rules'])   # the written project turns the rules on
+
+    def test_kicad_10_saved_project_keeps_its_annotations(self):
+        cli = find_cli()
+        if not cli:
+            self.skipTest('kicad-cli is not installed')
+        with tempfile.TemporaryDirectory() as tmp:
+            result = root(self.built).write(Path(tmp) / 'p')
+            for sheet in sorted((Path(tmp) / 'p').glob('*.kicad_sch')):
+                subprocess.run([cli, 'sch', 'upgrade', '--force', str(sheet)], capture_output=True, check=True)
+            text = result['root'].read_text(encoding='utf-8')
+            if '(version 20260306)' not in text:
+                self.skipTest('this kicad-cli does not save format 20260306')
+            audit = audit_project(result['root'])
+            self.assertEqual('PASS', audit['status'], audit)
+            self.assertFalse([g for g in audit['coverage_gaps'] if 'unsupported native annotation version' in g])
+            self.assertEqual(3, audit['page_count'])
 
 
 if __name__ == '__main__':

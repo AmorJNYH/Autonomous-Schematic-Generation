@@ -133,11 +133,27 @@ class ReferenceContractTests(unittest.TestCase):
         self.assertEqual(r['features']['analog']['stages'][-1]['status'], 'FAIL')
 
     def test_uncovered_core_or_feature_is_insufficient_not_pass(self):
-        self.contract['scope']['core_refs'].append('U2')
+        # U1 has five pins in the netlist, so it needs a pin map whatever core_refs lists; the connector J1 does not.
+        del self.contract['pin_maps']['U1']
+        self.contract['scope']['core_refs'] = ['C1']
         self.contract['scope']['feature_ids'].append('load-actuation')
         r = self.audit()
         self.assertEqual(r['status'], 'INSUFFICIENT')
-        self.assertEqual(len(r['coverage_gaps']), 2)
+        self.assertEqual(len(r['coverage_gaps']), 2, r['coverage_gaps'])
+        self.assertIn({'kind': 'core_scope_mismatch', 'missing': ['U1']}, r['coverage_gaps'])
+
+    def test_source_needs_only_path_and_hash(self):
+        for key in ('url', 'document', 'revision'):
+            del self.contract['sources']['demo'][key]
+        self.assertEqual(self.audit()['status'], 'PASS')
+
+    def test_unnamed_library_pin_matches_its_datasheet_name(self):
+        self.mutate(lambda r: next(p for p in r.iter('pin') if p.get('num') == '4').set('name', '~'))
+        r = self.audit()
+        self.assertEqual('FAIL', r['pin_maps']['U1']['status'])
+        self.assertIn('needs datasheet_name', json.dumps(r['pin_maps']['U1']['failures']))
+        self.contract['pin_maps']['U1']['pins']['4']['datasheet_name'] = 'EN'
+        self.assertEqual('PASS', self.audit()['pin_maps']['U1']['status'])
 
     def test_malformed_or_empty_contract_does_not_pass(self):
         for mutate in (lambda c: c.update(unknown=True), lambda c: c['checks'][0].update(kind='simulate'), lambda c: c['features'][0]['stages'][0].update(checks=['absent']), lambda c: c['scope'].update(core_refs=[])):

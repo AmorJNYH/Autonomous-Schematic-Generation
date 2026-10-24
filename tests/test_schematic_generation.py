@@ -30,7 +30,7 @@ from schematic_layout.scene import Scene, Symbol, Pin, read_scene
 from schematic_layout.qa import check_scene
 from schematic_layout.sexpr import parse, dump, form, Atom, first, all_nodes, set_node
 from schematic_layout.generate import generate, library_dirs
-from schematic_layout.native import find_cli, compare_netlist, compare_source_netlist
+from schematic_layout.native import find_cli, compare_netlist
 
 FIXTURES = ROOT / "tests/fixtures/generation"
 
@@ -149,40 +149,15 @@ class GeometryTests(unittest.TestCase):
         )
         self.assertEqual(check_scene(scene)["status"], "INSUFFICIENT")
 
-    def test_different_net_t_contact(self):
-        pins = [
-            Pin("R1.1", (20, 20), (20, 18), (0, 1), "passive"),
-            Pin("R2.1", (30, 30), (30, 32), (0, -1), "passive"),
-        ]
+    def test_connectivity_faults_are_left_to_kicad(self):
+        # Unattached ends, crossings and joined nets are ERC and netlist findings, not geometry ones.
+        pins = [Pin("R1.1", (20, 20), (20, 18), (0, 1), "passive")]
         scene = Scene(
             Box(0, 0, 297, 210),
             symbols=[Symbol("X", "X:X", 1, [], None, pins, [])],
-            wires=[((20, 20), (40, 20)), ((30, 20), (30, 30))],
+            wires=[((20, 20), (40, 20)), ((30, 10), (30, 30)), ((50.3, 40), (60, 40))],
         )
-        self.assertIn(
-            "different_net_contact",
-            codes(scene, grid=1, pin_nets={"R1.1": "A", "R2.1": "B"}),
-        )
-
-    def test_undotted_crossing_is_not_declared_short(self):
-        scene = Scene(
-            Box(0, 0, 297, 210), wires=[((20, 30), (40, 30)), ((30, 20), (30, 40))]
-        )
-        found = codes(scene, grid=1)
-        self.assertIn("wire_crossing", found)
-        self.assertNotIn("different_net_contact", found)
-
-    def test_straight_wire_between_pins_not_orphan(self):
-        pins = [
-            Pin("R1.1", (20, 20), (20, 18), (0, 1), "passive"),
-            Pin("R2.1", (20, 30), (20, 32), (0, -1), "passive"),
-        ]
-        scene = Scene(
-            Box(0, 0, 297, 210),
-            symbols=[Symbol("X", "X:X", 1, [], None, pins, [])],
-            wires=[((20, 20), (20, 30))],
-        )
-        self.assertNotIn("orphan_wire", codes(scene, grid=1))
+        self.assertEqual(set(), codes(scene) & {"orphan_wire", "wire_crossing", "off_grid", "different_net_contact"})
 
 
 class RoutingTests(unittest.TestCase):
@@ -418,7 +393,7 @@ class NativeTests(unittest.TestCase):
                 timeout=60,
             )
             self.assertEqual(p.returncode, 0)
-            self.assertEqual(compare_source_netlist(path, xml, intent, find_cli(), out / "name-origin")[0]["status"], "PASS")
+            self.assertEqual(compare_netlist(xml, intent)["status"], "PASS")
 
     def test_native_rotations_and_mirrors_preserve_pin_numbers(self):
         with tempfile.TemporaryDirectory() as td:

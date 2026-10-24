@@ -1,8 +1,11 @@
-"""The newest improvement-ledger entry cites its event, counts its causes and lists existing files."""
+"""The newest improvement-ledger entry cites its event and lists the files it changed."""
+import os
+import shutil
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent / 'scripts'))
@@ -29,16 +32,32 @@ class LedgerTests(unittest.TestCase):
         text = check_ledger.LEDGER.read_text(encoding='utf-8')
         self.assertEqual([], check_ledger.check_entry(check_ledger.latest_entry(text)))
 
-    def test_fields_are_required_and_files_must_exist(self):
+    def test_event_and_changed_are_required(self):
         self.assertEqual([], check_ledger.check_entry(check_ledger.latest_entry(GOOD)))
         bad = GOOD.replace('review:SR-20261019-R3-改版前独立审查-41f4ad3/W-DRAW, user:2026-10-19', 'the R4 review') \
-                  .replace('rule_missing 1, knowledge_missing 2', 'various') \
-                  .replace('scripts/render_design_report.py', 'scripts/nope.py')
+                  .replace('- Changed: SKILL.md, scripts/render_design_report.py', '- Changed:')
         problems = check_ledger.check_entry(check_ledger.latest_entry(bad))
-        self.assertEqual(3, len(problems), problems)
+        self.assertEqual(2, len(problems), problems)
         self.assertTrue(any('Event:' in p for p in problems))
-        self.assertTrue(any('Causes:' in p for p in problems))
-        self.assertTrue(any('scripts/nope.py does not exist' in p for p in problems))
+        self.assertTrue(any('Changed:' in p for p in problems))
+
+    @unittest.skipUnless(shutil.which('pdfinfo'), 'poppler is not installed')
+    def test_cited_datasheet_page_must_exist(self):
+        from test_citations import pdf
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.dict(os.environ, {'HARDWARE_WIKI': tmp}):
+            sheet = Path(tmp) / 'raw/Datasheet/x/PART.pdf'
+            sheet.parent.mkdir(parents=True)
+            sheet.write_bytes(pdf(['one', 'two']))
+            for page, count in ((2, 0), (9, 1)):
+                entry = GOOD.replace('user:2026-10-19', 'datasheet:Datasheet/x/PART.pdf#p%d' % page)
+                problems = check_ledger.check_entry(check_ledger.latest_entry(entry))
+                self.assertEqual(count, len(problems), problems)
+
+    def test_causes_wording_and_deleted_files_are_not_judged(self):
+        # A change that deletes a file still lists it; the cause count is a free note.
+        entry = GOOD.replace('rule_missing 1, knowledge_missing 2', 'various') \
+                    .replace('scripts/render_design_report.py', 'scripts/removed_in_this_change.py')
+        self.assertEqual([], check_ledger.check_entry(check_ledger.latest_entry(entry)))
 
     def test_outline_change_needs_approved_entry(self):
         current = check_ledger.outline_hash()

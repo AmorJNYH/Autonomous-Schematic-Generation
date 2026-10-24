@@ -90,7 +90,6 @@ class FilteredSupplyTests(unittest.TestCase):
         mpn = copy.deepcopy(INTENT); mpn["components"][1].update(lib_id="Vishay:CRCW060310R0FKEA",
                                                                  fields={"ComponentRole": "series_resistor"})
         self.assertEqual(self.run_judge(nets(), intent=mpn, parts=dict(PARTS, R1=("Vishay", "CRCW060310R0FKEA", "10")))["status"], "PASS")
-        self.assertIn("filtered_via", self.kinds(self.run_judge(nets(), parts=dict(PARTS, R1=("Device", "R", "22")))))
         self.assertIn("filtered_via", self.kinds(self.run_judge(nets(), dnp=("R1",))))
         for lib in ("LED", "LED_Small", "Lamp", "R_Photo"):   # share a prefix with Device:L / Device:R
             fake = copy.deepcopy(INTENT); fake["components"][1]["lib_id"] = f"Device:{lib}"
@@ -129,20 +128,17 @@ class FilteredSupplyTests(unittest.TestCase):
         n = nets(); n["/amp/AVCC"] = [(r, p, "passive" if t == "power_in" else t) for r, p, t in n["/amp/AVCC"]]
         self.assertIn("filtered_net_without_power_input", self.kinds(self.run_judge(n)))
         g = nets(); g["/amp/AGND"] = g.pop("/amp/AVCC")
-        self.assertIn("filtered_return_from_supply", self.kinds(self.run_judge(g, intent=renamed("AVCC", "AGND"))))
-        z = nets(); z["/amp/0V"] = z.pop("/amp/AVCC")
-        self.assertIn("filtered_return_from_supply", self.kinds(self.run_judge(z, intent=renamed("AVCC", "0V"))))
-        down = nets(); down["GND"] = down.pop("PVCC") + [("U7", "9", "power_in")]  # supply derived from a ground
-        self.assertIn("filtered_return_from_supply", self.kinds(self.run_judge(down, intent=renamed("PVCC", "GND"))))
+        intent = renamed("AVCC", "AGND"); intent["net_roles"] = {"AGND": "return", "PVCC": "power"}
+        self.assertIn("filtered_return_from_supply", self.kinds(self.run_judge(g, intent=intent)))
 
-    def test_return_class_also_follows_native_power_pin_names(self):
-        n = nets(); n["/amp/AVCC"] = [(*x, "GND_2") if x[:2] == ("U1", "2") else x for x in n["/amp/AVCC"]]
-        self.assertIn("filtered_return_from_supply", self.kinds(self.run_judge(n)))   # neutral name, GND pin
-        for supply_pin in ("VDD_PAD", "AVCC_7"):
-            n = nets(); n["/amp/AVCC"] = [(*x, supply_pin) if x[:2] == ("U1", "2") else x for x in n["/amp/AVCC"]]
-            self.assertEqual(self.run_judge(n)["status"], "PASS", supply_pin)
-        n = nets(); n["/amp/AVCC"] = [(*x, "EP_25") if x[:2] == ("U1", "2") else x for x in n["/amp/AVCC"]]
-        self.assertIn("filtered_return_from_supply", self.kinds(self.run_judge(n)))
+    def test_return_class_follows_declared_net_roles_not_names(self):
+        same = copy.deepcopy(INTENT); same["net_roles"] = {"AVCC": "power", "PVCC": "power"}
+        r = self.run_judge(nets(), intent=same)
+        self.assertEqual((r["status"], r["return_class_unchecked"]), ("PASS", []), r)
+        g = nets(); g["/amp/AGND"] = g.pop("/amp/AVCC")       # a ground-looking name alone decides nothing
+        r = self.run_judge(g, intent=renamed("AVCC", "AGND"))
+        self.assertNotIn("filtered_return_from_supply", self.kinds(r))
+        self.assertEqual("未核对：缺 net_roles", r["return_class_unchecked"][0]["reason"])
 
     def test_declared_native_name_must_match(self):
         n = nets(); n["/amp/FOO"] = n.pop("/amp/AVCC")

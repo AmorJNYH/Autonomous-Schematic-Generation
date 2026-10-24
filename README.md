@@ -1,27 +1,27 @@
 # Autonomous-Schematic-Generation (ASG)
 
-> ASG：从需求文档出发，基于 KiCad 自主绘制可读、电气正确、经原生验证的原理图
+> ASG：从需求文档出发，基于 KiCad 自主绘制可读、电气正确、经 KiCad 导出验证的原理图
 
 Autonomous-Schematic-Generation（简称 **ASG**）是一套面向 Codex、Claude 等 Agent 的 Skill。
 从已确认的需求出发，建立板级电气意图，按绘图纲要 O1–O8 用引脚几何画法（recipes）新建、新增或重画
-KiCad 原理图，并用一键门禁（`verify_schematic.py`）完成原生 ERC、逐脚网表、层次、符号、可读性和几何检查。
+KiCad 原理图，并用一键自动检查（`verify_schematic.py`）完成 KiCad ERC、逐脚网表、层次、符号、可读性和几何检查。
 ASG 只做出图自检；严格的电气审查交给 `schematic-review`。
 
 流程与规则见 [SKILL.md](SKILL.md)。主要工具：
 
-- `verify_schematic.py`：一键出图门禁（ERC、网表对意图、层次、系统框图、符号完整性、可读性与纸张、几何，可选参考合同与改版合同）；`audit_system_block.py` 单独检查架构页。
-- `build_circuit.py` / `generate_schematic.py`：Circuit IR 编译、自动布局和原生生成，见 [circuit-ir.md](references/circuit-ir.md)、[schematic-generation.md](references/schematic-generation.md)。
+- `verify_schematic.py`：一键自动检查（ERC、网表对意图、层次、系统框图、符号完整性、可读性与纸张、几何，可选参考合同与改版合同）；`audit_system_block.py` 单独检查架构页。
+- `build_circuit.py` / `generate_schematic.py`：Circuit IR 编译、自动布局和 KiCad 文件生成，见 [circuit-ir.md](references/circuit-ir.md)、[schematic-generation.md](references/schematic-generation.md)。
 - `verify_design_change.py`、`audit_project.py`、`verify_reference_contract.py`：改版合同、多页工程交付核对、器件与外围合同，见 [project-verification.md](references/project-verification.md)。
 - `patch_schematic_values.py`：保持连线与图面的 Value 修改，见 [value-patch.md](references/value-patch.md)。
-- `run_regression.py` / `check_ledger.py`：对已登记的真实交付重跑报告与打包检查并与基线比较；检查改进台账最新条目的事件来源、归因和改动文件。改进规则见 [docs/improvement-plan.md](docs/improvement-plan.md)。
+- `check_ledger.py`：检查改进台账最新条目的事件来源、归因和改动文件。改进规则见 [docs/improvement-plan.md](docs/improvement-plan.md)。
 - `find_parts.py`：在本机知识库 `~/Documents/知识库/HardwareWiki/raw/` 检索器件手册、参考设计和应用笔记，见 [core-part-selection.md](references/core-part-selection.md)、[part-roles.md](references/part-roles.md)；`--patterns` 检索 [功能电路模式库](references/circuit-patterns.md)。
 
 上游借鉴（schematic-trace-solver、kicad-mcp-pro、SKiDL、circuit-synth）的源码路径、commit、许可证和未采用部分见
 [融合说明](references/upstream-integration.md)；历次改造与发布验证记录在 [docs/](docs/)。
 
 当前生成后端支持多功能块自动排入单页、已覆盖的多单元符号、可见局部布线及显式远端标签。
-原生多页层次、图形总线、任意隐藏/堆叠引脚、复杂跨网图和已有工程原位增量编辑尚未实现，
-多页工程用 `schematic_layout.root.Root` 组装根图（层次图框、System_block 流向线与隔离边界）并通过相应门禁。
+多页层次（由 Circuit IR 直接生成）、图形总线、任意隐藏/堆叠引脚、复杂跨网图和已有工程原位增量编辑尚未实现，
+多页工程用 `schematic_layout.root.Root` 组装根图（层次图框、System_block 流向线与隔离边界）并通过相应自动检查。
 
 ## 运行一个样例
 
@@ -36,7 +36,7 @@ python3 scripts/verify_schematic.py board.kicad_sch --intent electrical-intent.j
 python3 -m unittest discover -s tests -v
 ```
 
-`AUTOMATED_PASS` 仅表示自动检查通过；原生图面目检和数据手册审查仍须完成。
+`AUTOMATED_PASS` 仅表示自动检查通过；图面审阅和数据手册审查仍须完成。
 
 ## 安装
 
@@ -50,7 +50,7 @@ git clone https://github.com/wenqiiizwq-creator/Autonomous-Schematic-Generation.
 `SKILL.md` 为入口，frontmatter 中的 `name` 为 `autonomous-schematic-generation`。
 已有旧版 `kicad` 安装时，迁移到新目录，避免保留两份可被扫描的安装。
 
-依赖：KiCad CLI 和符号库（实测 KiCad 10.0.x，其他版本需跑原生回归）；Python 3.10+ 标准库；
+依赖：KiCad CLI 和符号库（实测 KiCad 10.0.x，其他版本需用 KiCad 导出复跑全部合成测试）；Python 3.10+ 标准库；
 PDF 目检渲染用 `pdftoppm`，完整 PDF 页数核对用 Poppler `pdfinfo`（未安装时明确返回检查不足）。
 
 ## 设计约定

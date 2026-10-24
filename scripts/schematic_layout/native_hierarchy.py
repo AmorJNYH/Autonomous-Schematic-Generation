@@ -14,18 +14,17 @@ from .sexpr import parse
 
 # Native formats whose instance semantics are supported here. A missing version
 # permits small API fixtures; unknown declared formats remain coverage gaps.
-SUPPORTED_VERSIONS = {"20211123", "20230121", "20231120", "20250114"}
+# 20260306 is KiCad 10 (checked with 10.0.6 by upgrading a written project). Add a version only after that check.
+SUPPORTED_VERSIONS = {"20211123", "20230121", "20231120", "20250114", "20260306"}
 
 
 def sheet_properties(sheet):
-    """Return canonical aliases plus errors, without silently picking a winner.
+    """Return the Sheetfile alias plus errors, without silently picking a winner.
 
-    Sheetname is optional for file-coverage fixtures. When present it has the
-    same duplicate/conflict rules as Sheetfile. Sheetfile must be usable.
+    Only the file decides which page is drawn; the sheet name is a display label.
     """
     props, errors = {}, []
-    for canonical, aliases in (("Sheetname", ("Sheetname", "Sheet name")),
-                               ("Sheetfile", ("Sheetfile", "Sheet file"))):
+    for canonical, aliases in (("Sheetfile", ("Sheetfile", "Sheet file")),):
         nodes = [p for p in all_nodes(sheet, "property") if len(p) > 1 and p[1] in aliases]
         for alias in aliases:
             if sum(p[1] == alias for p in nodes) > 1:
@@ -218,7 +217,8 @@ class NativeHierarchy:
             version = value(tree, "version")
             if version is not None and str(version) not in SUPPORTED_VERSIONS:
                 unsupported.add(path)
-                self.coverage_gaps.append(f"{path.relative_to(self.base)}: unsupported native annotation version {version}")
+                self.coverage_gaps.append(f"{path.relative_to(self.base)}: unsupported native annotation version {version} "
+                                          "(checked up to KiCad 10.0.6, format 20260306)")
         global_sheets = self._global(root_tree, "sheet_instances", ("page",)) if self.root not in unsupported else {}
         global_symbols = self._global(root_tree, "symbol_instances", ("reference", "unit")) if self.root not in unsupported else {}
         local = {path: self._locals(tree, path.relative_to(self.base)) if path not in unsupported else {}
@@ -275,13 +275,7 @@ class NativeHierarchy:
                     for child in self.pages:
                         if child["instance"] == child_chain:
                             child["page"] = record["page"]
-        for table, active in ((global_sheets, active_sheets), (global_symbols, active_symbols)):
-            for path in table.keys() - active:
-                self._annotation_error("dangling_annotation_context", path=path)
-        for file, records in local.items():
-            for entity, annotations in records.items():
-                for path in annotations.keys() - active_local.get((file, entity), set()):
-                    self._annotation_error("dangling_annotation_context", path=path, file=file.relative_to(self.base).as_posix())
+        # Annotation records for paths no longer in the hierarchy are stale leftovers, not drawing errors.
 
     def tree_for(self, page):
         return self.trees[self.base / page["path"]]

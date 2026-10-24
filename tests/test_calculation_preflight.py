@@ -13,7 +13,7 @@ E = [{'source': 'synthetic-datasheet', 'locator': 'stipulated test limits'}]
 
 def calculation():
     return {'id': 'BIAS', 'model': 'Synthetic source current; Vz guaranteed only at 5 mA',
-            'expression': '(vin - vz) / r', 'output_unit': 'mA', 'assumptions': [], 'claim': 'SUPPORTED',
+            'expression': '(vin - vz) / r', 'output_unit': 'mA', 'assumptions': [],
             'acceptance': {'operator': '>=', 'value': 5, 'unit': 'mA'},
             'inputs': {key: {'value': value, 'unit': unit, 'basis': 'GUARANTEED', 'evidence': E,
                             'conditions': {}, 'operating_conditions': {},
@@ -35,18 +35,35 @@ class CalculationPreflightTests(unittest.TestCase):
         errors, result = validate_calculations([row])
         self.assertTrue(errors)
         self.assertEqual(result['BIAS']['status'], 'CONDITIONAL')
-        row.update(claim='CONDITIONAL', closure='Obtain voltage bounds at the actual bias current')
+        row.update(closure='Obtain voltage bounds at the actual bias current')
         self.assertEqual(validate_calculations([row])[0], [])
 
     def test_ntc_extrapolation_and_runtime_switching_stay_conditional(self):
         row = calculation()
         row['inputs']['r']['basis'] = 'ASSUMED'
         row.update(assumptions=['B25/50 extrapolated outside characterized range',
-                               'Runtime bias switching not yet evidenced'], claim='CONDITIONAL',
+                               'Runtime bias switching not yet evidenced'],
                    closure='Get full RT curve and verify firmware register transitions')
-        self.assertEqual(validate_calculations([row])[0], [])
-        row['claim'] = 'SUPPORTED'
+        errors, result = validate_calculations([row])
+        self.assertEqual((errors, result['BIAS']['status']), ([], 'CONDITIONAL'))
+        del row['closure']
         self.assertTrue(validate_calculations([row])[0])
+
+    def test_assumed_input_needs_no_guarantee_conditions(self):
+        row = calculation()
+        row['inputs']['r'] = {'value': 1, 'unit': 'kohm', 'basis': 'ASSUMED', 'evidence': E}
+        row['closure'] = 'Measure the fitted resistor'
+        errors, result = validate_calculations([row])
+        self.assertEqual((errors, result['BIAS']['status']), ([], 'CONDITIONAL'))
+        guaranteed = calculation()
+        del guaranteed['inputs']['r']['conditions']
+        self.assertTrue(validate_calculations([guaranteed])[0])
+
+    def test_long_expression_is_evaluated_not_rejected(self):
+        row = calculation()
+        row['expression'] = '(vin - vz) / r' + ' + 0' * 400
+        errors, result = validate_calculations([row])
+        self.assertEqual((errors, result['BIAS']['value']), ([], 5))
 
     def test_temperature_condition_must_cover_operating_range(self):
         row = calculation()
@@ -57,8 +74,7 @@ class CalculationPreflightTests(unittest.TestCase):
     def test_arithmetic_failure_is_not_ready(self):
         row = calculation(); row['inputs']['vin']['value'] = 8
         errors, result = validate_calculations([row])
-        self.assertTrue(errors)
-        self.assertEqual(result['BIAS']['status'], 'FAIL')
+        self.assertEqual((errors, result['BIAS']['status']), ([], 'FAIL'))   # the margin decides, no claim to agree with
 
     def test_no_code_execution_and_no_nonfinite_values(self):
         for expr in ["__import__('os').getcwd()", 'r ** 100000000', '1 / 0', 'unknown + 1']:

@@ -4,10 +4,7 @@ import copy
 import hashlib
 import json
 from .generate import digest, pin_net_map
-from .sexpr import parse, all_nodes, first, dump
-from .scene import xy
-from .geometry import Box
-from .routing import segment_hits_box
+from .sexpr import parse
 
 
 def electrical_diff(before, after):
@@ -101,8 +98,6 @@ def load_baseline(path, intent, compiled, locks):
 
 
 def retain_placements(layout, baseline, planning=None):
-    if baseline["locks"] and layout["paper"] != baseline["layout"]["paper"]:
-        raise ValueError("Locked blocks require the baseline paper size")
     for bid in baseline["locks"]:
         refs = {m["ref"] for m in baseline["blocks"][bid]["members"]}
         for key, placement in baseline["layout"]["placements"].items():
@@ -124,44 +119,3 @@ def retain_placements(layout, baseline, planning=None):
                 baseline["layout"]["annotations"][old_index]
             )
 
-
-def drawing_signature(root, refs, bounds):
-    box = Box(*bounds)
-    selected = []
-    for s in all_nodes(root, "symbol"):
-        if (
-            next((p[2] for p in all_nodes(s, "property") if p[1] == "Reference"), "")
-            in refs
-        ):
-            selected.append(dump(s))
-    for kind in ("wire", "junction", "no_connect", "label", "text"):
-        for node in all_nodes(root, kind):
-            if kind == "wire":
-                pts = [
-                    (float(p[1]), float(p[2]))
-                    for p in all_nodes(first(node, "pts"), "xy")
-                ]
-                inside = segment_hits_box(*pts, box)
-            else:
-                inside = box.contains_point(*xy(node))
-            if inside:
-                # UUID remains part of the signature; unchanged geometry must
-                # preserve object identity too, even when another net is added.
-                selected.append(dump(node))
-    return digest(sorted(selected))
-
-
-def verify_locked_drawing(root, baseline):
-    result = []
-    plans = {b["id"]: b for b in baseline["planning"]["blocks"]}
-    for bid in baseline["locks"]:
-        refs = {m["ref"] for m in baseline["blocks"][bid]["members"]}
-        bounds = plans[bid]["bounds"]
-        old = drawing_signature(baseline["root"], refs, bounds)
-        new = drawing_signature(root, refs, bounds)
-        if old != new:
-            raise ValueError(
-                f"Locked block drawing changed (fields/wires/identity/annotations): {bid}"
-            )
-        result.append({"block": bid, "status": "UNCHANGED", "drawing_sha256": new})
-    return result

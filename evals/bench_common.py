@@ -6,7 +6,7 @@ PY=sys.executable
 sys.path.insert(0,str(ROOT/'scripts'))
 from schematic_layout.sexpr import parse,dump,first,all_nodes,value,form,Atom
 from schematic_layout.scene import read_scene
-from schematic_layout.scratch import require_scratch,scratch_base
+from schematic_layout.scratch import scratch_base
 
 def get(p):return json.loads(Path(p).read_text())
 def put(p,x):p=Path(p);p.parent.mkdir(parents=True,exist_ok=True);p.write_text(json.dumps(x,ensure_ascii=False,indent=2)+'\n')

@@ -98,12 +98,13 @@
 
 字段要求（`render_design_report.py` 检查，不满足算记录问题，`pack_design.py` 拒绝打包）：
 
-- 每个角色有 `role`、非空 `refs`、非空 `decisive`（对象列表，见第 3 节）、非空 `sources`、`candidates`。
+- 每个角色有 `role`、非空 `refs`、非空 `decisive`（对象列表，见第 3 节）、`candidates`；`sources`（候选从哪里找的）可选。
 - `selected` 和 `alternate` 候选对每条决定性条件都有 `values[param] = {"value", "page"}` 且判定满足；
   `rejected` 候选至少一条判定不满足，或写 `reject_kind`。
 - 候选 ≥ 2，否则要有 `single_candidate_reason`；`status` 只能是 `selected`/`rejected`/`alternate`，恰好一个 `selected`。
 - 每个候选有 `mpn`、`reason`、`datasheet`；`datasheet` 是相对 `library_root` 的路径，文件必须存在（也可以是交付目录内 `设计资料/` 下的文件）。
-- `selected` 的每个位号都在设计要求表里，且该器件的 `value` 含选定型号。
+  `values` 的每个 `page` 必须在该手册页数之内，否则算记录问题；数值在那一页的文字里找不到时列入报告“引用待人工核对”，不拦。
+- `selected` 的每个位号都在设计要求表里，且该器件的 `value` 或 `mpn` 含选定型号。
 - 设计要求表里每个 U/Q/T 开头的器件都属于某个角色；一个角色可以覆盖多个位号（例如两只并联 MOS）。
 - `selected` 候选写 `external_dependencies`（字符串列表，没有写空列表）。不为空时角色还要有：
   - `options`：2–3 个方案，每个 `{name, parts, external_dependencies, cost, pros, cons, recommended}`，

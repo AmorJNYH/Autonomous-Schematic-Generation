@@ -170,8 +170,8 @@ An unqualified zero-pin object still makes whole-native qualification FAIL.
 The reference report retains source-bound pin/identity/topology diagnostics for
 the structurally parsed remainder so an unrelated object cannot hide a local
 pin defect. Check `native_qualification` and top-level `errors`: local PASS
-entries never qualify a failed input. Malformed XML, duplicate physical
-assignments and invalid source-role evidence remain hard rejections.
+entries never qualify a failed input. Malformed XML and duplicate physical
+assignments remain hard rejections.
 | `checks` | Unique `id`, `kind`, source/locator. `component` asserts exact value/footprint/library/DNP. `same_net` and `distinct_nets` assert at least two unique `reference.pin` endpoints against native partitions. |
 | `features` | Unique ID, boundary, source/locator and nonempty stages. Each stage needs ID, role, real fitted references and check IDs. Missing/DNP required references fail. Review whether the listed references and checks actually implement the stated role. |
 
@@ -281,89 +281,15 @@ the connection assertions.
 
 ### Intentional pinless native objects
 
-A mechanical or documentation object may have no physical pins. Preserve its
-complete component identity; its pin-integrity result is `NA`, not a part or
-manufacturing qualification. Never infer this role from a reference prefix,
-library/model name, BOM flag or an empty XML pin list. Electrical parts with
-missing exported pins still fail. Unresolved cache inheritance or unavailable
-selected-project annotations remains `INSUFFICIENT` and cannot qualify an object.
-
-Use an externally reviewed `source-role-contract.json` with exactly these keys:
-
-```json
-{
-  "schema_version": 1,
-  "project": "board",
-  "file_sha256": {"board.kicad_sch": "<complete NativeHierarchy file hash map>"},
-  "native_xml_sha256": "<exact reviewed native XML SHA256>",
-  "objects": [{
-    "reference": "OBJECT1",
-    "instance": "/root-uuid/sheet-uuid",
-    "symbol_uuid": "object-uuid",
-    "lib_id": "Example:Marker",
-    "lib_sha256": "<SHA256 of sexpr.dump(cached symbol).encode()>",
-    "source_properties": {"Reference": "OBJECT1", "Value": "Marker"},
-    "source_flags": {"exclude_from_sim": "yes", "in_bom": "no", "on_board": "yes", "dnp": "unspecified"},
-    "role": "mechanical",
-    "native_identity": {"value": "Marker", "footprint": "", "datasheet": "", "lib_id": "Example:Marker", "dnp": false, "fields": {}}
-  }]
-}
-```
-
-`source_properties` must contain every source property; the four flags use the
-native value or `unspecified` when absent. `role` is only `mechanical` or
-`documentation`, selected by an independent source-role review. The checker
-verifies exact selected-project reference/instance/UUID, full source and cache
-hashes, export identity agreement with source properties, and absence of pins
-across every resolved cached unit/style. Native XML additionally must match the
-contract hash, descriptor, symbol UUID and sheet path. A stale hash or incorrect
-identity fails. No missing annotation may borrow another project's reference.
-Raw `source_properties` remain exact. For export identity only, KiCad's exact
-`~` empty marker becomes `""` in named fields, including custom fields; Reference
-and Value remain literal. Only absent Footprint, Datasheet and Description have
-empty native defaults. Missing custom fields, whitespace and nonempty text are
-not aliases. This does not normalize physical pin names in reference contracts.
-
-```sh
-python3 scripts/audit_project.py board.kicad_sch --netlist native.xml \
-  --source-role-contract source-role-contract.json --out new-hierarchy.json
-python3 scripts/audit_symbol_integrity.py board.kicad_sch --netlist native.xml \
-  --source-role-contract source-role-contract.json --out new-symbols.json
-python3 scripts/verify_schematic.py board.kicad_sch --intent electrical-intent.json \
-  --source-role-contract source-role-contract.json --out new-verification
-```
-
-The option is forwarded to hierarchy, symbol, reference-contract and candidate
-change audits. Each consumer still compares full electrical identities and pins.
-For a change, provide the baseline's own `--baseline-source-root` and
-`--baseline-source-role-contract` (and `--baseline-project` when needed);
-candidate evidence cannot substitute for baseline evidence.
-`verify_schematic.py` exports a fresh XML: timestamp or other byte changes make an
-older XML hash stale and require independent review/rebinding before qualification.
-It never creates, updates or infers a role contract. Preserve the failed original
-run. After reviewing the new export, run the read-only consumers on that exact XML:
-
-```sh
-python3 scripts/verify_reference_contract.py native.xml reference-contract.json \
-  --source-root board.kicad_sch --source-role-contract reviewed-roles.json --out new-reference.json
-python3 scripts/verify_design_change.py old.xml native.xml design-change.json \
-  --baseline-source-root old/board.kicad_sch --baseline-source-role-contract old/reviewed-roles.json \
-  --source-root board.kicad_sch --source-role-contract reviewed-roles.json --out new-change.json
-```
-
-These read-only checks do not replace a fresh whole-delivery verification or an
-independent review. Missing evidence retains strict zero-pin rejection; wrong
-source/cache/XML hashes, annotations, identities or hidden pins still fail.
-The read-only Python API is `read_native(xml, source_root=root,
-source_roles=contract, project=selected_project)`; without a contract its existing
-strict rejection of zero-pin components remains. `native_inventory(xml)` and the
-audit reports separately retain XML component/node occurrence counts and the
-zero-endpoint list even when strict parsing fails. Those diagnostics neither
-qualify a component nor resolve selected-annotation coverage gaps.
-`verify_reference(..., source_root=..., source_roles=..., project=...)` uses that
-same context. `verify_change` has separate `before_source_root/before_source_roles/
-before_project` and `after_source_root/after_source_roles/after_project` keyword
-arguments; there is no automatic context reuse or hash rebinding.
+A mechanical or documentation object (mounting hole, logo, note marker) may have
+no pins. Give the symbol a `ComponentRole` property of `mechanical` or
+`documentation`; KiCad exports it as a field. A part with that role and no pin in
+any cached unit, and a native libpart with no pins, is listed as a pinless object
+with integrity `NA`, not a part or manufacturing qualification. Every other part
+without exported pins still fails, and so does a declared role on a part with a
+pin in any unit. The role is never inferred from a reference prefix, library name,
+BOM flag or an empty XML pin list. The intent netlist check compares the field
+like any other, so a role the intent does not declare is a mismatch.
 
 Remove a required part, change a value/package, make it DNP, move a return, short
 distinct rails and remove a declared stage. Each affected check must reject the

@@ -6,7 +6,7 @@ def frontier(work, evidence):
         errors.append({'code': code, 'item': item})
     edges = {}
     for key, row in work.items():
-        deps = row.get('blocked_by')
+        deps = row.get('blocked_by', [])    # written only when the item has a real predecessor
         if not isinstance(deps, list) or any(not isinstance(d, str) for d in deps):
             err('convergence_dependencies', key)
             deps = []
@@ -16,7 +16,7 @@ def frontier(work, evidence):
                 err('convergence_unknown_dependency', key + ':' + dep)
         if row.get('stage') == 'external' and row.get('status') != 'closed':
             external.append(key)
-            alternatives = row.get('fallback_work')
+            alternatives = row.get('fallback_work', [])
             assessed = row.get('fallback_evidence')
             if not isinstance(alternatives, list) or any(not isinstance(v, str) for v in alternatives):
                 err('convergence_fallback_work', key)

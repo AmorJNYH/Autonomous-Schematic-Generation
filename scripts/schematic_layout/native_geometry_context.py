@@ -375,12 +375,6 @@ def visible_name(pin):
                 and not hidden(name) and not hidden(pin))
 
 
-def load_page_context(path, schematic, expected_sha256):
-    # Serialized evidence cannot authorize coverage, even with a matching SHA.
-    # The official runner consumes only its own live fresh-job return value.
-    raise ValueError("External serialized native geometry context is audit-only; use a fresh verify job")
-
-
 def page_context_from_job(job, schematic):
     if not isinstance(job, FreshGeometryJob) or job.digest()!=job._sealed_sha256:
         raise ValueError("Native geometry requires an unchanged live fresh-job object")

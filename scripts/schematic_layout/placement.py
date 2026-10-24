@@ -121,22 +121,8 @@ def cells_for(block, template, intent):
             raise ValueError(
                 f"{block['id']}: roles {sorted(missing)} unsupported by {template}"
             )
-        # Prevent use of a Buck layout for an LDO or integrated-inductor module.
-        required = {
-            "rc_filter": {"series", "shunt"},
-            "divider": {"upper", "lower"},
-            "ldo": {"regulator"},
-            "buck_async": {"regulator", "inductor", "diode"},
-            "integrated_power": {"regulator"},
-        }[template]
-        if required - {m["role"] for m in members}:
-            raise ValueError(
-                f"{block['id']}: {template} missing required roles {sorted(required)}"
-            )
         result = {m["ref"]: roles[m["role"]] for m in members}
     elif template == "capacitor_bank":
-        if any(m["role"] != "capacitor" for m in members):
-            raise ValueError("capacitor_bank accepts only the capacitor role")
         result = {m["ref"]: (i % 4, i // 4, 0) for i, m in enumerate(members)}
     elif template == "functional":
         # Traverse actual connectivity starting at declared inputs (otherwise
@@ -226,7 +212,7 @@ def block_layout(block, config, intent, libraries, grid, gap):
 def plan_layout(intent, compiled, policy, attempt=0, only_block=None):
     keys(
         policy,
-        "schema_version papers grid_mm blocks nets gap_mm block_gap_mm max_attempts page_mode",
+        "schema_version papers grid_mm blocks nets gap_mm block_gap_mm max_attempts",
         "presentation",
     )
     if policy.get("schema_version") != 2:

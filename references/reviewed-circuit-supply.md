@@ -22,12 +22,13 @@ binding after an electrical change without reopening the review.
 
 The board declares the net role as power or return. Put exactly one
 `Sheet.power_flag()` at the reviewed output. `page_intents` carries the declaration
-to its output-pin page. The full-board native audit checks original passive pin
-connectivity and identities, absence of a conflicting native power output, marker
+to its output-pin page. The full-board native audit checks that the reviewed parts are
+fitted, absence of a conflicting native power output, marker
 count, output net name, current source document and circuit binding. Missing,
 stale, disconnected, signal or unreviewed declarations fail. The check does not
 parse the engineering argument or prove it correct; the design basis must argue
 source semantics and operating limits separately. Report that distinction explicitly.
+Part identity and pin connectivity are the `intent_netlist` gate's.
 
 Use this only when supply semantics are actually known. A controller's uncertain
 voltage margin can remain conditional; a path of unknown polarity or an unproved

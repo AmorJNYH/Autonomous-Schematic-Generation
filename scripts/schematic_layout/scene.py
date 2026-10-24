@@ -619,13 +619,12 @@ def read_scene(root, native_context=None):
                     scene.labels[-1] = (kind, HierarchicalLabelText(
                         f.text, f.x, f.y, f.angle, f.font_mm, f.bold, f.justify,
                         HIERARCHICAL_LABEL_STYLES[style]))
+                    scene.review.append(f"{kind}: outline and attached fields need render review")
                 else:
                     if f.angle in (180, 270) and _encoded_hierarchical_readable(n):
                         scene.labels[-1] = (kind, replace(f, angle=f.angle % 180))
                     scene.gaps.append("Hierarchical label text style needs native review")
-                scene.gaps.append(
-                    f"{kind}: outline and attached fields need render review"
-                )
+                    scene.gaps.append(f"{kind}: outline and attached fields need render review")
     scene.junctions = [xy(n) for n in all_nodes(root, "junction")]
     scene.no_connects = [xy(n) for n in all_nodes(root, "no_connect")]
     if native_context is not None:

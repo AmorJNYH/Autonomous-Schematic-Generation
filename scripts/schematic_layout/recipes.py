@@ -176,7 +176,6 @@ class Sheet:
         self.notes = []
         self.decisions = []
         self.reasons = {}
-        self.conflicts = {}
         self._shapes = {}
         self.rails = dict(rails or {})
         self.external = sorted(external)
@@ -197,7 +196,13 @@ class Sheet:
 
     def _suggest(self):
         """Propose a role for every part and a label role for every net."""
-        returns = {n for n, sym in self.rails.items() if self._power_shape(sym)[2]}
+        # A declared net role decides; the rail glyph direction only fills in undeclared rails.
+        declared = self.intent.get("net_roles", {})
+        returns = ({n for n, r in declared.items() if r == "return"}
+                   | {n for n, sym in self.rails.items() if n not in declared and self._power_shape(sym)[2]})
+        def resistor(ref):
+            c = self.components[ref]
+            return c.get("fields", {}).get("ComponentRole") == "resistor" or c["lib_id"].startswith("Device:R")
         roles, two = {}, {}
         for ref in sorted(self.components):
             nums = sorted(self._shape(ref)[0])
@@ -222,8 +227,7 @@ class Sheet:
         for m in sorted(at_anchor):
             if m in self.rails:
                 continue
-            legs = [r for r, pair in two.items() if m in pair and r not in roles
-                    and self.components[r]["lib_id"].startswith("Device:R")]
+            legs = [r for r, pair in two.items() if m in pair and r not in roles and resistor(r)]
             low = [r for r in legs if set(two[r]) - {m} <= returns]
             up = [r for r in legs if r not in low]
             if len(low) == 1 and len(up) == 1:
@@ -251,11 +255,9 @@ class Sheet:
         for ref, pair in two.items():
             if ref not in roles:
                 on_rails = sum(n in self.rails for n in pair)
-                # A resistor can separate two declared supply domains. Return
-                # recognition remains the existing power-glyph direction
-                # heuristic; this suggestion establishes no voltage or safety.
-                if (on_rails == 2 and len(set(pair)) == 2 and not set(pair) & returns
-                        and self.components[ref]["lib_id"].startswith("Device:R")):
+                # A resistor can separate two declared supply domains; this
+                # suggestion establishes no voltage or safety.
+                if (on_rails == 2 and len(set(pair)) == 2 and not set(pair) & returns and resistor(ref)):
                     roles[ref] = {"role": "series", "why": "between distinct declared non-return rails"}
                 else:
                     role = ("series", "shunt", "decoupling")[on_rails]
@@ -268,21 +270,10 @@ class Sheet:
                        else "name" if n in names else None)
         return {"parts": roles, "nets": nets}
 
-    def justify(self, subject, reason, conflict=None):
-        """Record why a part or net deviates from the outline rules.
-
-        A spacing deviation (O7) also names what the extra room avoids in
-        ``conflict``: a part, a pin, or ``text:<what>`` for a long field.
-        """
+    def justify(self, subject, reason):
+        """Record why a part or net deviates from the outline rules."""
         if not str(reason).strip():
             raise ValueError("A deviation needs a reason")
-        if conflict is not None:
-            conflict = str(conflict).strip()
-            if not conflict:
-                raise ValueError("conflict names the object the spacing avoids")
-            if not conflict.startswith("text:") and conflict not in self.components and conflict not in self.nets:
-                raise ValueError(f"conflict {conflict!r} is not a part, a pin or text:<what>")
-            self.conflicts[subject] = conflict
         self.reasons[subject] = reason
 
     # ----- geometry -------------------------------------------------------
@@ -586,6 +577,11 @@ class Sheet:
                 "for the declared rail, or a full power: library identifier."
             )
         validate_net_roles(self.intent, [net])
+        if symbol == FLAG_SYMBOL and net not in {
+                d.get("net") for key in ("external_supply", "filtered_supply", "reviewed_circuit_supply")
+                for d in self.intent.get(key, [])}:
+            raise ValueError(f"{net} has no approved supply declaration; "
+                             "PWR_FLAG needs a supported source declaration")
         _, shape, down = self._power_shape(symbol)
         d = DOWN if down else UP
         start = self.point(target)
@@ -619,12 +615,7 @@ class Sheet:
         The flag names no net and is checked by the external-supply gate; put it
         once per declared net, at the connector pin or the series part.
         """
-        net = self._net(target)
-        declared = {d.get("net") for key in ("external_supply", "filtered_supply", "reviewed_circuit_supply") for d in self.intent.get(key, [])}
-        if net not in declared:
-            raise ValueError(f"{net} has no approved supply declaration; "
-                             "PWR_FLAG needs a supported source declaration")
-        return self.power(target, symbol=FLAG_SYMBOL, net=net, length=length)
+        return self.power(target, symbol=FLAG_SYMBOL, length=length)
 
     def label(self, target, kind="global", length=3, outward=None, net=None, font=None, reason=None):
         """Label at a wire end extending ``outward`` (a pin's own direction by default).
@@ -802,12 +793,6 @@ class Sheet:
         missing = sorted(set(self.components) - set(self.placements))
         if missing:
             raise ValueError(f"Unplaced parts: {missing}")
-        boxes = {r: self._moved(self._shape(r, p["rotation"], p["mirror"])[1], p["at"]) for r, p in self.placements.items()}
-        refs = sorted(boxes)
-        clash = [(a, b) for i, a in enumerate(refs) for b in refs[i + 1:]
-                 if boxes[a].overlaps(boxes[b], gap_mm=1.27 - 1e-6)]
-        if clash:
-            raise ValueError(f"Part bodies closer than 1.27 mm: {clash}; widen a gap or pitch")
         layout = {"schema_version": 1, "paper": self.paper, "placements": self.placements,
                   "annotations": self.notes, "defer_fields": True}
         root, meta, uid, reserved = make_root(self.intent, layout, name, self.dirs)
@@ -1004,8 +989,6 @@ class Sheet:
             if symbol == FLAG_SYMBOL:
                 flag_count += 1
                 ref = "#FLG" + uid("flag-reference:" + name + ":" + net + ":" + repr(end)).replace("-", "")
-                if ref in self.components:
-                    raise ValueError(f"Power flag reference collides with component {ref}")
             else:
                 ref = f"#PWR{self.power_ref_start + k - flag_count:03d}"
             numbers = [str(value(p, "number")) for s in all_nodes(lib, "symbol") for p in all_nodes(s, "pin")]
@@ -1155,11 +1138,8 @@ class Sheet:
             subject = f["subject"]
             if subject not in self.reasons:
                 findings.append(f)
-            elif f["rule"] == "spacing" and subject not in self.conflicts:
-                findings.append({**f, "detail": f["detail"] + "; justify(..., conflict=<part, pin or text:...>) names what it avoids"})
             else:
-                deviations.append({**f, "reason": self.reasons[subject],
-                                   **({"conflict": self.conflicts[subject]} if subject in self.conflicts else {})})
+                deviations.append({**f, "reason": self.reasons[subject]})
         spacing = [d for d in deviations if d["rule"] == "spacing"]
         if len(spacing) > MAX_SPACING_DEVIATIONS:
             findings.append({"rule": "spacing", "subject": "page", "detail":

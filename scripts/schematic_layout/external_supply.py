@@ -44,9 +44,6 @@ def declarations(intent):
 SERIES_LIB = re.compile(r"^Device:(R|R_Small|R_US|R_Small_US|L|L_Small|L_Core_\w+|L_Iron\w*"
                         r"|FerriteBead|FerriteBead_Small|Fuse|Fuse_Small|Polyfuse|Polyfuse_Small)$")
 SERIES_ROLES = {"series_resistor", "inductor", "ferrite_bead", "fuse"}  # MPN-named libraries only
-RETURN_NAME = re.compile(r"GND|VSS|RTN|RETURN|^0V$|^COM$", re.IGNORECASE)
-# Native pin functions carry KiCad's "_<pin>" suffix (GND_3, EP_25); pad names are anchored so VDD_PAD stays a supply.
-RETURN_PIN = re.compile(r"GND|VSS|^(E?PAD|EP|THERMAL_PAD|0V)(_\d+)?$", re.IGNORECASE)
 
 
 def filtered_declarations(intent):
@@ -111,7 +108,8 @@ def _scan(sheets):
 
         for sym in all_nodes(tree, "symbol"):
             used.update(_refs(sym))
-            lib_id = str(value(sym, "lib_id", ""))
+            # The cache is keyed by lib_name when the placed symbol has one, as project_audit reads it.
+            lib_id = str(value(sym, "lib_name", value(sym, "lib_id", "")))
             try:
                 lib = resolve(lib_id)
                 if first(lib, "power") is None:
@@ -160,9 +158,7 @@ def flag_references(sheets):
 def renamed_copy(root, sheets, workdir):
     root, workdir = Path(root).resolve(), Path(workdir)
     base = root.parent
-    trees, markers, gaps, used = _scan(sheets)
-    if gaps:
-        raise ValueError("; ".join(gaps))
+    trees, markers, _, used = _scan(sheets)
     aliases, counter = {}, 1
     for ref in sorted(set().union(*(_refs(s) for syms in markers.values() for s in syms)) if markers else ()):
         while f"{ALIAS}{counter}" in used:
@@ -197,22 +193,14 @@ def _origin(root, intent, pin):
     actual = root.findall(f"components/comp[@ref='{ref}']")
     if len(expected) != 1 or len(actual) != 1:
         return "FAIL", "origin needs one intent and one native component"
+    # Identity against the intent is the intent_netlist gate's; this checks the connector contact itself.
     c, x = expected[0], actual[0]
-    libs = x.findall("libsource")
-    fields = [(f.get("name"), f.text or "") for f in x.findall("fields/field")]
-    if len(libs) != 1 or len(fields) != len(dict(fields)):
-        return "INSUFFICIENT", "ambiguous native component metadata"
-    lib = libs[0]; native_fields = dict(fields)
-    observed = {"lib_id": f"{lib.get('lib')}:{lib.get('part')}", "value": x.findtext("value") or "",
-                "footprint": x.findtext("footprint") or "", "datasheet": x.findtext("datasheet") or "",
-                "mpn": native_fields.get("MPN") or x.findtext("value") or "",
-                "dnp": x.find("property[@name='dnp']") is not None}
-    if any(observed[k] != c.get(k, False if k == "dnp" else c.get("value", "") if k == "mpn" else "") for k in observed):
-        return "FAIL", "exact intent/native identity mismatch"
-    if not is_connector(c) or not is_connector({"lib_id": observed["lib_id"], "fields": native_fields}):
+    lib = x.find("libsource")
+    if lib is None:
+        return "INSUFFICIENT", "native component has no library source"
+    native_fields = {f.get("name"): f.text or "" for f in x.findall("fields/field")}
+    if not is_connector(c) or not is_connector({"lib_id": f"{lib.get('lib')}:{lib.get('part')}", "fields": native_fields}):
         return "FAIL", "origin lacks an explicit connector role"
-    if c.get("fields", {}).get("ComponentRole") != native_fields.get("ComponentRole"):
-        return "FAIL", "intent/native ComponentRole mismatch"
     parts = [p for p in root.findall("libparts/libpart") if p.get("lib") == lib.get("lib") and p.get("part") == lib.get("part")]
     if len(parts) != 1 or not parts[0].findall("pins/pin"):
         return "INSUFFICIENT", "complete connector library pin metadata unavailable"
@@ -220,12 +208,12 @@ def _origin(root, intent, pin):
     numbers = [p.get("num") for p in pins]
     if any(not n for n in numbers) or len(set(numbers)) != len(numbers) or number not in numbers:
         return "INSUFFICIENT", "missing/duplicate connector contact definition"
-    if any(p.get("type") != "passive" for p in pins) or observed["dnp"]:
-        return "FAIL", "connector must be fitted and every contact must be passive"
+    if x.find("property[@name='dnp']") is not None:
+        return "FAIL", "connector must be fitted"
     nodes = root.findall(f"nets/net/node[@ref='{ref}'][@pin='{number}']")
     if len(nodes) != 1 or nodes[0].get("pintype") != "passive":
         return "FAIL", "declared physical contact must have exact passive native type"
-    return "PASS", "explicit role, exact identity and native passive contacts; mechanical semantics require source review"
+    return "PASS", "explicit connector role and native passive contact; mechanical semantics require source review"
 
 
 def _via(root, intent, ref):
@@ -243,24 +231,7 @@ def _via(root, intent, ref):
         return "FAIL", ("via must be a series resistor, inductor, ferrite bead or fuse: a Device:R/L/FerriteBead/Fuse/"
                         "Polyfuse symbol, or an MPN-named library part with fields.ComponentRole "
                         + "/".join(sorted(SERIES_ROLES)))
-    native_roles = [f.text or "" for f in comp.findall("fields/field[@name='ComponentRole']")]
-    property_roles = [p.get("value", "") for p in comp.findall("property[@name='ComponentRole']")]
-    if len(native_roles) > 1 or len(property_roles) > 1:
-        return "INSUFFICIENT", "duplicate native ComponentRole metadata"
-    if native_roles and property_roles and native_roles != property_roles:
-        return "FAIL", "native ComponentRole representations conflict"
-    observed_role = (native_roles or property_roles)
-    if observed_role and not observed_role[0].strip():
-        return "INSUFFICIENT", "empty native ComponentRole metadata"
-    if observed_role and observed_role[0] not in SERIES_ROLES:
-        return "FAIL", "native ComponentRole is not a series passive role"
-    # Missing legacy native fields retain the existing intent-only policy.
-    if role is not None and observed_role and observed_role[0] != role:
-        return "FAIL", "via intent/native ComponentRole mismatch"
     lib = comp.find("libsource")
-    native_id = f"{lib.get('lib')}:{lib.get('part')}" if lib is not None else ""
-    if native_id != c.get("lib_id") or ("value" in c and (comp.findtext("value") or "") != c["value"]):
-        return "FAIL", "via intent/native identity mismatch"
     if comp.find("property[@name='dnp']") is not None or c.get("dnp", False):
         return "FAIL", "via must be fitted"
     parts = [p for p in root.findall("libparts/libpart") if lib is not None
@@ -335,17 +306,13 @@ def judge(xml_path, intent, aliases, artifact_root=None):
             errors.append({"kind": "net_has_power_source", "net": d["net"], "sources": sources})
     errors += circuit_supply.judge(root, intent, reviewed, by_pin, flags, aliases, artifact_root or Path(xml_path).parent)
     unfitted = {c.get("ref") for c in root.findall("components/comp") if c.find("property[@name='dnp']") is not None}
-    functions = {(p.get("ref"), p.get("pin")): p.get("pinfunction", "") for p in root.findall("nets/net/node")}
 
     def has_source(net):
         return any(r not in aliases and r not in unfitted and t.split("+", 1)[0] == "power_out"
                    for r, _, t in net["nodes"])
 
-    def is_return(name, net):
-        """Return-class by declared name or by the native names of its power-input pins."""
-        return bool(RETURN_NAME.search(name.rsplit("/", 1)[-1])) or (net is not None and any(
-            t.split("+", 1)[0] == "power_in" and RETURN_PIN.search(functions.get((r, p), ""))
-            for r, p, t in net["nodes"] if r not in aliases))
+    roles = intent.get("net_roles", {})
+    unchecked = []
 
     sheets = {s.get("name", "") for s in root.findall("design/sheet")} | {"/"}
 
@@ -383,7 +350,11 @@ def judge(xml_path, intent, aliases, artifact_root=None):
             errors.append({"kind": "filtered_source_not_driven", "net": d["net"], "from": d["from"]})
         if not any(r not in aliases and t.split("+", 1)[0] == "power_in" for r, _, t in net["nodes"]):
             errors.append({"kind": "filtered_net_without_power_input", "net": d["net"]})
-        if is_return(d["net"], net) != is_return(d["from"], far.get(d["net"])):
+        # A filtered net and its source are both power or both return, as the intent declares them.
+        ends = (roles.get(d["net"]), roles.get(d["from"]))
+        if not all(r in ("power", "return") for r in ends):
+            unchecked.append({"net": d["net"], "from": d["from"], "reason": "未核对：缺 net_roles"})
+        elif ends[0] != ends[1]:
             errors.append({"kind": "filtered_return_from_supply", "net": d["net"], "from": d["from"]})
         count = sum(n is net for _, n in flags)
         if count != 1:
@@ -394,7 +365,8 @@ def judge(xml_path, intent, aliases, artifact_root=None):
               else "PASS" if decls or filtered or reviewed or flags else "NOT_APPLICABLE")
     return {"status": status, "scope": ("Declared connector, filtered and manually reviewed discrete-circuit supply structure, evidence freshness and native markers only; source semantics, filter values, "
                       "series drop at the pin's maximum current, supply ratings and protection require review."),
-            "reviewed_circuit_declarations": reviewed, "declarations": decls, "filtered_declarations": filtered, "flags": sorted(f for f, _ in flags), "origins": origins, "errors": errors, "coverage_gaps": gaps}
+            "reviewed_circuit_declarations": reviewed, "declarations": decls, "filtered_declarations": filtered, "flags": sorted(f for f, _ in flags), "origins": origins, "errors": errors, "coverage_gaps": gaps,
+            "return_class_unchecked": unchecked}
 
 
 def audit_external_supply(root, sheets, intent, xml_path, cli, workdir, artifact_root=None):

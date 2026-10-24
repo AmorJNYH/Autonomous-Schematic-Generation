@@ -56,6 +56,16 @@ class PageFitTests(unittest.TestCase):
         self.assertTrue(any('fits A4' in r and 'A3' in r for r in result['reasons']), result)
         self.assertEqual('PASS', gate(m, allow_oversized_paper=True)['status'])
 
+    def test_flow_lines_and_sheet_frames_count_as_content(self):
+        page = ('(kicad_sch (version 20250114) (generator "eeschema") (uuid root) (paper "A3") (lib_symbols)'
+                ' (sheet (at 20 20) (size 60 40) (uuid s1) (property "Sheetname" "P" (at 20 19 0)) (property "Sheetfile" "p.kicad_sch" (at 20 61 0)))'
+                ' (polyline (pts (xy 80 40) (xy 390 270)) (stroke (width 0.25) (type default)) (fill (type none)) (uuid g1)))')
+        m = measure(parse(page))
+        self.assertEqual('A3', m['fits_paper'], m)
+        self.assertFalse(m['oversized_paper'])
+        small = measure(parse(page.replace('(xy 390 270)', '(xy 120 80)')))
+        self.assertTrue(small['oversized_paper'], small)
+
     def test_cli_waiver_for_oversized_paper(self):
         with tempfile.TemporaryDirectory() as tmp:
             sch = Path(tmp) / 'wide.kicad_sch'

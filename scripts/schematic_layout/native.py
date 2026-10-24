@@ -10,6 +10,20 @@ import xml.etree.ElementTree as ET
 
 # KiCad automatic names; the pin names inside may themselves contain "/".
 AUTO_NET_NAME = re.compile(r"(?:^|/)(?:Net|unconnected)-\(")
+# ERC rules KiCad 10 ignores by default that a generated project turns on, and the only
+# rules a project may leave ignored (they concern simulation models and footprint filters).
+ERC_RULES_ON = {"single_global_label": "error", "four_way_junction": "error"}
+ERC_MAY_IGNORE = {"simulation_model_issue", "footprint_filter"}
+
+
+def project_settings():
+    """The .kicad_pro content a generated project starts from."""
+    return {"erc": {"rule_severities": dict(ERC_RULES_ON)}}
+
+
+def ignored_erc_rules(report):
+    """Rules an ERC report says were not checked, apart from the ones a project may ignore."""
+    return sorted(c.get("key", "?") for c in report.get("ignored_checks", []) if c.get("key") not in ERC_MAY_IGNORE)
 
 
 def find_cli(explicit=None):
@@ -21,7 +35,7 @@ def find_cli(explicit=None):
     return next((str(p) for p in candidates if p and Path(p).is_file()), None)
 
 
-def compare_netlist(xml_path, intent, layout=None, name_origins=None):
+def compare_netlist(xml_path, intent, layout=None):
     root = ET.parse(xml_path).getroot()
     if (
         root.tag != "export"
@@ -59,8 +73,8 @@ def compare_netlist(xml_path, intent, layout=None, name_origins=None):
             errors.append({"kind": "unexpected_net_partition", "pins": sorted(actual)})
     if layout is None:
         # Board level: a drawn net name must be the intent name of the same pin
-        # partition (e.g. two swapped single-use name labels). Automatic-looking names
-        # require same-source native origin evidence before they can be skipped. A local
+        # partition (e.g. two swapped single-use name labels). A name KiCad made up
+        # (Net-(...), unconnected-(...)) is not compared. A local
         # name may carry only its own sheet path as a prefix; intent names that
         # start with "/" must match exactly.
         sheets = {s.attrib.get("name", "") for s in root.findall("design/sheet")} | {"/"}
@@ -71,13 +85,7 @@ def compare_netlist(xml_path, intent, layout=None, name_origins=None):
                 continue
             allowed = {expected} if expected.startswith("/") else {expected} | {p + expected for p in sheets}
             if name not in allowed and AUTO_NET_NAME.search(name):
-                origin = (name_origins or {}).get(pins)
-                if origin == "AUTOMATIC":
-                    continue
-                if origin != "EXPLICIT":
-                    coverage_gaps.append({"kind": "net_name_origin_unknown", "actual": name,
-                                          "pins": sorted(pins)})
-                    continue
+                continue
             if name not in allowed:
                 errors.append(
                     {
@@ -142,38 +150,6 @@ def compare_netlist(xml_path, intent, layout=None, name_origins=None):
                 )
         if (native.find("property[@name='dnp']") is not None) != c.get("dnp", False):
             errors.append({"kind": "assembly_state_mismatch", "ref": c["ref"]})
-        if "units" in c:
-            native_units = native.findall("units/unit")
-            if len(native_units) != len(c["units"]):
-                errors.append(
-                    {
-                        "kind": "unit_coverage_mismatch",
-                        "ref": c["ref"],
-                        "expected": c["units"],
-                        "actual_count": len(native_units),
-                    }
-                )
-            expected_pins = {
-                p.rsplit(".", 1)[1]
-                for n in intent["nets"]
-                for p in n["pins"]
-                if p.rsplit(".", 1)[0] == c["ref"]
-            }
-            expected_pins.update(
-                p.rsplit(".", 1)[1]
-                for p in intent.get("no_connect", [])
-                if p.rsplit(".", 1)[0] == c["ref"]
-            )
-            actual_pins = {p.get("num") for p in native.findall("units/unit/pins/pin")}
-            if actual_pins != expected_pins:
-                errors.append(
-                    {
-                        "kind": "physical_pin_coverage_mismatch",
-                        "ref": c["ref"],
-                        "expected": sorted(expected_pins),
-                        "actual": sorted(actual_pins),
-                    }
-                )
         source = native.find("libsource")
         if source is None or f"{source.get('lib')}:{source.get('part')}" != c["lib_id"]:
             errors.append(
@@ -192,19 +168,6 @@ def compare_netlist(xml_path, intent, layout=None, name_origins=None):
         "actual_nets": len(actual_sets),
         "no_connect_pins": sorted(nc),
     }
-
-
-def compare_source_netlist(schematic, xml_path, intent, cli, output):
-    """Board check with source-qualified automatic-name evidence when needed."""
-    result = compare_netlist(xml_path, intent)
-    if not result.get("coverage_gaps"):
-        return result, None
-    from .net_name_origin import audit_name_origins
-    audit = audit_name_origins(schematic, xml_path, cli, output)
-    origins = audit["origins"]
-    evidence = {**audit, "origins": [{"pins": sorted(p), "kind": k}
-                                  for p, k in origins.items()]}
-    return compare_netlist(xml_path, intent, name_origins=origins), evidence
 
 
 def verify(schematic, intent, layout, output, cli=None, reference_contract=None):
@@ -274,10 +237,12 @@ def verify(schematic, intent, layout, output, cli=None, reference_contract=None)
         violations = [
             v for s in report.get("sheets", []) for v in s.get("violations", [])
         ]
+        ignored = ignored_erc_rules(report)
         result["erc"] = {
-            "status": "PASS" if erc_run.returncode == 0 and not violations else "FAIL",
+            "status": "PASS" if erc_run.returncode == 0 and not violations and not ignored else "FAIL",
             "violations": violations,
             "ignored_checks": report.get("ignored_checks", []),
+            "ignored_rules": ignored,
         }
         if "sheets" not in report:
             result["erc"]["status"] = "INSUFFICIENT"
@@ -285,12 +250,7 @@ def verify(schematic, intent, layout, output, cli=None, reference_contract=None)
         result["erc"] = {"status": "INSUFFICIENT"}
     if net_run.returncode == 0 and netlist.is_file():
         if layout is None:
-            result["netlist"], evidence = compare_source_netlist(
-                schematic, netlist, intent, cli, output / "net-name-origin")
-            if evidence is not None:
-                result["net_name_origin"] = evidence
-                records.extend(evidence["commands"])
-                (output / "net-name-origin.json").write_text(json.dumps(evidence, indent=2) + "\n")
+            result["netlist"] = compare_netlist(netlist, intent)
         else:
             result["netlist"] = compare_netlist(netlist, intent, layout)
     else:

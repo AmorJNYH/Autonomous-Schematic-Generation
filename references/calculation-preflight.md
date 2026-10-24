@@ -7,14 +7,14 @@
 它验证声明的条件、有限算术及门槛；不自动选择电路模型、证明极值方向或做量纲代数。
 
 每个 calculation 要有 id、model、expression、inputs、output_unit、acceptance、
-assumptions（无假设填 []）和 claim。expression 支持有限数、变量、括号与 `+ - * /`，
+assumptions（无假设填 []）。expression 支持有限数、变量、括号与 `+ - * /`，
 不执行函数/代码。复杂模型使用有定位的外部推导，结果作为 DERIVED_BOUND 输入，
 不得用简单表达式冒充完整仿真。
 
 inputs 按变量名索引，每项含有限数 value、unit、evidence（source/locator 数组），
 basis 取 GUARANTEED / DERIVED_BOUND / ASSUMED / TYPICAL。
 DERIVED_BOUND 另给 derivation，说明不利方向、区间、外推误差与证据；如果不能支撑边界，
-应使用 ASSUMED。每项还需：
+应使用 ASSUMED。GUARANTEED 与 DERIVED_BOUND 还需下面几项（ASSUMED、TYPICAL 可写可不写）：
 
 - conditions：来源保证条件，按工况维度给 `{min, max, unit}`。
 - operating_conditions：本设计实际使用区间，必须被对应保证区间包含。
@@ -23,7 +23,7 @@ DERIVED_BOUND 另给 derivation，说明不利方向、区间、外推误差与�
 
 acceptance 形如 `{"operator":">=","value":5,"unit":"mA"}`，unit 必须与 output_unit 相同。
 各输入须预先换算到表达式一致单位；表达式中的常数不能藏起未声明的器件参数。
-claim 必须符合计算状态：SUPPORTED（条件覆盖且满足门槛）、FAIL（条件覆盖但不满足门槛）、
+计算状态由脚本得出：SUPPORTED（条件覆盖且满足门槛）、FAIL（条件覆盖但不满足门槛）、
 CONDITIONAL（存在假设、典型值或条件越界）。条件方案另给 closure；算术看似通过也不能
 升级为保证值。条件下算得越限也不自动证明实际失效。
 
@@ -38,7 +38,6 @@ NTC 的 B25/50 跨温区外推和运行时偏置切换能力也要逐项注明�
   "expression": "rating - stress",
   "output_unit": "V",
   "assumptions": [],
-  "claim": "SUPPORTED",
   "acceptance": {"operator": ">=", "value": 10, "unit": "V"},
   "inputs": {
     "rating": {

@@ -9,7 +9,7 @@
                       review responses, cited calculations and page scripts, manifest.json
 
 Requirements, datasheets and the previous version are referenced by path + SHA-256, never
-copied. Anything else at the top level, history snapshots, logs, oversized files and design
+copied. Anything else at the top level, history snapshots and design
 evidence that the closure record cites but the folder does not contain all fail the pack.
 Design documents must also agree with the design: every part a 设计资料/ table or assembly file
 names must exist in the electrical intent, with the same MPN and value where the table gives them.
@@ -28,12 +28,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from audit_design_closure import audit  # noqa: E402
 from find_parts import DEFAULT_WIKI, library_index, locate_file  # noqa: E402
-from render_design_report import REPORT, REQUIRED, render  # noqa: E402
+from render_design_report import REPORT, render  # noqa: E402
 
 TOP = (REPORT, '原理图', '设计资料', 'record')
 SCHEMATIC = ('schematic.pdf', 'netlist.xml', 'BOM.csv')
 RECORD_DIRS = ('calculations', 'scripts', 'evidence')
-MAX_BYTES = 10 * 1024 * 1024
 
 
 def sha256(path):
@@ -184,21 +183,12 @@ def check(root, inputs=(), previous=None):
                 errors.append('原理图/%s is missing' % name)
     record = root / 'record'
     if record.is_dir():
-        for name in REQUIRED + ('delivery-evidence.json',):
-            if not (record / name).is_file():
-                errors.append('record/%s is missing' % name)
+        # The other records are the report's to require; it names each one missing.
+        if not (record / 'delivery-evidence.json').is_file():
+            errors.append('record/delivery-evidence.json is missing')
         for p in record.iterdir():
             if p.is_dir() and p.name not in RECORD_DIRS:
                 errors.append('record/%s/ is not a delivery folder (allowed: %s)' % (p.name, ', '.join(RECORD_DIRS)))
-    for p in sorted(root.rglob('*')):
-        if not p.is_file():
-            continue
-        rel = p.relative_to(root).as_posix()
-        if p.suffix == '.log':
-            errors.append('%s: logs stay in the work directory' % rel)
-        elif p.stat().st_size > MAX_BYTES:
-            errors.append('%s is %.1f MB; keep only what the design cites, reference large inputs with --input'
-                          % (rel, p.stat().st_size / 1e6))
     intent, closure = record / 'electrical-intent.json', record / 'design-closure.json'
     if intent.is_file():
         try:

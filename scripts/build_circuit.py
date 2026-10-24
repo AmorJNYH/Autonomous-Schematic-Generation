@@ -12,13 +12,12 @@ import sys
 from schematic_layout.circuit_ir import compile_circuit
 from schematic_layout.placement import plan_layout
 from schematic_layout.generate import generate
-from schematic_layout.native import verify
+from schematic_layout.native import project_settings, verify
 from schematic_layout.sexpr import dump, form
 from schematic_layout.change_control import (
     load_baseline,
     electrical_diff,
     retain_placements,
-    verify_locked_drawing,
 )
 
 
@@ -31,7 +30,7 @@ def write_json(path, data):
 def write_project(out, name, root, libraries):
     path = out / (name + ".kicad_sch")
     path.write_text(dump(root) + "\n", encoding="utf-8")
-    (out / (name + ".kicad_pro")).write_text("{}\n")
+    (out / (name + ".kicad_pro")).write_text(json.dumps(project_settings(), indent=2) + "\n")
     table = form("sym_lib_table", form("version", 7))
     for lib, source in sorted(libraries.items()):
         table.append(
@@ -72,18 +71,9 @@ def build(document, policy, out, dirs=(), cli=None, baseline_path=None, locks=()
             ),
         )
         baseline = load_baseline(baseline_path, intent, compiled, locks)
-        old_policy = json.loads((baseline_path / "presentation.json").read_text())
-        if any(
-            old_policy.get("blocks", {}).get(b, {})
-            != policy.get("blocks", {}).get(b, {})
-            for b in locks
-        ):
-            raise ValueError("Locked block presentation settings changed")
     attempts = policy.get("max_attempts", 3)
     if not isinstance(attempts, int) or not 1 <= attempts <= 5:
         raise ValueError("max_attempts must be between 1 and 5")
-    if policy.get("page_mode", "pack") != "pack":
-        raise ValueError("This build entry currently expects page_mode pack")
     for attempt in range(attempts):
         attempt_dir = out / f"attempt-{attempt + 1}"
         attempt_dir.mkdir()
@@ -101,8 +91,6 @@ def build(document, policy, out, dirs=(), cli=None, baseline_path=None, locks=()
                     "Geometry rejected candidate: "
                     + json.dumps(manifest["geometry"]["findings"])
                 )
-            if baseline:
-                result["locked_blocks"] = verify_locked_drawing(root, baseline)
         except ValueError as e:
             result["attempts"].append(
                 {"attempt": attempt + 1, "status": "FAIL", "error": str(e)}

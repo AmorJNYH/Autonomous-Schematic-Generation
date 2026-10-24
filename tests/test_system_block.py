@@ -76,6 +76,20 @@ class SystemBlockTests(unittest.TestCase):
         self.assertTrue(any('runs through block 03_PFC' in f for f in r['findings']), r)
         self.assertEqual(1, r['boundaries'])
 
+    def test_flow_line_named_after_isolation_stays_a_flow_line(self):
+        cover = good()
+        cover.insert(-2, text('隔离电源 5V_ISO', 304.8, 99.06))   # a rail name near the boundary
+        cover += [*arrow(289.56, 76.2, 320.04, 76.2), text('隔离电源 5V_ISO', 304.8, 73.66)]
+        r = audit_system_block(cover)
+        self.assertEqual((4, 1), (r['flow_lines'], r['boundaries']), r)
+
+    def test_dashed_line_is_a_boundary_whatever_its_label(self):
+        cover = good()[:-2] + [form('polyline', form('pts', form('xy', 304.8, 30.48), form('xy', 304.8, 101.6)),
+                                    form('stroke', form('width', 0.35), form('type', Atom('dash'))), form('uuid', 'b')),
+                               text('SELV | PRIMARY', 304.8, 27.94)]
+        r = audit_system_block(cover)
+        self.assertEqual((3, 1), (r['flow_lines'], r['boundaries']), r)
+
     def test_no_blocks_is_insufficient(self):
         self.assertEqual('INSUFFICIENT', audit_system_block(root())['status'])
 

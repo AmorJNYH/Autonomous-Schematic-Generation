@@ -1,9 +1,0 @@
-{
-  "schema_version": 1,
-  "boards": [
-    {"id": "100W-PD-R1", "path": "/Users/skyfend/Project/硬件设计自动化流程/设计方案/ASG-20261016-100W-PD-R1", "title": "100W PD R1 设计报告"},
-    {"id": "100W-PD-R2", "path": "/Users/skyfend/Project/硬件设计自动化流程/设计方案/ASG-20261016-100W-PD-R2", "title": "100W PD R2 设计报告"},
-    {"id": "100W-PD-R3", "path": "/Users/skyfend/Project/硬件设计自动化流程/设计方案/ASG-20261017-100W-PD-R3", "title": "100W PD R3 设计报告"},
-    {"id": "100W-PD-R4", "path": "/Users/skyfend/Project/硬件设计自动化流程/设计方案/ASG-20261019-100W-PD-R4", "title": "100W PD R4 设计报告"}
-  ]
-}

@@ -4,6 +4,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'scripts'))
 from schematic_layout.external_supply import judge
 from schematic_layout.circuit_supply import binding, declarations
 from test_filtered_supply import xml
+from schematic_layout.native import compare_netlist
 
 class ReviewedCircuitSupplyTests(unittest.TestCase):
  def setUp(self):
@@ -22,7 +23,8 @@ class ReviewedCircuitSupplyTests(unittest.TestCase):
  def test_locator_fails(self):self.i['reviewed_circuit_supply'][0]['evidence']['locator']='absent';self.assertEqual(self.run_case()['status'],'FAIL')
  def test_stale_parameter_fails(self):self.i['components'][1]['value']='22u';self.assertEqual(self.run_case()['status'],'FAIL')
  def test_reversed_native_diode_fails(self):self.n['IN'][0]=('D1','1','passive');self.n['VCC'][0]=('D1','2','passive');self.assertEqual(self.run_case()['status'],'FAIL')
- def test_disconnected_return_fails(self):self.n['IN']+=self.n.pop('GND');self.assertEqual(self.run_case()['status'],'FAIL')
+ def test_disconnected_return_is_the_netlist_gates(self):
+  self.n['IN']+=self.n.pop('GND');self.assert_netlist_gate_catches()
  def test_signal_flag_fails(self):self.i['net_roles']['VCC']='signal';self.assertEqual(self.run_case()['status'],'FAIL')
  def test_missing_role_fails(self):self.i['net_roles']={};self.assertEqual(self.run_case()['status'],'FAIL')
  def test_undeclared_flag_fails(self):self.i.pop('reviewed_circuit_supply');self.assertEqual(self.run_case()['status'],'FAIL')
@@ -48,12 +50,15 @@ class ReviewedCircuitSupplyTests(unittest.TestCase):
  def test_automatic_net_name_uses_complete_native_partition(self):
   self.n['Net-(D1-A)']=self.n.pop('IN')
   self.assertEqual(self.run_case()['status'],'PASS')
- def test_extra_native_short_is_rejected(self):
-  self.n['IN'].append(('C1','2','passive'))
-  self.assertEqual(self.run_case()['status'],'FAIL')
+ def assert_netlist_gate_catches(self):
+  # Pin topology is compared once, by intent_netlist; the supply gate checks the review binding and markers.
+  self.assertEqual(self.run_case()['status'],'PASS')
+  self.assertEqual(compare_netlist(self.p/'n.xml',self.i)['status'],'FAIL')
+ def test_extra_native_short_is_the_netlist_gates(self):
+  self.n['IN'].append(('C1','2','passive'));self.assert_netlist_gate_catches()
  def test_declared_nc_must_remain_singleton_with_native_nc_marker(self):
   self.i['no_connect']=['D1.3'];self.i['reviewed_circuit_supply'][0]['binding_sha256']=binding(self.i,['D1','C1'])
   self.n['unconnected-D1']=[('D1','3','passive+no_connect')]
   self.assertEqual(self.run_case()['status'],'PASS')
   self.n['unconnected-D1'].append(('U2','1','input'))
-  self.assertEqual(self.run_case()['status'],'FAIL')
+  self.assertEqual(compare_netlist(self.p/'n.xml',self.i)['status'],'FAIL')

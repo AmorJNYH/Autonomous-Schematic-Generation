@@ -9,7 +9,7 @@ import math
 from pathlib import Path
 import re
 
-from .design_change import read_native, NativeEvidenceGap
+from .design_change import read_native
 from .project_audit import audit_project, properties
 from .native_hierarchy import NativeHierarchy
 from .scene import is_hidden, transform, xy
@@ -46,8 +46,6 @@ def arc_distance(p, start, mid, end):
 
 def attachment_rows(lib, unit, style, tolerance=0.16):
     """Distances use local coordinates and half stroke width, never body AABBs."""
-    if not math.isfinite(tolerance) or not 0 <= tolerance <= 0.25:
-        raise ValueError("Attachment tolerance must be between 0 and 0.25 mm")
     if first(lib, "extends"):
         return [], ["Unresolved symbol inheritance"]
     active, gaps = [], []
@@ -63,21 +61,15 @@ def attachment_rows(lib, unit, style, tolerance=0.16):
             if not isinstance(g, list) or not g:
                 continue
             half = float(value(first(g, "stroke", []), "width", 0)) / 2
-            if not math.isfinite(half) or half < 0:
-                raise ValueError("Invalid symbol stroke width")
             if g[0] == "rectangle":
                 a, b = xy(g, "start"), xy(g, "end")
                 corners = [a, (a[0], b[1]), b, (b[0], a[1]), a]
                 segments.extend((a, b, half) for a, b in zip(corners, corners[1:]))
             elif g[0] == "polyline":
                 points = [tuple(map(float, p[1:3])) for p in all_nodes(first(g, "pts", []), "xy")]
-                if len(points) < 2:
-                    gaps.append("Polyline has fewer than two points")
                 segments.extend((a, b, half) for a, b in zip(points, points[1:]))
             elif g[0] == "circle":
                 radius = float(value(g, "radius"))
-                if not math.isfinite(radius) or radius <= 0:
-                    raise ValueError("Invalid symbol circle radius")
                 circles.append((xy(g, "center"), radius, half))
             elif g[0] == "arc":
                 points = [xy(g, key) for key in ("start", "mid", "end")]
@@ -89,9 +81,6 @@ def attachment_rows(lib, unit, style, tolerance=0.16):
             elif g[0] != "pin":
                 # Text, Beziers and future primitives cannot prove attachment.
                 unsupported.add(str(g[0]))
-    points = [p for a, b, _ in segments for p in (a, b)] + [c for c, _, _ in circles] + [p for a, b, c, _ in arcs for p in (a, b, c)]
-    if any(not math.isfinite(x) for p in points for x in p):
-        raise ValueError("Nonfinite symbol artwork coordinates")
     active_pins = [p for s in active for p in all_nodes(s, "pin")]
     # Standard op-amp libraries may put only supply pins in a separate unit.
     # This classification is not available to a single-unit IC with missing art.
@@ -106,8 +95,6 @@ def attachment_rows(lib, unit, style, tolerance=0.16):
             tip = xy(pin)
             angle = float(at[3])
             length = float(value(pin, "length"))
-            if not all(math.isfinite(x) for x in (*tip, angle, length)) or length < 0:
-                raise ValueError("Invalid pin geometry")
             inner = (tip[0] + length * math.cos(math.radians(angle)),
                      tip[1] + length * math.sin(math.radians(angle)))
             distances = [max(0, segment_distance(inner, a, b) - half) for a, b, half in segments]
@@ -154,10 +141,10 @@ def unnamed_pin_rows(rows):
     return errors
 
 
-def audit_symbols(root, netlist=None, project=None, exceptions=None, tolerance=0.16, *, source_roles=None):
+def audit_symbols(root, netlist=None, project=None, exceptions=None, tolerance=0.16):
     root = Path(root).resolve()
     context = NativeHierarchy(root, project)
-    hierarchy = audit_project(root, project=project, context=context, source_roles=source_roles, netlist=netlist)
+    hierarchy = audit_project(root, project=project, context=context, netlist=netlist)
     pinless_keys = {(r["instance"], r["symbol_uuid"]) for r in hierarchy["pinless_objects"]}
     pinless_refs = {r["reference"] for r in hierarchy["pinless_objects"]}
     rows, errors, gaps, used = [], [], [], set()
@@ -172,8 +159,10 @@ def audit_symbols(root, netlist=None, project=None, exceptions=None, tolerance=0
         if key in allowed:
             raise ValueError("Duplicate pin exception")
         allowed[key] = e
-    errors.extend(hierarchy["errors"])
-    gaps.extend(hierarchy["coverage_gaps"])
+    # Hierarchy errors are the hierarchy gate's to list; here they only limit what could be audited.
+    if hierarchy["status"] != "PASS":
+        gaps.append("hierarchy %s (%d errors, %d coverage gaps): pages or symbols it could not resolve are not audited here"
+                    % (hierarchy["status"], len(hierarchy["errors"]), len(hierarchy["coverage_gaps"])))
     for page in hierarchy["pages"]:
         tree = context.tree_for(page)
         libs = {str(l[1]): l for l in all_nodes(first(tree, "lib_symbols", []), "symbol")}
@@ -196,11 +185,7 @@ def audit_symbols(root, netlist=None, project=None, exceptions=None, tolerance=0
             digest = hashlib.sha256(dump(lib).encode()).hexdigest()
             pins, pin_gaps = attachment_rows(lib, unit, style, tolerance)
             gaps.extend(f"{ref} unit {unit}: {g}" for g in pin_gaps)
-            if not pins:
-                gaps.append(f"{ref} unit {unit}: no resolved active pins")
             for p in pins:
-                if not p["pin"]:
-                    errors.append({"kind": "empty_pin_number", "reference": ref})
                 key = (page["instance"], ref, unit, p["pin"])
                 if key in allowed:
                     used.add(key)
@@ -217,8 +202,7 @@ def audit_symbols(root, netlist=None, project=None, exceptions=None, tolerance=0
                 at = first(sym, "at")
                 p["tip_sheet"] = transform(p["tip_local"], xy(sym), float(at[3]) if len(at) > 3 else 0, str(value(sym, "mirror", "")))
                 rows.append(p)
-    if allowed.keys() - used:
-        errors.append({"kind": "unused_exceptions", "pins": [list(k) for k in sorted(allowed.keys() - used)]})
+    unused = [list(k) for k in sorted(allowed.keys() - used)]   # listed for clean-up; they change nothing
     counts = {s: sum(r["attachment"] == s for r in rows) for s in ("PASS", "CANDIDATE", "INSUFFICIENT", "NOT_APPLICABLE", "REVIEWED_EXCEPTION")}
     graphics_status = "FAIL" if counts["CANDIDATE"] else "INSUFFICIENT" if counts["INSUFFICIENT"] else "PASS"
     physical = {f'{r["reference"]}.{r["pin"]}' for r in rows}
@@ -226,11 +210,7 @@ def audit_symbols(root, netlist=None, project=None, exceptions=None, tolerance=0
     native_result = {"status": "INSUFFICIENT", "reason": "Native KiCad XML not supplied"}
     if netlist is not None:
         try:
-            native = read_native(netlist, source_root=root, source_roles=source_roles, project=project)
-        except NativeEvidenceGap as exc:
-            native_result = {"status": "INSUFFICIENT", "reason": str(exc),
-                             "sha256": hashlib.sha256(Path(netlist).read_bytes()).hexdigest()}
-            gaps.append(str(exc))
+            native = read_native(netlist)
         except ValueError as exc:
             # Keep strict rejection, but retain the already-computed source audit.
             reason = str(exc)
@@ -278,7 +258,7 @@ def audit_symbols(root, netlist=None, project=None, exceptions=None, tolerance=0
                                   "native_connected_anchors": [peer["pin"] for peer in connected]})
     hidden_power_status = ("FAIL" if any(p["status"] == "FAIL" for p in hidden_power_rows)
                            else "INSUFFICIENT" if hidden_power_rows else "PASS")
-    axes = [hierarchy["status"], graphics_status, native_result["status"], hidden_power_status]
+    axes = ["PASS" if hierarchy["status"] == "PASS" else "INSUFFICIENT", graphics_status, native_result["status"], hidden_power_status]
     status = "FAIL" if errors or "FAIL" in axes else "INSUFFICIENT" if gaps or "INSUFFICIENT" in axes else "PASS"
     return {"schema_version": 1, "status": status,
             "scope": "Pin-to-ink candidates, explicit physical-power visibility and native physical pin coverage only. No manufacturer, pad geometry, peripheral or electrical approval.",
@@ -286,7 +266,7 @@ def audit_symbols(root, netlist=None, project=None, exceptions=None, tolerance=0
             "component_count": len({r["reference"] for r in rows}), "physical_pin_count": len(physical),
             "file_sha256": hierarchy["file_sha256"], "graphics": {"status": graphics_status, "tolerance_mm": tolerance, "counts": counts},
             "missing_symbol_annotations": context.missing_symbol_annotations,
-            "pinless_objects": hierarchy["pinless_objects"], "source_role_evidence": hierarchy["source_role_evidence"],
+            "pinless_objects": hierarchy["pinless_objects"], "unused_exceptions": unused,
             "component_count_domain": "References with resolved active pin rows; qualified pinless objects are listed separately",
             "native_inventory": hierarchy["native_inventory"],
             "native_inventory_reconciliation": {

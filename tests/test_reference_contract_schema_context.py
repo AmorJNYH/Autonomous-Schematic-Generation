@@ -38,7 +38,7 @@ class ReferenceContractSchemaContextTests(unittest.TestCase):
 
     def test_missing_extra_and_nonobject_at_each_schema_boundary(self):
         cases = [
-            ((), "schema_version"), (("scope",), "core_refs"),
+            ((), "schema_version"), (("scope",), "feature_ids"),
             (("sources", "demo"), "sha256"),
             (("pin_maps", "U1"), "source"),
             (("pin_maps", "U1", "identity"), "mpn"),
@@ -84,8 +84,8 @@ class ReferenceContractSchemaContextTests(unittest.TestCase):
     def test_multiple_objects_and_nonzero_stage_do_not_reuse_context(self):
         contract = copy.deepcopy(self.contract)
         contract["sources"]["second"] = copy.deepcopy(contract["sources"]["demo"])
-        del contract["sources"]["second"]["url"]
-        self.assertIn("contract/sources/second/url", self.error(contract))
+        del contract["sources"]["second"]["sha256"]
+        self.assertIn("contract/sources/second/sha256", self.error(contract))
         contract = copy.deepcopy(self.contract)
         contract["pin_maps"]["U2"] = copy.deepcopy(contract["pin_maps"]["U1"])
         del contract["pin_maps"]["U2"]["pins"]["2"]["names"]
@@ -119,7 +119,7 @@ class ReferenceContractSchemaContextTests(unittest.TestCase):
                 contract["scope"][key] = "UNPRINTED_SECRET"
             messages.append(self.error(contract))
         self.assertEqual(messages[0], messages[1])
-        self.assertIn("missing ['contract/scope/core_refs', 'contract/scope/feature_ids']", messages[0])
+        self.assertIn("missing ['contract/scope/feature_ids']", messages[0])     # core_refs is optional
         self.assertIn("extra ['contract/scope/alpha', 'contract/scope/zeta']", messages[0])
         self.assertNotIn("UNPRINTED_SECRET", messages[0])
 

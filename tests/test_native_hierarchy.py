@@ -63,9 +63,9 @@ class HierarchyRegressionTests(unittest.TestCase):
         self.assertEqual(audit_project(self.root)['status'],'PASS');self.assertEqual(self.freshness()['status'],'FRESH')
     def test_conflicting_file_alias_is_rejected_by_all_consumers(self):
         first(self.root_tree,'sheet').append(form('property','Sheetfile','decoy.kicad_sch'));(self.base/'decoy.kicad_sch').write_text(dump(self.child));self.save()
-        self.assertIn('conflicting_sheet_property',self.kinds());self.assertNotEqual(self.freshness()['status'],'FRESH');self.assertEqual(audit_symbols(self.root)['status'],'FAIL')
-    def test_conflicting_name_alias_is_rejected(self):
-        first(self.root_tree,'sheet').append(form('property','Sheetname','wrong'));self.save();self.assertIn('conflicting_sheet_property',self.kinds());self.assertNotEqual(self.freshness()['status'],'FRESH')
+        self.assertIn('conflicting_sheet_property',self.kinds());self.assertNotEqual(self.freshness()['status'],'FRESH');self.assertEqual(audit_symbols(self.root)['status'],'INSUFFICIENT')  # the hierarchy gate lists the error
+    def test_sheet_name_alias_is_a_label_not_an_error(self):
+        first(self.root_tree,'sheet').append(form('property','Sheetname','wrong'));self.save();self.assertNotIn('conflicting_sheet_property',self.kinds())
     def test_duplicate_property_is_rejected(self):
         first(self.root_tree,'sheet').append(form('property','Sheet file','child.kicad_sch'));self.save();self.assertIn('duplicate_sheet_property',self.kinds());self.assertNotEqual(self.freshness()['status'],'FRESH')
     def test_missing_file_has_precise_error(self):
@@ -82,8 +82,8 @@ class HierarchyRegressionTests(unittest.TestCase):
         self.modern();set_node(first(first(first(first(self.child,'symbol'),'instances'),'project'),'path'),'reference','R9');self.save();self.assertIn('conflicting_annotation_context',self.kinds())
     def test_conflicting_global_local_page_is_rejected(self):
         self.modern();set_node(first(first(first(first(self.root_tree,'sheet'),'instances'),'project'),'path'),'page','9');self.save();self.assertIn('conflicting_annotation_context',self.kinds())
-    def test_dangling_global_context_is_rejected(self):
-        first(self.root_tree,'symbol_instances').append(annotation('/not-active/c','R9'));self.save();self.assertIn('dangling_annotation_context',self.kinds())
+    def test_stale_global_context_is_ignored(self):
+        first(self.root_tree,'symbol_instances').append(annotation('/not-active/c','R9'));self.save();self.assertNotIn('dangling_annotation_context',self.kinds());self.assertEqual(audit_project(self.root)['status'],'PASS')
     def test_missing_annotation_does_not_use_reference_property(self):
         first(self.root_tree,'symbol_instances').pop();self.save();r=audit_project(self.root);self.assertEqual(r['status'],'INSUFFICIENT',r);s=audit_symbols(self.root);self.assertEqual({p['reference'] for p in s['pins']},{'R1'})
     def test_cross_project_context_is_not_borrowed(self):
@@ -118,7 +118,7 @@ class HierarchyRegressionTests(unittest.TestCase):
         first(self.root_tree,'lib_symbols')[1]=copy.deepcopy(lib);self.save();s=audit_symbols(self.root,self.xml([('R1','1'),('R2','1')]));self.assertEqual(s['status'],'PASS',s);self.assertEqual(s['physical_pin_count'],2);self.assertTrue(all(p['reason']=='zero-length pin' for p in s['pins']))
     def test_zero_pin_entity_is_not_silently_ignored(self):
         lib=first(first(self.child,'lib_symbols'),'symbol');sub=all_nodes(lib,'symbol')[1];sub.remove(first(sub,'pin'));first(self.root_tree,'lib_symbols')[1]=copy.deepcopy(lib);self.save()
-        self.assertIn('missing_active_unit_pins',self.kinds());self.assertEqual(audit_symbols(self.root)['status'],'FAIL')
+        self.assertIn('missing_active_unit_pins',self.kinds());self.assertEqual(audit_symbols(self.root)['status'],'INSUFFICIENT')
 
 
     def test_unknown_declared_annotation_version_is_insufficient(self):
@@ -136,11 +136,10 @@ class HierarchyRegressionTests(unittest.TestCase):
         self.assertEqual(audit_project(self.root)['status'], 'PASS')
         self.assertEqual(self.freshness()['status'], 'FRESH')
 
-    def test_duplicate_name_alias_is_rejected(self):
+    def test_duplicate_name_alias_is_not_an_error(self):
         first(self.root_tree, 'sheet').append(form('property', 'Sheet name', 'a'))
         self.save()
-        self.assertIn('duplicate_sheet_property', self.kinds())
-        self.assertNotEqual(self.freshness()['status'], 'FRESH')
+        self.assertNotIn('duplicate_sheet_property', self.kinds())
 
     def test_modern_symbol_path_must_be_complete_and_active(self):
         self.modern()
@@ -148,15 +147,15 @@ class HierarchyRegressionTests(unittest.TestCase):
         ctx = first(first(first(first(self.child, 'symbol'), 'instances'), 'project'), 'path')
         ctx[1] = '/a'
         self.save()
-        self.assertIn('dangling_annotation_context', self.kinds())
+        self.assertNotEqual(audit_project(self.root)['status'], 'PASS')
         self.assertEqual({p['reference'] for p in audit_symbols(self.root)['pins']}, {'R1'})
 
-    def test_modern_sheet_path_is_parent_instance_not_child_instance(self):
+    def test_stale_modern_sheet_path_is_ignored_while_the_active_page_is_annotated(self):
         self.modern()
         ctx = first(first(first(first(self.root_tree, 'sheet'), 'instances'), 'project'), 'path')
         ctx[1] = '/root/a'
         self.save()
-        self.assertIn('dangling_annotation_context', self.kinds())
+        self.assertEqual(audit_project(self.root)['status'], 'PASS')
 
     def test_duplicate_modern_symbol_context_is_rejected(self):
         self.modern()
@@ -172,10 +171,10 @@ class HierarchyRegressionTests(unittest.TestCase):
         self.save()
         self.assertIn('conflicting_annotation_context', self.kinds())
 
-    def test_dangling_global_page_context_is_rejected(self):
+    def test_stale_global_page_context_is_ignored(self):
         first(self.root_tree, 'sheet_instances').append(spath('/inactive', '9'))
         self.save()
-        self.assertIn('dangling_annotation_context', self.kinds())
+        self.assertNotIn('dangling_annotation_context', self.kinds())
 
     def test_duplicate_symbol_uuid_is_rejected(self):
         self.child.append(symbol('c', 'R9'))

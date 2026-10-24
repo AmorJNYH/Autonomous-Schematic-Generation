@@ -26,5 +26,16 @@ optional reference and change contracts) and writes `summary.json`. See
 [`schematic-generation.md`](../references/schematic-generation.md) for schema,
 commands, supported objects, limitations and `AUTOMATED_PASS` semantics.
 
+`deliver.py <delivery>` runs one delivery end to end in a fixed order (prepare,
+closure audit, preflight, generation, `verify_schematic.py`, report, delivery
+evidence, freshness, packing) from the arguments in `record/deliver.json`; it
+reads each step's status from its output and goes on only on PASS, DONE,
+CONDITIONAL, INCOMPLETE, AUTOMATED_PASS or FRESH.
+See [`delivery-report.md`](../references/delivery-report.md).
+`schematic_layout.citations` checks `datasheet:<library path>#p<page>` citations
+for the closure audit, the report and the ledger: a missing file or a page
+beyond the document fails; a cited value the page text does not show is listed
+for a person to check.
+
 Native tests compare exact pin partitions. Tests are in `tests/`; optional
 upstream source probes do not require installing the complete MCP server.

@@ -46,8 +46,7 @@ def declarations(intent):
     return ds,errors
 
 def judge(root,intent,decls,by_pin,flags,aliases,artifact_root):
-    errors=[]; comps={c['ref']:c for c in intent.get('components',[])}
-    netnames={p:n['name'] for n in intent.get('nets',[]) for p in n['pins']}
+    errors=[]
     sheets={s.get('name','') for s in root.findall('design/sheet')}|{'/'}
     def named(a,b):return a==b or (not b.startswith('/') and any(a==p+b for p in sheets))
     for d in decls:
@@ -65,25 +64,8 @@ def judge(root,intent,decls,by_pin,flags,aliases,artifact_root):
             try: present=ev['locator'] in path.read_text(encoding='utf-8')
             except (UnicodeError,OSError):present=False
             if not present:errors.append(dict(prefix,kind='circuit_evidence_locator_missing'))
+        # Identity and pin topology are the intent_netlist gate's; a reviewed supply part must still be fitted.
         for ref in d['refs']:
-            cs=root.findall(f"components/comp[@ref='{ref}']"); c=comps[ref]
-            if len(cs)!=1:
-                errors.append(dict(prefix,kind='circuit_component_missing',ref=ref));continue
-            x=cs[0]; libs=x.findall('libsource'); fs=x.findall('fields/field'); fields={f.get('name'):f.text or '' for f in fs}
-            if len(libs)!=1 or len(fs)!=len(fields):
-                errors.append(dict(prefix,kind='circuit_identity_ambiguous',ref=ref));continue
-            lib=libs[0]
-            identity={'lib_id':f"{lib.get('lib')}:{lib.get('part')}",'value':x.findtext('value') or '',
-                      'footprint':x.findtext('footprint') or '', 'mpn':fields.get('MPN', x.findtext('value') or ''),
-                      'dnp':x.find("property[@name='dnp']") is not None}
-            if identity['dnp'] or any(v!=c.get(k,False if k=='dnp' else c.get('value','') if k=='mpn' else '') for k,v in identity.items()):
-                errors.append(dict(prefix,kind='circuit_identity_mismatch',ref=ref))
-            expected={p for p in netnames if p.rsplit('.',1)[0]==ref}
-            actual={p for p in by_pin if p.rsplit('.',1)[0]==ref}
-            nc={p for p in intent.get('no_connect',[]) if p.rsplit('.',1)[0]==ref}
-            physical=lambda net: {f'{r}.{n}' for r,n,t in net['nodes'] if r not in aliases and not r.startswith('#')}
-            expected_nets={n['name']:set(n['pins']) for n in intent.get('nets',[])}
-            valid_nc=all(physical(by_pin[p])=={p} and any(r+'.'+n==p and 'no_connect' in t for r,n,t in by_pin[p]['nodes']) for p in actual&nc)
-            if actual-nc!=expected or not valid_nc or any(physical(by_pin[p])!=expected_nets[netnames[p]] for p in expected&actual):
-                errors.append(dict(prefix,kind='circuit_topology_mismatch',ref=ref))
+            if any(c.find("property[@name='dnp']") is not None for c in root.findall(f"components/comp[@ref='{ref}']")):
+                errors.append(dict(prefix,kind='circuit_component_not_fitted',ref=ref))
     return errors

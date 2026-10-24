@@ -21,4 +21,4 @@ python3 scripts/patch_schematic_values.py 原工程/board.kicad_sch \
 
 候选保存在 `project/`，原始 KiCad XML、PDF、ERC 在 `evidence/`，报告 `patch-report.json`。KiCad before/after 网表必须满足独立 Value 改动核对记录：物理脚分区和其他器件身份不变；候选层次和 PDF 页数也须通过。`PATCH_VERIFIED` 只表示局部修改及这些检查成立，**ERC 已导出不表示 ERC 零违规**；不自动声明 `AUTOMATED_PASS`。
 
-根据变化更新独立设计要求表、生成脚本和计算/需求文档，避免下一次生成覆盖此次 Value。继续按主流程第 6–8 步做完整自动检查、看图检查、证据是否最新核查；图面 Value 变长可能影响文字间距，必须看实际 PDF。未通过的候选留 FAIL 报告，不写回原工程；确认基线新鲜且完成审查后再按项目约定替换版本。
+根据变化更新独立设计要求表、生成脚本和计算/需求文档，避免下一次生成覆盖此次 Value。继续按主流程第 6–8 步做完整自动检查、图面审阅、证据是否最新核查；图面 Value 变长可能影响文字间距，必须看实际 PDF。未通过的候选留 FAIL 报告，不写回原工程；确认基线新鲜且完成审查后再按项目约定替换版本。

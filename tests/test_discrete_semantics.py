@@ -30,16 +30,17 @@ def cache(lib_ids):
 
 
 class DiscreteSemanticsTests(unittest.TestCase):
-    def run_case(self, parts, text=None):
+    def run_case(self, parts, text=None, fields=None, pdftotext='/usr/bin/pdftotext'):
         """parts: [(ref, lib_id, mpn)]; text: datasheet first-pages text for every part."""
         with tempfile.TemporaryDirectory() as tmp:
             sheet = Path(tmp) / 'page.kicad_sch'
             sheet.write_text(cache({lib for _, lib, _ in parts}))
             pdf = Path(tmp) / 'part.pdf'
             pdf.write_text('stub')
-            intent = {'components': [{'ref': r, 'lib_id': lib, 'mpn': mpn, 'datasheet': str(pdf) if text else ''}
-                                     for r, lib, mpn in parts]}
-            with mock.patch.object(ds, 'datasheet_text', return_value=text):
+            intent = {'components': [{'ref': r, 'lib_id': lib, 'mpn': mpn, 'datasheet': str(pdf) if text is not None else '',
+                                      'fields': fields or {}} for r, lib, mpn in parts]}
+            with mock.patch.object(ds, 'datasheet_text', return_value=text), \
+                    mock.patch.object(ds.shutil, 'which', return_value=pdftotext):
                 return audit_discrete_semantics([sheet], intent, [tmp])
 
     def test_bidirectional_symbol_for_unidirectional_datasheet_fails(self):
@@ -77,11 +78,25 @@ class DiscreteSemanticsTests(unittest.TestCase):
         self.assertEqual('INSUFFICIENT', r['status'])
         self.assertEqual('Q1', r['unresolved'][0]['ref'])
 
-    def test_no_polarity_evidence_is_not_applicable(self):
+    def test_pin_name_polarity_without_evidence_is_not_applicable(self):
         r = self.run_case([('D303', 'Device:D_Zener', 'BZT52H-C5V1')], 'Single Zener diodes in a SOD123F package')
         self.assertEqual('NOT_APPLICABLE', r['status'])
+
+    def test_stated_polarity_without_readable_evidence_says_why(self):
         r = self.run_case([('D1', 'Device:D_TVS', '')])
-        self.assertEqual('NOT_APPLICABLE', r['status'])
+        self.assertEqual(('INSUFFICIENT', 'datasheet path does not resolve'), (r['status'], r['unresolved'][0]['reason']))
+        r = self.run_case([('Q1', 'Device:Q_NMOS', 'X')], 'single N-Channel', pdftotext=None)
+        self.assertEqual(('INSUFFICIENT', 'pdftotext not installed'), (r['status'], r['unresolved'][0]['reason']))
+        r = self.run_case([('Q1', 'Device:Q_NMOS', 'X')], 'Power MOSFET 60 V')
+        self.assertIn('name no', r['unresolved'][0]['reason'])
+
+    def test_declared_polarity_decides(self):
+        declared = {'SymbolPolarity': 'N-channel', 'PolarityEvidence': 'datasheet:Q.pdf#p1'}
+        self.assertEqual('PASS', self.run_case([('Q1', 'Device:Q_NMOS', 'X')], 'N-channel and P-channel pair. N-channel. P-channel',
+                                               fields=declared)['status'])
+        self.assertEqual('FAIL', self.run_case([('Q1', 'Device:Q_PMOS', 'X')], None, fields=declared)['status'])
+        self.assertEqual('INSUFFICIENT', self.run_case([('Q1', 'Device:Q_NMOS', 'X')], None,
+                                                       fields={'SymbolPolarity': 'N-channel'})['status'])
 
 
 if __name__ == '__main__':

@@ -123,7 +123,6 @@ python3 scripts/generate_schematic.py \
 
 python3 scripts/check_schematic_geometry.py \
   output/rc-filter-run-01/rc_filter.kicad_sch \
-  --intent output/rc-filter-run-01/electrical_intent.json \
   --layout output/rc-filter-run-01/layout_plan.json \
   --output output/rc-filter-run-01/geometry-recheck.json
 ```

@@ -1,12 +1,48 @@
 # 此前问题点的改造闭环
 
-Every entry from here on ends with three lines the test suite checks
+Every entry from here on ends with lines the test suite checks
 (`scripts/check_ledger.py`): `Event:` the review item, datasheet page, test
-record or user correction that caused the change; `Causes:` how many items
-fell in each cause class (rule_missing, rule_not_enforced, knowledge_missing,
-knowledge_wrong, judgment); `Changed:` the files touched. An entry that
-changes the ASG 纲要 or the 绘图纲要 O1–O8 also carries `Approved:
+record or user correction that caused the change (a cited datasheet must exist
+in the library and have the cited page); `Changed:` the files touched.
+`Causes:` (how many items fell in each cause class) is an optional note. An
+entry that changes the ASG 纲要 or the 绘图纲要 O1–O8 also carries `Approved:
 user:<date>` and `Outline:` the hash from `check_ledger.py --outline-hash`.
+
+## 检查只为电路正确或交代不确定性：合并改动 (2026-10-23)
+
+用户审定 9 个改进点后要求全量审查每一项检查：凡不服务于电路正确、也不交代不确定性的检查删除或改写，
+并按 `docs/proposals/2026-10-23-合并改动草案.md` 逐步执行。本次落地：
+删除 58 项只核记录形式或互相抵消的检查（网名来源证据、图面锁定、回归集、负责方措辞、无引脚对象的外部角色合同等），
+改写 45 项为直接核对电路或写明“没核对”；无引脚对象改由符号的 `ComponentRole`（mechanical/documentation）加
+“所有单元无引脚”判定；KiCad 10（20260306）注释格式加入并用 KiCad 10.0.6 实际保存的工程复核；
+生成的工程把 `single_global_label`、`four_way_junction` 设为 error，一键验证读取工程 ERC 设置，除
+`simulation_model_issue`、`footprint_filter` 外被设为忽略的规则即 FAIL；`deliver.py` 改为白名单状态、缺结果即停、
+预检文件不成对 FAIL、新鲜度在打包前；新增手册引用核对（`schematic_layout/citations.py`：文件与页码错 FAIL，
+数值找不到列入报告“引用待人工核对”，R6 的 190 条引用全部核对通过）；后果等级由 `consequence_class` × `occurrence`
+推出；审查回复加 `recurs_from`，复发的意见不能归 `judgment`；图面审阅核对每个待看图对象都有处置、不得“沿用”；
+新增 `references/terminology.md`，报告用语专业化，记录与 notes 里的禁用词和“共/全部 N …”总数由报告核对。
+纲要按草案第四节修改（验证、支撑、P6、P7、第 5–8 步与全文术语）；第 8 步台账说明随 `check_ledger.py` 改为 Event/Changed 两行。
+
+- Event: user:2026-10-23
+- Changed: SKILL.md, README.md, references/terminology.md, references/design-closure.md, references/delivery-report.md, references/core-part-selection.md, references/review-comments.md, references/symbol-and-peripheral-contracts.md, references/project-verification.md, references/drawing-recipes.md, references/human-readable-routing.md, references/change-preflight.md, references/requirements-to-intent.md, scripts/deliver.py, scripts/audit_design_closure.py, scripts/render_design_report.py, scripts/verify_schematic.py, scripts/verify_design_preflight.py, scripts/check_ledger.py, scripts/pack_design.py, scripts/schematic_layout/citations.py, scripts/schematic_layout/native.py, scripts/schematic_layout/native_hierarchy.py, scripts/schematic_layout/design_change.py, scripts/schematic_layout/project_audit.py, scripts/schematic_layout/symbol_integrity.py, scripts/schematic_layout/reference_contract.py, scripts/schematic_layout/recipes.py, scripts/schematic_layout/readability.py, scripts/schematic_layout/scene.py, scripts/schematic_layout/system_block.py, scripts/schematic_layout/root.py, scripts/schematic_layout/qa.py, scripts/schematic_layout/net_name_origin.py, scripts/run_regression.py, tests/test_citations.py, tests/test_pinless_evidence.py, tests/test_design_report.py, tests/test_design_closure.py, tests/test_deliver.py, docs/improvement-ledger.md
+- Approved: user:2026-10-23
+- Outline: 1751f50ca861aaf9
+
+## 交付按固定顺序一次跑完：deliver.py (2026-10-23)
+
+R6 从待办记录到打包要手工串十来个命令，出过约 8 次操作错误：新鲜度检查拿错了文件（manifest.json）、
+`--reference-contract` 给错文件、预检“有条件通过”时退出码非零把命令链断开、旧预检报告没删导致拒绝覆盖、
+重放漏 `--output-root`；`delivery-evidence.json` 每版都要另写脚本生成。技能只有分步命令，没有执行顺序和参数的规范（rule_missing）。
+现在 `scripts/deliver.py <交付目录>` 按固定顺序跑：准备、待办审计、生成前预检、出图、一键验证、交付预检、生成报告、
+交付证据、证据新鲜度、打包、输入核对；参数记在 `record/deliver.json`，每版沿用；`inputs` 同时传给待办审计
+（新增 `--input`）、一键验证和打包；每步状态从它写出的结果读，只有 PASS、DONE、有条件通过、未完成、AUTOMATED_PASS、
+FRESH 继续，其余状态、没写出结果或命令出错即停；预检文件只有一个算 FAIL；交付证据按本次运行写出的文件生成。用 R6 副本实跑验证。
+
+- Event: user:2026-10-23
+- Causes: rule_missing 1
+- Changed: SKILL.md, references/delivery-report.md, docs/operating-cadence.md, scripts/deliver.py, scripts/audit_design_closure.py, scripts/verify_schematic.py, scripts/README.md, tests/test_deliver.py, tests/test_design_closure.py, docs/improvement-ledger.md
+- Approved: user:2026-10-23
+- Outline: ec7bab061aca9f4d
 
 ## 待办只看本版；外部条件不确定时给出选型方案并先问再画 (2026-10-23)
 

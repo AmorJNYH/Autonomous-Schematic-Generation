@@ -11,17 +11,14 @@ import xml.etree.ElementTree as ET
 
 
 FIELDS = {"value", "footprint", "datasheet", "lib_id", "dnp", "fields"}
-
-
-class NativeEvidenceGap(ValueError):
-    """Source coverage cannot establish a native component's qualification."""
+PINLESS_ROLES = ("mechanical", "documentation")
 
 
 class UnqualifiedPinlessObjects(ValueError):
     """Strict rejection with structurally parsed facts for local diagnostics only.
 
-    This is deliberately not NativeEvidenceGap: consumers must retain FAIL,
-    never accept these facts as qualified connectivity or infer object roles.
+    Consumers must retain FAIL, never accept these facts as qualified
+    connectivity or infer object roles.
     """
     def __init__(self, references, diagnostic_native):
         self.references = tuple(references)
@@ -67,7 +64,7 @@ def _partition(pins):
     return frozenset(pins)
 
 
-def read_native(path, *, source_root=None, source_roles=None, project=None):
+def read_native(path):
     raw = Path(path).read_bytes()
     try:
         root = ET.fromstring(raw)
@@ -109,45 +106,25 @@ def read_native(path, *, source_root=None, source_roles=None, project=None):
         if name in named:
             raise ValueError("Duplicate nonempty native net name")
         named[name] = group
-    pinless, pinless_gaps = {}, {}
-    if source_roles is not None:
-        if source_root is None:
-            raise ValueError("Pinless source-role evidence requires the native source root")
-        from .project_audit import validate_pinless_roles
-        from .native_hierarchy import NativeHierarchy
-        evidence = validate_pinless_roles(NativeHierarchy(source_root, project), source_roles)
-        if evidence["errors"]:
-            raise ValueError("Invalid pinless source-role evidence: " + "; ".join(evidence["errors"]))
-        if source_roles["native_xml_sha256"] != hashlib.sha256(raw).hexdigest():
-            raise ValueError("Pinless evidence native XML SHA256 mismatch")
-        for item in evidence["objects"]:
-            ref = item["reference"]
-            if item["status"] != "NA":
-                if ref in components and not any(p.startswith(ref + ".") for p in pin_nets):
-                    pinless_gaps[ref] = item["reason"]
-                continue
-            c = next((c for c in root.findall("components/comp") if c.get("ref") == ref), None)
-            chain = item["instance"].split("/")[2:]
-            expected_sheet = "/" + "/".join(chain) + ("/" if chain else "")
-            sheet = c.find("sheetpath") if c is not None else None
-            if (c is None or components.get(ref) != item["native_identity"] or
-                    (c.findtext("tstamps") or "").split() != [item["symbol_uuid"]] or
-                    sheet is None or sheet.get("tstamps") != expected_sheet):
-                raise ValueError(f"Pinless evidence native identity/instance mismatch for {ref}")
-            if any(p.startswith(ref + ".") for p in pin_nets) or c.findall("units/unit/pins/pin"):
-                raise ValueError(f"Pinless evidence contradicts exported pins for {ref}")
-            pinless[ref] = {"status": "NA", "role": item["role"],
-                            "reason": "Hash-bound source role and fully resolved pinless cache"}
+    # A part with no exported pins is a mounting hole, logo or note only when the drawing says so
+    # (ComponentRole, checked against the intent by intent_netlist) and its library part has no pins at all.
+    libpart_pins = {(lp.get("lib"), lp.get("part")): bool(lp.findall("pins/pin")) for lp in root.findall("libparts/libpart")}
+    pinless = {}
+    for c in root.findall("components/comp"):
+        ref, lib = c.get("ref", ""), c.find("libsource")
+        if ref not in components or any(p.startswith(ref + ".") for p in pin_nets) or lib is None:
+            continue
+        role = components[ref]["fields"].get("ComponentRole")
+        if role in PINLESS_ROLES and libpart_pins.get((lib.get("lib"), lib.get("part"))) is False:
+            pinless[ref] = {"status": "NA", "role": role, "reason": "Declared ComponentRole; library part has no pins"}
     unqualified = [ref for ref in components
                    if not any(p.startswith(ref + ".") for p in pin_nets)
-                   and ref not in pinless and ref not in pinless_gaps]
+                   and ref not in pinless]
     native = {"sha256": hashlib.sha256(raw).hexdigest(), "components": components,
               "partitions": partitions, "pin_nets": pin_nets, "named": named,
               "pinless_objects": pinless, "native_inventory": native_inventory(path)}
     if unqualified:
         raise UnqualifiedPinlessObjects(unqualified, native)
-    if pinless_gaps:
-        raise NativeEvidenceGap("; ".join(f"Component {ref}: {reason}" for ref, reason in sorted(pinless_gaps.items())))
     return native
 
 
@@ -163,9 +140,7 @@ def _identity(descriptor):
     return descriptor
 
 
-def verify_change(before_path, after_path, contract, *, before_source_root=None,
-                  before_source_roles=None, before_project=None, after_source_root=None,
-                  after_source_roles=None, after_project=None):
+def verify_change(before_path, after_path, contract):
     allowed = {"schema_version", "baseline_sha256", "remove_components", "add_components", "component_changes", "replace_partitions", "named_nets", "same_net", "distinct_net"}
     if not isinstance(contract, dict) or set(contract) - allowed or contract.get("schema_version") != 1:
         raise ValueError("Unknown contract field or unsupported schema_version")
@@ -175,11 +150,8 @@ def verify_change(before_path, after_path, contract, *, before_source_root=None,
     for key in ["remove_components", "replace_partitions", "same_net", "distinct_net"]:
         if not isinstance(contract.get(key, []), list):
             raise ValueError(f"{key} must be a list")
-    def context(root, roles, project):
-        return {k: v for k, v in dict(source_root=root, source_roles=roles,
-                                      project=project).items() if v is not None}
-    old = read_native(before_path, **context(before_source_root, before_source_roles, before_project))
-    new = read_native(after_path, **context(after_source_root, after_source_roles, after_project))
+    old = read_native(before_path)
+    new = read_native(after_path)
     if "baseline_sha256" in contract and contract["baseline_sha256"] != old["sha256"]:
         raise ValueError("Baseline SHA256 does not match the frozen contract")
     expected_components = {r: dict(v) for r, v in old["components"].items()}
@@ -225,8 +197,6 @@ def verify_change(before_path, after_path, contract, *, before_source_root=None,
             if group in produced:
                 raise ValueError("Duplicate expected partition")
             produced.add(group)
-    if expected_partitions & produced:
-        raise ValueError("Replacement repeats an untouched partition")
     expected_partitions |= produced
     expected_pins = {p for p in old["pin_nets"] if p.rsplit(".", 1)[0] not in removed} | added_pins
     declared = [p for group in expected_partitions for p in group]

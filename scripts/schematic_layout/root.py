@@ -16,9 +16,9 @@ import uuid
 from pathlib import Path
 
 from .geometry import Box
-from .routing import segment_hits_box
 from .sexpr import Atom, all_nodes, dump, first, form, parse, set_node
-from .system_block import audit_system_block
+from .native import project_settings
+from .system_block import BOUNDARY_LABEL, audit_system_block
 
 GRID = 1.27
 HEAD_MM = 2.54        # arrowhead leg along the line (legs stay under system_block.HEAD_MAX_MM)
@@ -119,6 +119,8 @@ class Root:
         """Straight isolation boundary at ``x`` (vertical) or ``y`` (horizontal) across the blocks."""
         if (x is None) == (y is None):
             raise ValueError("Give exactly one of x or y")
+        if not BOUNDARY_LABEL.match(label.strip()):
+            raise ValueError("Isolation label must start with 隔离 or isolation, e.g. '隔离 1500 Vrms'")
         boxes = [p["box"] for p in self.pages]
         if not boxes:
             raise ValueError("Add the pages before the isolation boundary")
@@ -167,23 +169,6 @@ class Root:
         root.append(form("sheet_instances", form("path", "/", form("page", "1"))))
         return root
 
-    @staticmethod
-    def _text_on_line(cover):
-        """Texts whose conservative box (1.27 mm per character) is crossed by a cover line."""
-        segments = [(a, b) for line in all_nodes(cover, "polyline")
-                    for pts in [[(float(p[1]), float(p[2])) for p in first(line, "pts")[1:]]]
-                    for a, b in zip(pts, pts[1:])]
-        hits = []
-        for t in all_nodes(cover, "text"):
-            x, y = float(first(t, "at")[1]), float(first(t, "at")[2])
-            w = len(str(t[1])) * 1.27
-            just = [str(j) for j in (first(first(t, "effects"), "justify") or [])[1:]]
-            x0 = x if "left" in just else x - w if "right" in just else x - w / 2
-            box = Box(x0, y - 0.635, x0 + w, y + 0.635)
-            if any(segment_hits_box(a, b, box) for a, b in segments):
-                hits.append(str(t[1]))
-        return hits
-
     def _line(self, points, width, key):
         return form("polyline", form("pts", *[form("xy", x, y) for x, y in points]),
                     form("stroke", form("width", width), form("type", Atom("default"))), form("uuid", self._uid(key)))
@@ -217,9 +202,6 @@ class Root:
         if not self.pages:
             raise ValueError("No pages")
         cover = self._cover()
-        clash = self._text_on_line(cover)
-        if clash:
-            raise ValueError(f"Cover text on a line: {clash}; move it with label_at or move the line")
         audit = audit_system_block(cover)
         if audit["status"] != "PASS":
             raise ValueError(f"System_block audit {audit['status']}: {audit['findings']}")
@@ -234,7 +216,7 @@ class Root:
         (out / (self.project + ".kicad_pro")).write_text(json.dumps(
             {"meta": {"filename": self.project + ".kicad_pro", "version": 1},
              "schematic": {"drawing": {}, "legacy_lib_dir": "", "legacy_lib_list": []},
-             "erc": {"erc_exclusions": []}}, indent=2) + "\n", encoding="utf-8")
+             "erc": {"erc_exclusions": [], **project_settings()["erc"]}}, indent=2) + "\n", encoding="utf-8")
         libs = []
         for nick, path in sorted((libraries or {}).items()):
             shutil.copy2(path, out / Path(path).name)

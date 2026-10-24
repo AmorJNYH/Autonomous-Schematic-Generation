@@ -100,9 +100,8 @@ leg/zero-cap attribution still require strict MLZ, never approximate arcs.
 Existing unknown sheet-object gaps and measured findings remain protected;
 parsing a native arc alone does not grant page PASS or an ERC exception.
 
-The serialized `native-geometry/context.json` is **audit evidence only**.
-`check_schematic_geometry.py --native-context` cannot authorize geometry coverage
-or close gaps, even if its supplied SHA matches. The official runner consumes
+The serialized `native-geometry/context.json` is **audit evidence only**;
+`check_schematic_geometry.py` takes no serialized context. The official runner consumes
 only its own unchanged live fresh-job return value and rechecks input, producer,
 environment, tool, configuration and raw output bindings before geometry.
 Editing arrays/gaps or replaying a self-declared PASS JSON cannot authorize PASS.

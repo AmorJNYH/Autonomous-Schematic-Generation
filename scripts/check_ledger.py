@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""The newest entry of docs/improvement-ledger.md names its event, its causes and its files.
+"""The newest entry of docs/improvement-ledger.md names its event and the files it changed.
 
 A skill change happens because of an event (a review comment, a datasheet
-page, a test result, a user correction), is attributed to a cause class, and
-touches files that exist. Older entries are history and are not checked.
+page, a test result, a user correction). A cited datasheet must exist in the
+library and have the cited page. Older entries are history and are not checked.
 
 The ASG 纲要 and 主流程 (SKILL.md) and the 绘图纲要 O1-O8 (drawing-recipes.md) change only
 with a person's approval: the newest entry that carries `Outline:` must name
@@ -15,9 +15,10 @@ import re
 import sys
 from pathlib import Path
 
+from schematic_layout.citations import check_source
+
 ROOT = Path(__file__).resolve().parent.parent
 LEDGER = ROOT / 'docs' / 'improvement-ledger.md'
-CAUSES = ('rule_missing', 'rule_not_enforced', 'knowledge_missing', 'knowledge_wrong', 'judgment')
 SOURCE = re.compile(r'(review:[^\s/,;]+/[^\s,;]+|datasheet:[^\s,;]+#p\d+|test:[^\s,;]+|user:\d{4}-\d{2}-\d{2})')
 # (file, heading) of each outline section; a section runs to the next level-2 heading.
 OUTLINE = (('SKILL.md', '## ASG 纲要（核心标准）'), ('SKILL.md', '## 主流程'),
@@ -67,17 +68,16 @@ def field(entry, name):
 def check_entry(entry, root=ROOT):
     problems = []
     title = entry.splitlines()[0].strip() if entry.strip() else ''
-    event, causes, changed = field(entry, 'Event'), field(entry, 'Causes'), field(entry, 'Changed')
+    event, changed = field(entry, 'Event'), field(entry, 'Changed')
     if not SOURCE.search(event):
         problems.append('%s: Event: must cite review:<dir>/<item>, datasheet:<path>#p<n>, test:<record> or user:<date>' % title)
-    if not any(re.search(r'%s\s+\d+' % c, causes) for c in CAUSES):
-        problems.append('%s: Causes: must count the cause classes (%s)' % (title, ', '.join(CAUSES)))
+    for source in SOURCE.findall(event):
+        result = check_source(source)
+        if result and result['status'] == 'FAIL':
+            problems.append('%s: Event: %s' % (title, result['reason']))
     paths = [p.strip('`') for p in re.split(r'[\s,;]+', changed) if p.strip('`')]
     if not paths:
         problems.append('%s: Changed: must list the files changed' % title)
-    for p in paths:
-        if not (root / p).exists():
-            problems.append('%s: Changed: %s does not exist' % (title, p))
     return problems
 
 

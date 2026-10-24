@@ -29,4 +29,9 @@ class FrontierTests(unittest.TestCase):
     def test_no_open_actions_does_not_claim_release(self):
         r=frontier({'A':self.d(status='closed')},{})
         self.assertEqual(r['status'],'NO_OPEN_DESIGN_ACTIONS');self.assertNotIn('release',r)
+    def test_omitted_dependency_lists_mean_none(self):
+        r=frontier({'FW':dict(stage='external',status='open',fallback_evidence=['E1']),'BIAS':dict(stage='design',status='open')},{'E1':{}})
+        self.assertFalse(r['errors']);self.assertEqual(r['ready_design_actions'],['BIAS'])
+        r=frontier({'A':dict(stage='design',status='open',blocked_by='B')},{})
+        self.assertIn('convergence_dependencies',{e['code'] for e in r['errors']})
 if __name__=='__main__':unittest.main()

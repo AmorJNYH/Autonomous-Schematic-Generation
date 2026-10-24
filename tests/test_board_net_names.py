@@ -45,16 +45,13 @@ class BoardNetNameTest(unittest.TestCase):
     def mismatches(self, result):
         return sorted(e["expected"] for e in result["errors"] if e["kind"] == "net_name_mismatch")
 
-    def test_xml_only_automatic_name_needs_provenance(self):
-        r = self.check(["BTN_F", "CLK"], ["/03_control/BTN_F", "Net-(R1-Pad2)"])
-        self.assertEqual(r["status"], "INSUFFICIENT", r["errors"])
-
-    def test_xml_only_slash_automatic_names_need_provenance(self):
-        for drawn in (["Net-(U7-SDO/SAO)", "/03_control/Net-(U2-I/O1)"],
+    def test_automatic_names_are_not_compared(self):
+        for drawn in (["/03_control/BTN_F", "Net-(R1-Pad2)"], ["Net-(U7-SDO/SAO)", "/03_control/Net-(U2-I/O1)"],
                       ["unconnected-(U2-I/O1-Pad1)", "Net-(MICRO_SD1-CD/DAT3/CS)"]):
             with self.subTest(drawn=drawn):
-                r = self.check(["ACC_SA0", "TP_IO"], drawn)
-                self.assertEqual(r["status"], "INSUFFICIENT", r["errors"])
+                r = self.check(["BTN_F", "CLK"], drawn)
+                self.assertEqual(r["status"], "PASS", r)
+        self.assertEqual(["CLK"], self.mismatches(self.check(["BTN_F", "CLK"], ["/03_control/BTN_F", "CLOCK"])))
 
     def test_intent_names_with_slashes_match_exactly(self):
         r = self.check(["ESP0/STAT", "/Debugger/BOOT"], ["ESP0/STAT", "/Debugger/BOOT"])

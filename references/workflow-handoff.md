@@ -12,7 +12,7 @@
 | `schema_version: 1`、`id`、`project_id` | 格式版本、任务、项目 |
 | `skill` | `ASG` |
 | `design_version` | 当前可读版本号；每次交付另由任务 ID 区分 |
-| `phase` | 默认 `design_iteration`；明确要求定稿时为 `schematic_freeze` |
+| `phase` | 默认 `design_iteration`；明确要求设计定型时为 `schematic_freeze` |
 | `requirements` | 需求版本、目录、逐文件 SHA-256 |
 | `skills` | 技能路径和版本信息，由程序管理 |
 | `design` | 前一版设计交付目录及其哈希；首轮可为 null |
@@ -53,7 +53,7 @@
 | `DESIGN` | 还能用现有资料完成的设计、计算、选型、改图（含审查意见的 `REDESIGN` / `DESIGN`） |
 | `EVIDENCE` | 需要厂家或别人提供的资料（含 `OBTAIN_DATA`） |
 | `REQUIREMENT` | 需要用户决定的需求取舍（含 `ASK_USER`；对应待办阶段 `requirement`） |
-| `REVIEW` | ASG 自检或看图检查没通过、没做完 |
+| `REVIEW` | ASG 自检或图面审阅没通过、没做完 |
 | `DOWNSTREAM` | 交给 PCB、结构、样机测试的要求（含 `HANDOFF`） |
 | `TOOL` | 工具没跑完 |
 
@@ -67,7 +67,7 @@
 | `electrical_intent` | `record/electrical-intent.json`（设计要求表） |
 | `design_closure` | `record/design-closure.json`（设计待办处理情况） |
 | `native_summary` | `record/summary.json`（verify_schematic.py 原样输出） |
-| `visual_review` | `record/visual-review.json`（看图检查） |
+| `visual_review` | `record/visual-review.json`（图面审阅） |
 | `delivery_evidence` | `record/delivery-evidence.json` |
 | `manifest` | `record/manifest.json` |
 | `review_responses` | `record/review-responses.json`；有审查意见时必填 |

@@ -18,6 +18,7 @@ import hashlib
 import json
 from pathlib import Path
 import subprocess
+import xml.etree.ElementTree as ET
 import sys
 
 HERE = Path(__file__).resolve().parent
@@ -25,7 +26,7 @@ sys.path.insert(0, str(HERE))
 
 from schematic_layout.external_supply import audit_external_supply  # noqa: E402
 from schematic_layout.discrete_semantics import audit_discrete_semantics  # noqa: E402
-from schematic_layout.native import compare_netlist, compare_source_netlist, find_cli  # noqa: E402
+from schematic_layout.native import compare_netlist, find_cli, ignored_erc_rules  # noqa: E402
 from schematic_layout.pages import normalize  # noqa: E402
 from schematic_layout.native_geometry_context import prepare_geometry_context, page_context_from_job  # noqa: E402
 from schematic_layout.native_circle_contacts import refine_wire_contacts  # noqa: E402
@@ -63,14 +64,12 @@ def main():
     ap.add_argument("--symbol-exceptions", type=Path)
     ap.add_argument("--readability-waivers", type=Path)
     ap.add_argument("--reference-contract", type=Path)
-    ap.add_argument("--source-role-contract", type=Path, help="Reviewed hash-bound pinless mechanical/documentation roles")
     ap.add_argument("--baseline-xml", type=Path, help="baseline native XML for an electrical change")
-    ap.add_argument("--baseline-source-root", type=Path, help="Source for the separately reviewed baseline roles")
-    ap.add_argument("--baseline-source-role-contract", type=Path)
-    ap.add_argument("--baseline-project", help="Selected baseline annotation project")
     ap.add_argument("--change-contract", type=Path)
     ap.add_argument("--preflight", type=Path, help="design-preflight.json for an electrical change")
     ap.add_argument("--design-closure", type=Path, help="Evidence-bound end-to-end design review record")
+    ap.add_argument("--input", action="append", default=[], metavar="NAME=PATH",
+                    help="declared input for --design-closure evidence, as pack_design takes it")
     ap.add_argument("--artifact-root", type=Path, help="Evidence base for --design-closure, --preflight artifact bindings and reviewed_circuit_supply; defaults to root parent")
     ap.add_argument("--project", help="native project annotation name; defaults to the root file stem")
     ap.add_argument("--cli", help="kicad-cli path")
@@ -80,10 +79,6 @@ def main():
         ap.error("Output directory is not empty; use a fresh run directory")
     if bool(args.baseline_xml) != bool(args.change_contract):
         ap.error("--baseline-xml and --change-contract go together")
-    if bool(args.baseline_source_root) != bool(args.baseline_source_role_contract):
-        ap.error("--baseline-source-root and --baseline-source-role-contract go together")
-    if (args.baseline_source_root and not args.baseline_xml) or (args.baseline_project and not args.baseline_source_root):
-        ap.error("Baseline source context requires the baseline XML and role pair")
     out = args.out
     out.mkdir(parents=True, exist_ok=True)
     gates, commands = {}, []
@@ -106,30 +101,34 @@ def main():
     kicad("sch", "export", "pdf", "-o", pdf, args.root)
 
     if erc.is_file():
-        violations = [v for s in json.loads(erc.read_text()).get("sheets", []) for v in s.get("violations", [])]
+        report = json.loads(erc.read_text())
+        violations = [v for s in report.get("sheets", []) for v in s.get("violations", [])]
         by_type = {}
         for v in violations:
             by_type[v.get("type", "?")] = by_type.get(v.get("type", "?"), 0) + 1
-        gates["erc"] = {"status": "FAIL" if violations else "PASS", "violations": len(violations), "by_type": by_type}
+        # A rule the project ignores is a rule nobody checked (P5); list it instead of passing.
+        ignored = ignored_erc_rules(report)
+        gates["erc"] = {"status": "FAIL" if violations or ignored else "PASS", "violations": len(violations),
+                        "by_type": by_type, "ignored_rules": ignored}
     else:
         gates["erc"] = {"status": "INSUFFICIENT", "reason": "ERC report not written"}
 
     if xml.is_file():
         intent = normalize(json.loads(args.intent.read_text(encoding="utf-8")))
-        result, name_origin = compare_source_netlist(args.root, xml, intent, cli, out / "net-name-origin")
-        if name_origin is not None:
-            write(out / "net-name-origin.json", name_origin)
-            commands.extend(name_origin["commands"])
-        write(out / "intent-netlist.json", result)
-        gates["intent_netlist"] = {"status": result["status"], "errors": len(result["errors"])}
+        try:
+            result = compare_netlist(xml, intent)
+        except (ValueError, ET.ParseError) as exc:   # an unreadable export says so; the other gates still run
+            gates["intent_netlist"] = {"status": "INSUFFICIENT", "reason": "KiCad netlist cannot be read: %s" % exc}
+        else:
+            write(out / "intent-netlist.json", result)
+            gates["intent_netlist"] = {"status": result["status"], "errors": len(result["errors"])}
     else:
         gates["intent_netlist"] = {"status": "INSUFFICIENT", "reason": "netlist export failed"}
 
     hierarchy = out / "hierarchy.json"
     extra = ["--expected-pages", args.expected_pages] if args.expected_pages else []
     project = ["--project", args.project] if args.project else []
-    roles = ["--source-role-contract", args.source_role_contract] if args.source_role_contract else []
-    tool("audit_project.py", args.root, "--pdf", pdf, "--netlist", xml, *extra, *project, *roles, "--out", hierarchy)
+    tool("audit_project.py", args.root, "--pdf", pdf, "--netlist", xml, *extra, *project, "--out", hierarchy)
     gates["hierarchy"] = {"status": status_of(hierarchy)}
     try:
         files = json.loads(hierarchy.read_text())["file_sha256"]
@@ -147,7 +146,7 @@ def main():
 
     symbols = out / "symbol-integrity.json"
     extra = ["--exceptions", args.symbol_exceptions] if args.symbol_exceptions else []
-    tool("audit_symbol_integrity.py", args.root, "--netlist", xml, *extra, *project, *roles, "--out", symbols)
+    tool("audit_symbol_integrity.py", args.root, "--netlist", xml, *extra, *project, "--out", symbols)
     gates["symbol_integrity"] = {"status": status_of(symbols)}
 
     try:
@@ -155,9 +154,10 @@ def main():
                                              [args.artifact_root or args.root.resolve().parent, args.intent.resolve().parent])
     except (ValueError, OSError, KeyError) as exc:
         semantics = {"status": "INSUFFICIENT", "reason": str(exc)}
+    write(out / "discrete-semantics.json", semantics)
     if semantics["status"] != "NOT_APPLICABLE":
-        write(out / "discrete-semantics.json", semantics)
-        gates["discrete_semantics"] = {"status": semantics["status"], "errors": len(semantics.get("errors", []))}
+        gates["discrete_semantics"] = {"status": semantics["status"], "errors": len(semantics.get("errors", [])),
+                                       "unresolved": len(semantics.get("unresolved", []))}
 
     readability = out / "readability.json"
     extra = ["--waivers", args.readability_waivers] if args.readability_waivers else []
@@ -219,20 +219,12 @@ def main():
 
     if args.reference_contract:
         report = out / "reference-contract.json"
-        extra = ["--source-root", args.root, *roles, *project] if roles else []
-        tool("verify_reference_contract.py", xml, args.reference_contract, *extra, "--out", report)
+        tool("verify_reference_contract.py", xml, args.reference_contract, "--out", report)
         gates["reference_contract"] = {"status": status_of(report)}
 
     if args.change_contract:
         report = out / "design-change.json"
         extra = ["--preflight", args.preflight, "--artifact-root", args.artifact_root or args.root.resolve().parent] if args.preflight else []
-        if roles:
-            extra += ["--source-root", args.root, *roles, *project]
-        if args.baseline_source_root:
-            extra += ["--baseline-source-root", args.baseline_source_root,
-                      "--baseline-source-role-contract", args.baseline_source_role_contract]
-            if args.baseline_project:
-                extra += ["--baseline-project", args.baseline_project]
         tool("verify_design_change.py", args.baseline_xml, xml, args.change_contract, *extra, "--out", report)
         gates["design_change"] = {"status": status_of(report)}
         if not args.preflight:
@@ -241,7 +233,8 @@ def main():
     if args.design_closure:
         report = out / "design-closure.json"
         tool("audit_design_closure.py", args.design_closure, "--intent", args.intent,
-             "--artifact-root", args.artifact_root or args.root.resolve().parent, "--out", report)
+             "--artifact-root", args.artifact_root or args.root.resolve().parent,
+             *[a for v in args.input for a in ("--input", v)], "--out", report)
         gates["design_closure"] = {"status": status_of(report)}
 
     states = {g["status"] for g in gates.values()}
@@ -255,7 +248,10 @@ def main():
         "sheets": [str(s) for s in sheets],
         "render": str(pdf) if pdf.is_file() else None,
         "design_closure": "checked" if args.design_closure else "NOT_CHECKED",
-        "pending": (["End-to-end design closure not checked"] if not args.design_closure else []) + ["Native render review: trace each declared reading task on every page"]
+        "reference_contract": "checked" if args.reference_contract else "NOT_CHECKED",
+        "pending": (["End-to-end design closure not checked"] if not args.design_closure else [])
+                   + (["Core-part pin maps and peripherals not checked against datasheets (no --reference-contract)"]
+                      if not args.reference_contract else []) + ["Native render review: trace each declared reading task on every page"]
                    + ([f"Native render review: check {sum(map(len, review.values()))} pin-text items listed in geometry.render_review_items"] if review else []),
         "commands": commands,
     }

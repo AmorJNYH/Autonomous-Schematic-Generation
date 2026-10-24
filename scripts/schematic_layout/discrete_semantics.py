@@ -7,10 +7,13 @@ intent while the drawing tells the reader the wrong device.
 
 For each intent component this compares what its placed symbol says (cached
 library description and pin names) with what the part's own datasheet text or
-standard MPN suffix says. A contradiction is FAIL. Ambiguous evidence is
-listed as unresolved (INSUFFICIENT); parts with no polarity evidence on either
-side are not applicable. This is a semantic cross-check, not a pin map: the
-reference contract still owns physical pin numbers.
+standard MPN suffix says, or what the intent declares in fields.SymbolPolarity
+with the page it was read from in fields.PolarityEvidence. A contradiction is FAIL.
+Ambiguous evidence, and a symbol whose description states a polarity while no
+evidence for the part could be read, are listed as unresolved (INSUFFICIENT)
+with the reason. A polarity inferred only from K/A pin names is not applicable
+without evidence. This is a semantic cross-check, not a pin map: the reference
+contract still owns physical pin numbers.
 """
 from pathlib import Path
 import re
@@ -72,13 +75,15 @@ def cached_symbols(sheets):
 
 
 def symbol_meaning(family, desc, pins):
+    """(meaning, stated): stated is False when only the pin names imply it."""
     hits = {label for label, pattern in FAMILIES[family]['symbol'] if pattern.search(desc)}
+    stated = bool(hits)
     if family == 'tvs_direction' and not hits:
         if pins == {'A1', 'A2'}:
             hits = {'bidirectional'}
         elif {'K', 'A'} <= pins and len(pins) == 2:
             hits = {'unidirectional'}
-    return hits.pop() if len(hits) == 1 else None
+    return (hits.pop(), stated) if len(hits) == 1 else (None, False)
 
 
 def datasheet_text(path):
@@ -128,22 +133,35 @@ def audit_discrete_semantics(sheets, intent, bases=()):
         mpn = str(comp.get('mpn') or comp.get('value') or '')
         text = None
         path = resolve(comp.get('datasheet'), bases)
+        fields = comp.get('fields') or {}
         for family in FAMILIES:
-            drawn = symbol_meaning(family, desc, pins)
+            drawn, stated = symbol_meaning(family, desc, pins)
             if drawn is None:
                 continue
-            part, source = None, None
-            if family == 'tvs_direction':
+            labels = {label for label, _ in FAMILIES[family]['datasheet']}
+            part, source, missing = None, None, None
+            if fields.get('SymbolPolarity') in labels and str(fields.get('PolarityEvidence', '')).strip():
+                part, source = fields['SymbolPolarity'], 'declared: ' + str(fields['PolarityEvidence'])
+            if part is None and family == 'tvs_direction':
                 part = mpn_meaning(mpn)
                 source = 'MPN suffix' if part else None
             if part is None:
-                if text is None and path is not None:
-                    text = datasheet_text(path) or ''
-                if text:
-                    part, counts = datasheet_meaning(family, text)
-                    source = 'datasheet first %d pages %s' % (PAGES, counts)
+                if path is None:
+                    missing = 'datasheet path does not resolve'
+                elif not shutil.which('pdftotext'):
+                    missing = 'pdftotext not installed'
+                else:
+                    if text is None:
+                        text = datasheet_text(path) or ''
+                    if text:
+                        part, counts = datasheet_meaning(family, text)
+                        source = 'datasheet first %d pages %s' % (PAGES, counts)
+                    missing = None if part else 'datasheet first %d pages name no %s' % (PAGES, '/'.join(sorted(labels)))
             if part is None:
-                continue  # no polarity evidence for this family: not applicable
+                if stated:
+                    unresolved.append({'ref': ref, 'family': family, 'lib_id': lib_id, 'symbol': drawn, 'part': None,
+                                       'mpn': mpn, 'evidence': None, 'reason': missing})
+                continue  # a pin-name-only meaning without evidence is not applicable
             row = {'ref': ref, 'family': family, 'lib_id': lib_id, 'symbol': drawn, 'part': part,
                    'mpn': mpn, 'evidence': source}
             if part == 'ambiguous':

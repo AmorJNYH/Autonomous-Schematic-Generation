@@ -34,11 +34,10 @@ class GlobalLabelFallbackTests(unittest.TestCase):
                 if not isinstance(label, GlobalLabelText):
                     fallback += 1
                     self.assertTrue(scene.gaps)
-                    result = check_scene(scene, grid=.01, reserved=[])
-                    # The native calibration fragment intentionally has no
-                    # connection. Preserve that real fault as well as gaps.
-                    self.assertEqual(result['status'], 'FAIL')
-                    self.assertEqual([f['code'] for f in result['findings']], ['floating_label'])
+                    result = check_scene(scene, reserved=[])
+                    # The unconnected calibration fragment is an ERC finding; geometry keeps the gap.
+                    self.assertEqual(result['status'], 'INSUFFICIENT')
+                    self.assertEqual([], result['findings'])
         self.assertGreater(fallback, 0)
 
     def test_actual_fallback_text_traversal_is_still_fail(self):
@@ -51,7 +50,7 @@ class GlobalLabelFallbackTests(unittest.TestCase):
                 box = label.box()
                 cx, cy = box.center
                 scene.wires = [((box.x_min - 1, cy), (box.x_max + 1, cy))]
-                result = check_scene(scene, grid=.01, reserved=[])
+                result = check_scene(scene, reserved=[])
                 self.assertEqual(result['status'], 'FAIL')
                 self.assertTrue(any(f['code'] == 'wire_text' for f in result['findings']), result)
 

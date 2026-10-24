@@ -10,6 +10,21 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 from audit_design_closure import audit, sha256
 
+# Citations here name no real PDF; without a library they are NOT_CHECKED and leave these checks alone
+# (test_citations covers the citation check itself). The CLI subprocesses inherit the setting.
+_env = None
+
+
+def setUpModule():
+    global _env
+    from unittest import mock
+    _env = mock.patch.dict('os.environ', {'HARDWARE_WIKI': str(Path(tempfile.gettempdir()) / 'asg-no-library')})
+    _env.start()
+
+
+def tearDownModule():
+    _env.stop()
+
 
 class DesignClosureTests(unittest.TestCase):
     def setUp(self):
@@ -20,7 +35,7 @@ class DesignClosureTests(unittest.TestCase):
         self.intent.write_text(json.dumps({'components': [{'ref': 'U1'}]}))
         self.source = self.root / 'design.txt'
         self.source.write_text('Requirement and design evidence for a synthetic regulator.\n')
-        self.record = {'schema_version': 1, 'coverage': 'complete', 'claim': 'candidate',
+        self.record = {'schema_version': 1, 'coverage': 'complete',
             'intent_sha256': sha256(self.intent),
             'evidence': [{'id': 'E1', 'path': 'design.txt', 'sha256': sha256(self.source), 'locator': 'line 1'}],
             'requirements': [{'id': 'R1', 'status': 'design_supported', 'refs': ['U1'], 'evidence': ['E1'],
@@ -37,7 +52,7 @@ class DesignClosureTests(unittest.TestCase):
         return {e['code'] for e in self.run_audit()['errors']}
 
     def external(self):
-        self.record['work_items'][0].update(stage='external', status='open', owner='vendor', severity='P1',
+        self.record['work_items'][0].update(stage='external', status='open', owner='vendor', consequence_class='function', occurrence='normal',
             action='Obtain exact firmware feature evidence', fallback='Compare independent hardware implementation')
 
     def test_complete_design_record_passes_but_does_not_claim_native_or_sr(self):
@@ -53,8 +68,6 @@ class DesignClosureTests(unittest.TestCase):
         self.external()
         self.record['requirements'][0]['status'] = 'conditional'
         self.assertEqual('INCOMPLETE', self.run_audit()['status'])
-        self.record['claim'] = 'design_closed'
-        self.assertIn('false_design_closure', self.codes())
 
     def test_affected_requirement_must_link_back_to_dependency(self):
         self.record['requirements'][0]['depends_on'] = []
@@ -132,14 +145,28 @@ class DesignClosureTests(unittest.TestCase):
 
     def test_open_work_needs_a_consequence_level(self):
         self.external()
-        del self.record['work_items'][0]['severity']
+        del self.record['work_items'][0]['occurrence']
         result = self.run_audit()
         self.assertEqual('FAIL', result['status'])
-        self.assertIn({'code': 'missing_severity', 'item': 'W1'}, result['errors'])
+        self.assertIn({'code': 'missing_consequence', 'item': 'W1'}, result['errors'])
+
+    def test_level_follows_from_consequence_and_occurrence(self):
+        self.external()
+        item = self.record['work_items'][0]
+        for consequence, occurrence, level in (('safety', 'fault', 'P0'), ('damage', 'condition', 'P0'),
+                                               ('damage', 'fault', 'P1'), ('function', 'normal', 'P1'),
+                                               ('function', 'fault', 'P2'), ('margin', 'condition', 'P2'),
+                                               ('margin', 'fault', 'P3'), ('optimization', 'normal', 'P3')):
+            item.update(consequence_class=consequence, occurrence=occurrence)
+            self.assertEqual({'W1': level}, self.run_audit()['severities'], (consequence, occurrence))
+        item.update(consequence_class='margin', occurrence='normal', severity='P0')   # a hand-written level that disagrees
+        self.assertIn({'code': 'severity_contradicts_rule', 'item': 'W1: P0, rule gives P2'}, self.run_audit()['errors'])
+        item['severity'] = 'P2'
+        self.assertNotIn('severity_contradicts_rule', {e['code'] for e in self.run_audit()['errors']})
 
     def test_requirement_gap_must_state_current_assumption(self):
         self.record['requirements'][0]['status'] = 'conditional'
-        self.record['work_items'][0].update(stage='requirement', status='open', owner='用户', severity='P2',
+        self.record['work_items'][0].update(stage='requirement', status='open', owner='用户', consequence_class='margin', occurrence='normal',
                                             action='确定待机功耗上限')
         result = self.run_audit()
         self.assertEqual('FAIL', result['status'])
@@ -156,7 +183,7 @@ class DesignClosureTests(unittest.TestCase):
 
     def test_convergence_keeps_independent_design_executable(self):
         self.record['convergence_version'] = 1
-        self.record['work_items'][0].update(status='open', blocked_by=[], owner='engineering', severity='P2',
+        self.record['work_items'][0].update(status='open', blocked_by=[], owner='engineering', consequence_class='margin', occurrence='normal',
                                             action='Calculate remaining regulator bounds')
         self.record['requirements'][0]['status'] = 'conditional'
         result = self.run_audit()
@@ -210,6 +237,20 @@ class DesignClosureTests(unittest.TestCase):
         self.assertEqual(1, p.returncode)
         self.assertEqual('FAIL', json.loads(out.read_text())['status'])
 
+    def test_cli_resolves_evidence_in_declared_inputs(self):
+        library = Path(self.tmp.name + '-library')
+        library.mkdir()
+        self.addCleanup(lambda: [f.unlink() for f in library.iterdir()] and library.rmdir())
+        self.source.rename(library / 'design.txt')
+        record, out = self.root / 'record.json', self.root / 'result.json'
+        record.write_text(json.dumps(self.record))
+        cli = [sys.executable, '-B', str(Path(__file__).resolve().parents[1] / 'scripts/audit_design_closure.py'),
+               str(record), '--intent', str(self.intent), '--artifact-root', str(self.root), '--out', str(out)]
+        subprocess.run(cli, capture_output=True)
+        self.assertEqual('FAIL', json.loads(out.read_text())['status'])
+        subprocess.run(cli + ['--input', 'datasheets=%s' % library], capture_output=True)
+        self.assertEqual('PASS', json.loads(out.read_text())['status'])
+
 
 if __name__ == '__main__':
     unittest.main()
@@ -249,6 +290,17 @@ class CalculationChecksTests(unittest.TestCase):
         self.record['calculations'][0]['refs'].append('D1')
         self.assertNotIn('threshold_part_uncalculated', self.codes())
 
+    def test_threshold_part_found_by_series_prefix_or_declared_role(self):
+        for part in ({'lib_id': 'Device:D', 'value': 'BZX84C5V1'}, {'lib_id': 'Device:D', 'value': 'D', 'mpn': 'SMBJ15A'},
+                     {'lib_id': 'Reference_Voltage:XYZ', 'value': 'XYZ', 'fields': {'ComponentRole': 'threshold'}}):
+            with self.subTest(part=part):
+                self.intent.write_text(json.dumps({'components': [{'ref': 'U1'}, {'ref': 'D1', **part}]}))
+                self.record['intent_sha256'] = sha256(self.intent)
+                self.assertIn('threshold_part_uncalculated', self.codes())
+        self.intent.write_text(json.dumps({'components': [{'ref': 'U1'}, {'ref': 'D1', 'lib_id': 'Device:D', 'value': '1N4148'}]}))
+        self.record['intent_sha256'] = sha256(self.intent)
+        self.assertNotIn('threshold_part_uncalculated', self.codes())
+
     def test_threshold_window_needs_both_sides(self):
         self.zener_board()
         calc = self.record['calculations'][0]
@@ -282,7 +334,7 @@ class ParameterSourceTests(unittest.TestCase):
         self.intent.write_text(json.dumps({'components': [{'ref': 'U1'}, {'ref': 'U601'}, {'ref': 'R407'}]}))
         self.record.update(parameter_version=1, intent_sha256=sha256(self.intent))
         self.record['work_items'].append({'id': 'W-OPTO', 'stage': 'external', 'status': 'open', 'requirements': ['R1'],
-                                          'evidence': [], 'severity': 'P1', 'owner': '原厂', 'action': '取得 GPIO 灌电流保证',
+                                          'evidence': [], 'consequence_class': 'function', 'occurrence': 'normal', 'owner': '原厂', 'action': '取得 GPIO 灌电流保证',
                                           'fallback': '见 OP-GPIO1'})
         self.record['requirements'][0].update(status='conditional', depends_on=['W1', 'W-OPTO'])
         self.record['calculations'][0].update(refs=['U601', 'R407'], coverage='partial', conclusion='conditional',
@@ -363,7 +415,7 @@ class DataGapTests(unittest.TestCase):
         self.record['calculations'][0].update(coverage='partial', conclusion='conditional', omitted_terms=['开关轨迹'],
                                               missing_guarantee='USBP 带载驱动能力与关断时延')
         item = self.record['work_items'][0]
-        item.update(stage='external', status='open', severity='P1', owner='Richtek 应用支持',
+        item.update(stage='external', status='open', consequence_class='function', occurrence='normal', owner='Richtek 应用支持',
                     action='按关断时延积分 Q701 的 VDS-ID-t 并核 SOA',
                     missing=[{'source': self.SHEET, 'given': 'VOH_USBP 只在 RL=10MΩ 下规定', 'needed': '带 120nC 栅荷时的开通与关断时间'}],
                     why_external='电荷泵驱动和故障时序在芯片内部与固件里', calculations=['C1'],
@@ -410,10 +462,12 @@ class DataGapTests(unittest.TestCase):
         self.record['calculations'][0].update(coverage='bounded', conclusion='supported', omitted_terms=[])
         self.assertIn('gap_unlinked_calculation', self.codes())
 
-    def test_owner_names_who_to_ask(self):
+    def test_owner_is_required_but_its_wording_is_not_judged(self):
         item = self.gap_board()
         item['owner'] = '电路设计与原厂应用支持'
-        self.assertIn('gap_vague_owner', self.codes())
+        self.assertNotIn('gap_vague_owner', self.codes())
+        item['owner'] = ''
+        self.assertIn('missing_owner', self.codes())
 
     def test_shared_boilerplate_fallback_is_rejected(self):
         item = self.gap_board()

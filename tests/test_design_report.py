@@ -1,14 +1,18 @@
 """One generated report plus a small fixed folder; numbers come only from the records."""
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 from audit_design_closure import audit, sha256
 from render_design_report import render, REPORT
 from pack_design import pack
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from test_citations import pdf
 
 JARGON = ('合同', '冻结', '门禁', '原生', '闭环', '移交', 'SR', 'schematic-review', 'design_supported', 'handoff')
 
@@ -19,6 +23,12 @@ class Delivery:
     def __init__(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name) / 'v1'
+        # Cited datasheets are real PDFs in a private library, so citations are checked page by page.
+        wiki = Path(self.tmp.name) / 'library'
+        self.env = mock.patch.dict(os.environ, {'HARDWARE_WIKI': str(wiki)})
+        self.env.start()
+        (wiki / 'raw/Datasheet/08_电源管理').mkdir(parents=True)
+        (wiki / 'raw/Datasheet/08_电源管理/X - XYZ100.pdf').write_bytes(pdf(['VIN 4.5 V to 18 V', 'SOIC-8', 'COUT']))
         self.record = self.root / 'record'
         for d in ('原理图', '设计资料', 'record/evidence'):
             (self.root / d).mkdir(parents=True)
@@ -27,8 +37,8 @@ class Delivery:
         (self.root / '设计资料' / '方案与选型依据.md').write_text('# basis')
         (self.record / 'evidence' / 'design.md').write_text('regulator design basis')
         self.write('electrical-intent.json', {'components': [{'ref': 'U1', 'value': 'XYZ100'}, {'ref': 'R1'}]})
-        (self.root / '设计资料' / 'X - XYZ100.pdf').write_bytes(b'%PDF')
-        (self.root / '设计资料' / 'Y - ABC200.pdf').write_bytes(b'%PDF')
+        (self.root / '设计资料' / 'X - XYZ100.pdf').write_bytes(pdf(['VIN 4.5 V to 18 V  IOUT 3.5 A  EN', 'SOIC-8  OVP 25 C']))
+        (self.root / '设计资料' / 'Y - ABC200.pdf').write_bytes(pdf(['IOUT 2 A']))
         self.selection = {'schema_version': 1, 'library_root': str(self.root), 'roles': [
             {'role': '稳压器', 'refs': ['U1'], 'requirements': ['R-OUT'], 'decisive': [
                 {'param': '输入电压范围', 'op': 'covers', 'limit': [9, 14], 'unit': 'V', 'requirement': 'R-OUT'},
@@ -44,16 +54,16 @@ class Delivery:
                   'reason': '最大 2 A 不满足', 'values': {'输出电流': {'value': 2, 'page': 1}}}]}]}
         self.write('selection.json', self.selection)
         self.closure = {
-            'schema_version': 1, 'parameter_version': 1, 'gap_version': 1, 'coverage': 'complete', 'claim': 'candidate',
+            'schema_version': 1, 'parameter_version': 1, 'gap_version': 1, 'coverage': 'complete',
             'intent_sha256': sha256(self.record / 'electrical-intent.json'),
             'evidence': [{'id': 'E1', 'path': 'record/evidence/design.md',
                           'sha256': sha256(self.record / 'evidence' / 'design.md'), 'locator': 'section 1'}],
             'requirements': [{'id': 'R-OUT', 'status': 'conditional', 'refs': ['U1'], 'evidence': ['E1'],
                               'implementation': 'U1 output path', 'depends_on': ['W-FW', 'W-CALC', 'W-TEST']}],
             'work_items': [
-                {'id': 'W-CALC', 'stage': 'design', 'status': 'open', 'severity': 'P2', 'requirements': ['R-OUT'],
+                {'id': 'W-CALC', 'stage': 'design', 'status': 'open', 'consequence_class': 'margin', 'occurrence': 'normal', 'requirements': ['R-OUT'],
                  'evidence': [], 'owner': '设计', 'action': '补算输出电容纹波电流'},
-                {'id': 'W-FW', 'stage': 'external', 'status': 'open', 'severity': 'P0', 'requirements': ['R-OUT'],
+                {'id': 'W-FW', 'stage': 'external', 'status': 'open', 'consequence_class': 'damage', 'occurrence': 'normal', 'requirements': ['R-OUT'],
                  'evidence': [], 'owner': 'X 公司应用支持', 'action': '取得过压保护配置表后重算 C1', 'fallback': '评估独立硬件过压关断',
                  'missing': [{'source': 'datasheet:设计资料/X - XYZ100.pdf#p2', 'given': '过压门限只在 25°C 规定',
                               'needed': '全温过压门限与关断时延'}],
@@ -82,6 +92,10 @@ class Delivery:
              'why_none': 'p.3 的输出电容要求与 part-roles.md 降压转换器行一致'}]})
         self.write('delivery-evidence.json', {'schema_version': 1})
 
+    def cleanup(self):
+        self.env.stop()
+        self.tmp.cleanup()
+
     def write(self, name, value):
         (self.record / name).write_text(json.dumps(value, ensure_ascii=False))
 
@@ -92,7 +106,7 @@ class Delivery:
 class DesignReportTests(unittest.TestCase):
     def setUp(self):
         self.d = Delivery()
-        self.addCleanup(self.d.tmp.cleanup)
+        self.addCleanup(self.d.cleanup)
 
     def test_conclusion_counts_and_what_is_missing(self):
         text, problems = self.d.report()
@@ -102,30 +116,30 @@ class DesignReportTests(unittest.TestCase):
         self.assertEqual(lines[2], '- **规模**：器件 2 个，图纸 2 页。')
         self.assertEqual(lines[3], '- **图纸自动检查**：共 3 项。通过（PASS） 2 项，没通过（FAIL） 0 项，资料不足（INSUFFICIENT） 1 项。')
         self.assertIn('- **需求**：共 1 条。有设计依据 0 条，有条件成立 1 条，还没有设计 0 条。', text)
-        self.assertIn('- **设计是否完成**：还没完成。还差：', text)
-        self.assertIn('1 项图纸自动检查资料不足或没做：图面几何（重叠、穿线）', text)
-        self.assertIn('2 件待办没做完（设计没做完 1 件，缺外部资料 1 件）', text)
+        self.assertIn('- **设计完成状态**：未完成。未完成项：', text)
+        self.assertIn('1 项图纸自动检查资料不足或未执行：图面几何（重叠、穿线）', text)
+        self.assertIn('2 件未关闭项（设计未完成 1 件，外部资料缺口 1 件）', text)
 
     def test_one_todo_list_ordered_by_consequence(self):
         text, _ = self.d.report({'items': {'W-FW': '固件过压保护配置还没拿到。'}})
-        section = text.split('## 待办')[1].split('\n## ')[0]
-        self.assertLess(section.index('W-FW（P0：可能损坏器件或危及安全）'), section.index('W-CALC（P2'))
-        self.assertIn('- **拿不到时的替代做法**：评估独立硬件过压关断', section)
+        section = text.split('## 未关闭项')[1].split('\n## ')[0]
+        self.assertLess(section.index('W-FW（P0：可能损坏器件或危及安全；器件损坏，正常工作）'), section.index('W-CALC（P2'))
+        self.assertIn('- **替代方案**：评估独立硬件过压关断', section)
         self.assertIn('固件过压保护配置还没拿到。', section)
         self.assertNotIn('W-TEST', section)
 
     def test_external_gap_shows_what_is_missing_and_what_to_ask(self):
         text, problems = self.d.report()
         self.assertEqual([], problems)
-        self.assertIn('- **缺外部资料**：1 件（X 公司应用支持 1 件），影响有条件成立的计算 1 项。', text)
-        section = text.split('## 待办')[1].split('\n## ')[0]
-        self.assertIn('  - 手册给了：过压门限只在 25°C 规定；设计还需要：全温过压门限与关断时延'
+        self.assertIn('- **外部资料缺口**：1 件（X 公司应用支持 1 件），影响有条件成立的计算 1 项。', text)
+        section = text.split('## 未关闭项')[1].split('\n## ')[0]
+        self.assertIn('  - 手册已给出：过压门限只在 25°C 规定；设计所需：全温过压门限与关断时延'
                       '（datasheet:设计资料/X - XYZ100.pdf#p2）', section)
         self.assertIn('  - C1：纹波电流在 105°C 的额定', section)
-        self.assertIn('- **为什么只能找他**：过压动作由固件配置决定，手册没有公开', section)
-        self.assertIn('- **资料到手后怎么关**：取得过压保护配置表后重算 C1', section)
+        self.assertIn('- **外部依赖原因**：过压动作由固件配置决定，手册没有公开', section)
+        self.assertIn('- **关闭方式**：取得过压保护配置表后重算 C1', section)
         self.assertIn('  2. 从检测到关断的最大时延', section)
-        asks = text.split('## 要向外部要的资料')[1].split('\n## ')[0]
+        asks = text.split('## 外部资料需求')[1].split('\n## ')[0]
         self.assertIn('### X 公司应用支持', asks)
         self.assertIn('1. 全温下过压门限的范围（W-FW）', asks)
 
@@ -137,7 +151,7 @@ class DesignReportTests(unittest.TestCase):
 
     def ask_user(self):
         c = self.d.closure
-        c['work_items'].append({'id': 'W-STBY', 'stage': 'requirement', 'status': 'open', 'severity': 'P3',
+        c['work_items'].append({'id': 'W-STBY', 'stage': 'requirement', 'status': 'open', 'consequence_class': 'optimization', 'occurrence': 'normal',
                                 'requirements': ['R-OUT'], 'evidence': [], 'owner': '产品负责人',
                                 'action': '确定待机功耗上限', 'assumption': '按待机 ≤0.1W 设计'})
         c['requirements'][0]['depends_on'].append('W-STBY')
@@ -150,14 +164,14 @@ class DesignReportTests(unittest.TestCase):
         text, problems = self.d.report()
         self.assertEqual(problems, [])
         conclusion = text.split('## 结论')[1].split('\n## ')[0]
-        self.assertIn('- **请你定的需求**：1 件（W-STBY）。本版先按写明的假设设计', conclusion)
-        self.assertIn('3 件待办没做完（等用户定需求 1 件，设计没做完 1 件，缺外部资料 1 件）', conclusion)
-        self.assertIn('等你定的需求排最前', conclusion)
-        section = text.split('## 待办')[1].split('\n## ')[0]
+        self.assertIn('- **待用户确认的需求**：1 件（W-STBY）。本版先按写明的假设设计', conclusion)
+        self.assertIn('3 件未关闭项（待用户确认需求 1 件，设计未完成 1 件，外部资料缺口 1 件）', conclusion)
+        self.assertIn('待用户确认的需求排最前', conclusion)
+        section = text.split('## 未关闭项')[1].split('\n## ')[0]
         self.assertLess(section.index('W-STBY（P3'), section.index('W-FW（P0'))
-        self.assertIn('- **类型**：等用户定需求', section)
-        self.assertIn('- **本版按什么假设设计**：按待机 ≤0.1W 设计', section)
-        self.assertIn('| 待办：等用户定需求（未关闭） | 1 |', text)
+        self.assertIn('- **类型**：待用户确认需求', section)
+        self.assertIn('- **设计假设**：按待机 ≤0.1W 设计', section)
+        self.assertIn('| 未关闭项：待用户确认需求 | 1 |', text)
 
     def test_ask_user_response_must_point_at_requirement_items(self):
         self.ask_user()
@@ -222,7 +236,7 @@ class DesignReportTests(unittest.TestCase):
             'erc': {'status': 'PASS', 'violations': 0},
             'geometry': {'status': 'PASS', 'render_review_items': {'a': ['x', 'y']}}}})
         text, _ = self.d.report()
-        self.assertIn('2 个引脚文字交看图检查', text)
+        self.assertIn('2 个对象交图面审阅', text)
 
     def test_page_plan_is_required_and_checked(self):
         (self.d.record / 'page-plan.json').unlink()
@@ -234,9 +248,27 @@ class DesignReportTests(unittest.TestCase):
         _, problems = self.d.report()
         self.assertIn('board.kicad_sch：功能块“a”里的 R9 不在设计要求表里', problems)
         self.assertIn('board.kicad_sch：U1 同时在功能块“a”和“b”里', problems)
-        self.assertIn('board.kicad_sch：读者任务 2 条，看图检查只追了 1 条路径', problems)
+        self.assertIn('board.kicad_sch：读者任务 2 条，图面审阅只追了 1 条路径', problems)
         self.assertIn('other.kicad_sch：要写明读者任务（reader_tasks）', problems)
         self.assertIn('other.kicad_sch：要按功能块列出器件（blocks）', problems)
+
+    def test_datasheet_citations_are_checked_against_the_page(self):
+        text, problems = self.d.report()
+        self.assertEqual([], problems)
+        self.assertNotIn('## 引用待人工核对', text)
+        role = self.d.selection['roles'][0]
+        role['candidates'][0]['values']['输出电流'] = {'value': 3.8, 'page': 1}    # not what page 1 shows
+        role['candidates'][1]['values']['输出电流'] = {'value': 2, 'page': 4}      # the PDF has one page
+        self.d.write('selection.json', self.d.selection)
+        lessons = json.loads((self.d.record / 'lessons.json').read_text())
+        lessons['events'][0]['source'] = 'datasheet:raw/Datasheet/08_电源管理/X - XYZ100.pdf#p7'
+        self.d.write('lessons.json', lessons)
+        text, problems = self.d.report()
+        self.assertEqual(['候选 ABC200 的“输出电流”：手册引用不对，设计资料/Y - ABC200.pdf 只有 1 页，引用了第 4 页',
+                          'lessons.json 第 1 条：手册引用不对，raw/Datasheet/08_电源管理/X - XYZ100.pdf 只有 3 页，引用了第 7 页'],
+                         problems)
+        self.assertIn('## 引用待人工核对', text)
+        self.assertIn('| 候选 XYZ100 的“输出电流” | 设计资料/X - XYZ100.pdf#p1 | 3.8 |', text)
 
     def test_selection_is_required_and_checked(self):
         (self.d.record / 'selection.json').unlink()
@@ -272,7 +304,7 @@ class DesignReportTests(unittest.TestCase):
         self.assertIn('- **外部条件不确定的选型**：1 个角色（稳压器→XYZ100 单芯片）', text)
         section = text.split('## 外部条件不确定的选型')[1].split('\n## ')[0]
         self.assertIn('| XYZ100 单芯片（ASG 推荐） | XYZ100 | 1 项：过压保护配置表 | 器件最少 | 集成度高 | 过压行为要原厂答复 |', section)
-        self.assertIn('- **你的决定**：XYZ100 单芯片（user:2026-10-24）', section)
+        self.assertIn('- **用户决定**：XYZ100 单芯片（user:2026-10-24）', section)
 
     def test_uncertain_selection_needs_options_recommendation_and_decision(self):
         sel, role = self.options_role()
@@ -330,7 +362,7 @@ class DesignReportTests(unittest.TestCase):
         self.d.write('electrical-intent.json', {'components': [{'ref': 'U1', 'value': 'OTHER'}, {'ref': 'Q1', 'value': 'M'}]})
         _, problems = self.d.report()
         self.assertIn('选型角色“稳压器”的位号 U9 不在设计要求表里', problems)
-        self.assertIn('位号 U1 的 value “OTHER” 不含选定型号 XYZ100', problems)
+        self.assertIn('位号 U1 的 value/mpn “OTHER” 都不含选定型号 XYZ100', problems)
         self.assertIn('核心器件没有选型记录：Q1', problems)
 
     def test_lessons_are_required_and_checked(self):
@@ -350,9 +382,9 @@ class DesignReportTests(unittest.TestCase):
         self.assertIn('lessons.json 第 1 条的 source 要写成 review:<审查目录>/<待办编号>、datasheet:<库内路径>#p<页>、test:<记录> 或 user:<日期>', problems)
         self.assertIn('lessons.json 第 2 条归因 knowledge_missing，change 要指向 references//wiki//raw/ 下的具体文件', problems)
         self.assertIn('lessons.json 第 3 条归因 judgment 要写 why_not_rule：为什么规则和知识都拦不住', problems)
-        self.assertIn('lessons.json 第 4 条 cause=none 要在 why_none 里引用核对过的页码或待办编号', problems)
+        self.assertFalse(any(p.startswith('lessons.json 第 4 条') for p in problems), problems)
         self.assertIn('lessons.json 第 5 条的 cause 必须是 rule_missing/rule_not_enforced/knowledge_missing/knowledge_wrong/judgment 或 none', problems)
-        self.assertIn('## 本版学到的东西', text)
+        self.assertIn('## 改进记录', text)
         self.assertIn('| review:SR-R3/W-2 | 缺知识 | scripts/x.py |', text)
 
     def test_review_comments_must_be_attributed_to_a_cause(self):
@@ -369,6 +401,22 @@ class DesignReportTests(unittest.TestCase):
         self.assertIn('W-B：归因 rule_missing，lessons.json 里要有 source 以 /W-B 结尾的事件写明改了什么', problems)
         self.assertIn('W-C：review-responses 归因 knowledge_wrong，lessons.json 同一事件归因 knowledge_missing，要一致', problems)
         self.assertFalse(any(p.startswith('W-D') for p in problems), problems)
+
+    def test_a_recurring_comment_is_not_a_judgment_slip(self):
+        item = {'id': 'W-A', 'source': 'SR', 'locator': 'W-A', 'comment': 'a', 'response': 'DECLINE', 'detail': '不采纳 a',
+                'evidence': ['E1'], 'cause': 'judgment', 'recurs_from': 'review:SR-R4/W-7'}
+        self.d.write('lessons.json', {'schema_version': 1, 'events': [
+            {'source': 'review:SR-R5/W-A', 'cause': 'judgment', 'change': 'SKILL.md 第 3 步', 'why_not_rule': 'x'}]})
+        self.d.write('review-responses.json', {'schema_version': 1, 'sources': [{'id': 'SR', 'path': 'r.md', 'sha256': 'x'}],
+                                               'items': [item]})
+        text, problems = self.d.report()
+        self.assertIn('W-A：意见复发自 review:SR-R4/W-7，不能归因为判断失误（judgment）：复发说明规则或知识没有拦住', problems)
+        self.assertIn('| W-A | a | 不采纳 | 不采纳 a（复发自 review:SR-R4/W-7） |', text)
+        item['recurs_from'] = 'R4 第 7 条'
+        self.d.write('review-responses.json', {'schema_version': 1, 'sources': [{'id': 'SR', 'path': 'r.md', 'sha256': 'x'}],
+                                               'items': [item]})
+        _, problems = self.d.report()
+        self.assertIn('W-A：recurs_from 要写成 review:<上一轮审查目录>/<意见编号>', problems)
 
     def test_decisive_conditions_are_judged_from_recorded_values(self):
         sel = json.loads(json.dumps(self.d.selection))
@@ -435,36 +483,52 @@ class DesignReportTests(unittest.TestCase):
         _, problems = self.d.report()
         self.assertIn('board.kicad_sch：这些器件不属于任何功能块：C1', problems)
 
-    def test_render_review_items_are_dispositioned_per_symbol(self):
+    def test_every_render_review_item_is_dispositioned_from_this_pdf(self):
         (self.d.root / '原理图' / 'board.kicad_sch').write_text(
             '(kicad_sch (version 20250114) (generator "t") (uuid "r") (paper "A4") (lib_symbols)\n'
             '(symbol (lib_id "Device:R") (at 0 0 0) (uuid "aaa") (property "Reference" "R1" (at 0 0 0)))\n'
             '(symbol (lib_id "Device:R") (at 0 10 0) (uuid "bbb") (property "Reference" "U1" (at 0 0 0))))\n')
-        same = '已在本页原生PDF核对可见引脚号/脚名，无遮挡。'
-        self.d.write('visual-review.json', {'status': 'REVIEWED', 'pages': [
-            {'page': 1, 'file': 'board.kicad_sch', 'paths': ['VIN to VOUT'], 'problems': [], 'render_review_items': [
-                {'item': 'pin-number:aaa: physical pin numbers need native render review', 'disposition': same},
-                {'item': 'pin-name:bbb:1: nonunique/noncausal text removal', 'disposition': same},
-                {'item': 'pin-name:ccc:1: x', 'disposition': 'C9 看过'}]}]})
-        _, problems = self.d.report()
-        self.assertIn('board.kicad_sch：R1 的引脚文字处置要写明在图上看到了什么，并点名 R1', problems)
+        listed = ['pin-number:aaa: physical pin numbers need native render review', 'pin-name:bbb:1: nonunique/noncausal text removal',
+                  'hierarchical_label: outline and attached fields need render review']
+        summary = json.loads((self.d.record / 'summary.json').read_text())
+        summary['gates']['geometry']['render_review_items'] = {'board.kicad_sch': listed}
+        self.d.write('summary.json', summary)
+        same = '本页 PDF 上可见的引脚号和脚名都没有被导线或文字压住。'
+        def review(items, paths=('VIN to VOUT',)):
+            self.d.write('visual-review.json', {'status': 'REVIEWED', 'pages': [
+                {'page': 1, 'file': 'board.kicad_sch', 'paths': list(paths), 'problems': [], 'render_review_items': items}]})
+            return self.d.report()[1]
+        # One sentence may describe several symbols; what matters is that every listed object was looked at.
+        self.assertEqual([], review([{'item': k, 'disposition': same} for k in listed]))
+        problems = review([{'item': listed[0], 'disposition': same}, {'item': 'pin-name:ccc:1: x', 'disposition': 'C9 看过'}])
         self.assertIn('board.kicad_sch：条目“pin-name:ccc:1: x”的符号在图里找不到', problems)
-        self.d.write('visual-review.json', {'status': 'REVIEWED', 'pages': [
-            {'page': 1, 'file': 'board.kicad_sch', 'paths': ['VIN to VOUT'], 'problems': [], 'render_review_items': [
-                {'item': 'pin-number:aaa: physical pin numbers need native render review', 'disposition': 'R1 脚号 1、2 可见，在引脚外侧'},
-                {'item': 'pin-name:bbb:1: nonunique/noncausal text removal', 'disposition': 'U1 脚名 VIN 在体内，未被导线压住'}]}]})
-        _, problems = self.d.report()
-        self.assertEqual([], problems)
-        self.d.write('visual-review.json', {'status': 'REVIEWED', 'pages': [
-            {'page': 1, 'file': 'board.kicad_sch', 'paths': ['VIN to VOUT'], 'problems': [], 'render_review_items': [
-                {'item': 'pin-number:aaa: x', 'disposition': 'R1 与 U1 的脚号均可见'},
-                {'item': 'pin-name:bbb:1: x', 'disposition': 'R1 与 U1 的脚号均可见'}]}]})
-        _, problems = self.d.report()
-        self.assertIn('board.kicad_sch：同一句处置用在了 R1、U1：要逐个器件写看到了什么', problems)
+        self.assertIn('board.kicad_sch：2 个待看图对象在 visual-review.json 里没有处置（如 pin-name:bbb:1: nonunique/noncausal text removal）',
+                      problems)
+        problems = review([{'item': listed[0], 'disposition': ''}] + [{'item': k, 'disposition': same} for k in listed[1:]])
+        self.assertIn('board.kicad_sch：1 个待看图对象在 visual-review.json 里没有处置（如 pin-number:aaa: physical pin numbers need native）',
+                      problems)
+        problems = review([{'item': k, 'disposition': '沿用上一版的处置'} for k in listed])
+        self.assertIn('board.kicad_sch：处置“沿用上一版的处置”沿用上一版：没改动的页面也要按本版 PDF 重新看', problems)
+        problems = review([{'item': k, 'disposition': same} for k in listed], paths=['本页未改，同上一版'])
+        self.assertTrue(any('同上一版' in p for p in problems), problems)
+
+    def test_records_and_notes_use_the_terminology_table(self):
+        _, problems = self.d.report({'summary': '本版原生网表与设计要求表一致，可以定稿。', 'items': {'W-FW': '过压配置待厂家交接。'}})
+        self.assertEqual(1, len(problems), problems)
+        self.assertIn('notes summary：“本版原生网表与设计要求表一致，可以定稿。”（定稿、原生）', problems[0])
+        self.assertIn('notes 待办 W-FW：“过压配置待厂家交接。”（交接）', problems[0])
+        self.assertEqual([], self.d.report({'summary': '电压环为闭环控制，KiCad 导出网表与设计要求表一致。'})[1])
+
+    def test_written_totals_match_the_records(self):
+        notes = {'summary': '共 2 个器件，共 2 页；全部 1 项计算，共 2 件未关闭项，共 1 条需求。其中 1 条需求有条件成立。'}
+        self.assertEqual([], self.d.report(notes)[1])
+        notes = {'summary': '共 3 个器件，全部 2 项计算。', 'highlights': ['共 4 页']}
+        self.assertEqual(['notes summary 写“共 3 个器件”，记录里是 2', 'notes summary 写“全部 2 项计算”，记录里是 1',
+                          'notes 关键依据 1 写“共 4 页”，记录里是 2'], self.d.report(notes)[1])
 
     def test_handoffs_listed_apart(self):
         text, _ = self.d.report()
-        self.assertIn('| 样机验证 | 样机或试验验证 | 满载温升测试 |', text.split('## 交给后续环节的要求')[1])
+        self.assertIn('| 样机验证 | 样机或试验验证 | 满载温升测试 |', text.split('## 技术转交要求')[1])
 
     def test_plain_words_only(self):
         text, _ = self.d.report()
@@ -501,11 +565,55 @@ class DesignReportTests(unittest.TestCase):
         item = {'id': 'RC1', 'source': 'S1', 'locator': '1', 'comment': 'c', 'cause': 'none', 'response': 'DESIGN',
                 'detail': '自己算完', 'work_items': ['W-CALC']}
         problems = self.responses([item])
-        self.assertIn('RC1：“补设计”引用的待办 W-CALC 没有写本版做了什么（progress），只抄了意见', problems)
+        self.assertIn('RC1：“补设计”引用的待办 W-CALC 没有写本版进展（progress）', problems)
         self.d.closure['work_items'][0]['progress'] = '已按 105°C 额定算出 2.67A，待核均流'
         self.d.write('design-closure.json', self.d.closure)
         self.d.write('design-closure-audit.json', audit(self.d.closure, self.d.record / 'electrical-intent.json', self.d.root))
         self.assertEqual([], self.responses([item]))
+        text, _ = self.d.report()
+        self.assertIn('- **本版进展**：已按 105°C 额定算出 2.67A，待核均流', text)
+
+    def test_peripheral_check_not_done_leaves_the_design_unfinished(self):
+        summary = json.loads((self.d.record / 'summary.json').read_text())
+        summary['reference_contract'] = 'NOT_CHECKED'
+        summary['gates']['erc']['ignored_rules'] = ['single_global_label']
+        self.d.write('summary.json', summary)
+        text, _ = self.d.report()
+        self.assertIn('外围电路按手册核对：未执行', text)
+        self.assertIn('| 外围电路按手册核对 | 未执行 |', text)
+        self.assertIn('工程设为忽略的规则：single_global_label', text)
+        summary['reference_contract'] = 'checked'
+        self.d.write('summary.json', summary)
+        self.assertNotIn('外围电路按手册核对：未执行', self.d.report()[0])
+
+    def test_selected_part_matches_value_or_mpn_and_sources_are_optional(self):
+        del self.d.selection['roles'][0]['sources']
+        self.d.write('selection.json', self.d.selection)
+        self.d.write('electrical-intent.json', {'components': [{'ref': 'U1', 'value': '3.3V/3A', 'mpn': 'XYZ100-DR'}, {'ref': 'R1'}]})
+        _, problems = self.d.report()
+        self.assertFalse(any('选定型号' in p or '候选来源' in p for p in problems), problems)
+        del self.d.selection['roles'][0]['candidates'][0]['mpn']
+        self.d.write('selection.json', self.d.selection)
+        _, problems = self.d.report()
+        self.assertIn('选型角色“稳压器”的选定候选没有写 mpn', problems)
+
+    def test_review_source_is_hashed_when_readable_and_marked_unverified_otherwise(self):
+        source = self.d.root / '审查报告.md'
+        source.write_text('意见原文')
+        item = {'id': 'RC1', 'source': 'S1', 'locator': '1', 'comment': 'c', 'cause': 'none', 'response': 'ASK_USER', 'detail': 'd',
+                'work_items': ['W-FW']}
+        def write(path, digest):
+            self.d.write('review-responses.json', {'schema_version': 1, 'sources': [{'id': 'S1', 'path': path, 'sha256': digest}],
+                                                   'items': [item]})
+            return self.d.report()
+        _, problems = write(str(source), '0' * 64)
+        self.assertTrue(any('S1 的文件与登记的 sha256 不一致' in p for p in problems), problems)
+        text, problems = write(str(source), sha256(source))
+        self.assertFalse(any('sha256 不一致' in p for p in problems), problems)
+        self.assertNotIn('来源未核对', text)
+        text, problems = write('/does/not/exist.md', '0' * 64)
+        self.assertFalse(any('sha256 不一致' in p for p in problems), problems)
+        self.assertIn('意见来源 S1 的原文读不到，来源未核对', text)
 
     def test_redesign_names_a_part_or_page_and_calc_doc_names_its_target(self):
         base = {'source': 'S1', 'locator': '1', 'comment': 'c', 'detail': 'd'}
@@ -519,10 +627,9 @@ class DesignReportTests(unittest.TestCase):
         self.assertIn('RC4：“补计算/补文档”的 changes 项“不存在.md”既不是计算编号也不是设计资料文件', problems)
         self.assertEqual(1, sum(p.startswith('RC4') for p in problems), problems)
 
-    def test_process_words_in_highlights_and_response_tally(self):
+    def test_highlight_wording_is_not_judged_and_response_tally(self):
         text, problems = self.d.report({'highlights': ['第一轮审查已锁定，第二轮将逐件核销', '120Hz 纹波按 0.66A 额定核过']})
-        self.assertTrue(any(p.startswith('关键设计依据第 1 条写的是审查流程') for p in problems), problems)
-        self.assertEqual(1, sum('关键设计依据' in p for p in problems))
+        self.assertFalse(any('关键设计依据' in p for p in problems), problems)
         self.d.write('review-responses.json', {'schema_version': 1,
             'sources': [{'id': 'S1', 'path': '/x', 'sha256': '0' * 64}],
             'items': [{'id': 'RC1', 'source': 'S1', 'locator': '1', 'comment': 'c', 'cause': 'none', 'response': 'OBTAIN_DATA',
@@ -530,7 +637,7 @@ class DesignReportTests(unittest.TestCase):
                       {'id': 'RC2', 'source': 'S1', 'locator': '2', 'comment': 'c', 'cause': 'none', 'response': 'REDESIGN',
                        'detail': 'y', 'changes': ['R1 改值']}]})
         text, _ = self.d.report()
-        self.assertIn('本版收到 2 条审查意见：改图或补计算/补文档 1 条，其余 1 条登记为待办、交给后续环节或不采纳。', text)
+        self.assertIn('本版共收到 2 条审查意见：改图或补计算/补文档 1 条，其余 1 条登记为待办、技术转交或不采纳。', text)
 
     def test_numbers_use_three_significant_digits(self):
         from render_design_report import num
@@ -543,13 +650,13 @@ class DesignReportTests(unittest.TestCase):
             'items': [{'id': 'RC1', 'source': 'S1', 'locator': '1', 'comment': 'c', 'cause': 'none', 'response': 'HANDOFF',
                        'detail': 'd', 'work_items': ['W-CALC']}]})
         _, problems = self.d.report()
-        self.assertIn('RC1：待办 W-CALC 的阶段与处理方式“交给后续环节”不符', problems)
+        self.assertIn('RC1：待办 W-CALC 的阶段与处理方式“技术转交”不符', problems)
 
 
 class PackDesignTests(unittest.TestCase):
     def setUp(self):
         self.d = Delivery()
-        self.addCleanup(self.d.tmp.cleanup)
+        self.addCleanup(self.d.cleanup)
         text, _ = self.d.report()
         (self.d.root / REPORT).write_text(text)
         self.inputs = Path(self.d.tmp.name) / 'req'
@@ -623,14 +730,19 @@ class PackDesignTests(unittest.TestCase):
         self.assertIn('原理图/schematic.pdf', manifest['packed'])
         self.assertTrue((self.d.record / 'manifest.json').is_file())
 
-    def test_extra_files_history_and_logs_fail(self):
+    def test_extra_files_and_history_fail_but_a_log_does_not(self):
         (self.d.root / 'README.md').write_text('x')
         (self.d.record / 'baseline-v05').mkdir()
         (self.d.record / 'run.log').write_text('x')
         errors, _ = self.run_pack()
         self.assertTrue(any('README.md' in e for e in errors))
         self.assertTrue(any('record/baseline-v05/' in e for e in errors))
-        self.assertTrue(any('run.log' in e for e in errors))
+        self.assertFalse(any('run.log' in e for e in errors), errors)
+
+    def test_a_missing_record_is_reported_once(self):
+        (self.d.record / 'page-plan.json').unlink()
+        errors, _ = self.run_pack()
+        self.assertEqual(1, sum('page-plan.json' in e for e in errors), errors)
 
     def test_cited_evidence_must_be_inside(self):
         (self.d.record / 'evidence' / 'design.md').unlink()

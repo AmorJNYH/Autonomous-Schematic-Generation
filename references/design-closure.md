@@ -1,6 +1,6 @@
 # 从需求到设计完成
 
-适用于需求驱动的新设计和电气改版。原样重画不需要重新做已定稿的电气设计。
+适用于需求驱动的新设计和电气改版。原样重画不需要重新做已设计定型的电气设计。
 ASG 对其方案、选型、参数和功能实现负责；审查方只提意见，不代替 ASG 完成这些工作。
 
 ## 先做设计，再记录结论
@@ -38,8 +38,8 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
   新增多少器件和需要新审的状态/规则、新器件自身带来哪些新的证据需求；是否采用按设计判断并写明理由。
   新器件带来的待办按正常设计工作处理，不能以此为理由保留手册未规定的工作方式。
 
-新设计/电气改版在现有设计待办记录增加`convergence_version: 1`；每项工作有`blocked_by: []`（仅填真实前置工作ID，不含泛泛风险）。
-外部未关闭项增加`fallback_work: [可执行替代设计ID]`；若无可行替代，用空列表并以`fallback_evidence: [证据ID]`记录已完成的评估。
+新设计/电气改版在现有设计待办记录增加`convergence_version: 1`；有前置工作时才写`blocked_by`（仅填真实前置工作ID，不含泛泛风险），缺省视为没有。
+外部未关闭项增加`fallback_work: [可执行替代设计ID]`；若无可行替代，可省略或写空列表，并以`fallback_evidence: [证据ID]`记录已完成的评估。
 外部任务与替代设计不是互相阻塞的循环：替代方案能用公开资料推进，就不应依赖正在替代的那份厂家资料。
 
 `audit_design_closure.py`在原有结论之外返回`convergence`：`CONTINUE_DESIGN`列当前可执行动作，
@@ -54,7 +54,7 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
 
 分页按完整读者任务决定，不按器件类型机械拆页，也不设每页最少器件数。保护检测→锁定→关断能同页清楚表达时优先同页；确有隔离/拥挤理由拆分时给跨页信号标目的功能和页码。扩大纸张前检查主路径折返、锚点距离、局部扇出；减少页数也不能靠缩字。System_block 将真实层次页与功能、供电、反馈/故障箭头对应，避免重复画一套无法直接对应层次的装饰方框。矩形引脚图适合芯片，但 MOS/比较器等应保留正确功能图形或单元表达，不能牺牲真实 pin map。
 
-看图检查记录实际追踪路径和未解决问题。零交叉、零碰撞仅是几何自动检查，不能代替上述判断。需求/元件增加时同时比较绝对阅读体验与可对照的相同功能页，不把总线长或纸张面积单独当成质量分数。
+图面审阅记录实际追踪路径和未解决问题。零交叉、零碰撞仅是几何自动检查，不能代替上述判断。需求/元件增加时同时比较绝对阅读体验与可对照的相同功能页，不把总线长或纸张面积单独当成质量分数。
 
 ## 可执行的结论审计
 
@@ -65,7 +65,6 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
   "schema_version": 1,
   "intent_sha256": "<electrical-intent.json 的 SHA256>",
   "coverage": "complete",
-  "claim": "candidate",
   "evidence": [
     {"id": "E1", "path": "design-basis.md", "sha256": "<SHA256>", "locator": "第2节，R1功能路径和计算"}
   ],
@@ -75,7 +74,7 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
   ],
   "work_items": [
     {"id": "W1", "stage": "external", "status": "open", "requirements": ["R1"], "evidence": ["E1"],
-     "severity": "P1", "owner": "厂商", "action": "取得确切固件故障态依据", "fallback": "评估独立关断实现及其供电保持"}
+     "consequence_class": "function", "occurrence": "fault", "owner": "厂商", "action": "取得确切固件故障态依据", "fallback": "评估独立关断实现及其供电保持"}
   ],
   "calculations": [
     {"id": "C1", "requirements": ["R1"], "evidence": ["E1"], "refs": ["D403", "R408", "U402"],
@@ -92,8 +91,8 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
 ```
 
 - `coverage`：全部适用需求/设计工作均已审查才填 `complete`；抽查或历史回放填 `partial`。这不是工具自动证明的完整性。
-- `claim`：`candidate` / `design_closed`。需求状态 `design_supported` / `conditional` / `open`；`implementation` 描述功能而非只列料号。
-- `work_items`：阶段 `requirement`（等用户定需求）/ `design` / `external` / `validation` / `pcb`；状态 `open` / `closed` / `handoff`；`validation` 与 `pcb` 允许 `handoff`。未关闭项需 owner/action；`open` 项还需 `severity`：不做会有什么后果，P0 可能损坏器件或危及安全、P1 必需功能可能不达标、P2 局部或次要问题、P3 可选优化，报告按它排序；external 还需 fallback 评估（可以有证据地说明尚无可行替代）；requirement 还需 `assumption` 写明本版按什么假设设计，只用于不改变架构的需求缺口（改变架构的先问用户再设计，见 requirements-to-intent.md 第 1 节）。closed 与 handoff 均需证据。`pcb` 须声明 `scope` 为 `footprint_library` / `layout_implementation` / `dfm`，并用非空 `electrical_preconditions` 指向已关闭的 design 工作；这些前提须有选定变体、物理脚号及相关电气边界证据，不能用“已建封装”自证。该分类仍需人工检查，脚本不理解正文电气内容。
+- 需求状态 `design_supported` / `conditional` / `open`；`implementation` 描述功能而非只列料号。
+- `work_items`：阶段 `requirement`（等用户定需求）/ `design` / `external` / `validation` / `pcb`；状态 `open` / `closed` / `handoff`；`validation` 与 `pcb` 允许 `handoff`。未关闭项需 owner/action；`open` 项还需 `consequence_class`（不做的后果：`safety` 安全 / `damage` 器件损坏 / `function` 功能失效 / `margin` 性能余量 / `optimization` 优化）和 `occurrence`（何时出现：`normal` 正常工作 / `condition` 特定工况 / `fault` 仅故障时），等级由审计按规则推出，不手填：安全 P0；器件损坏 P0，仅故障时 P1；功能失效 P1，仅故障时 P2；性能余量 P2，仅故障时 P3；优化 P3。报告按等级排序；写了 `severity` 而与规则不符记 `severity_contradicts_rule`；external 的资料缺口按下面的 `gap_version 1` 写；requirement 还需 `assumption` 写明本版按什么假设设计，只用于不改变架构的需求缺口（改变架构的先问用户再设计，见 requirements-to-intent.md 第 1 节）。closed 与 handoff 均需证据。`pcb` 须声明 `scope` 为 `footprint_library` / `layout_implementation` / `dfm`，并用非空 `electrical_preconditions` 指向已关闭的 design 工作；这些前提须有选定变体、物理脚号及相关电气边界证据，不能用“已建封装”自证。该分类仍需人工检查，脚本不理解正文电气内容。
 - 计算：`coverage` 为 `bounded` / `partial`；`conclusion` 为 `supported` / `conditional` / `failed`。有遗漏项不能填 bounded 或 supported。无适用计算时提供 `no_calculations_reason`，不能用空列表绕过。
   - `refs`：这条计算决定了哪些位号的取值，非空，且都在设计要求表里。
   - `checks`：非空列表，每项是一个算出来的值和它必须满足的门槛 `{name, value, operator(<=,<,>=,>), limit, unit}`。
@@ -102,7 +101,8 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
   - **阈值窗口**：保护、检测、钳位类计算填 `"kind": "threshold"`，`checks` 必须两侧都有：
     `side: "no_false_trip"`（正常工作最高点，含纹波、漏感尖峰、温漂和容差，低于动作下限）和
     `side: "protection"`（动作上限仍低于被保护对象的耐受值或需求的保护点）。只算一侧会漏掉误动作或保护无效。
-  - 设计要求表里的稳压管、TVS、基准源（lib_id 含 Zener/TVS/TL431/LM4040/Ref 等）都必须出现在某条计算的 `refs` 里，
+  - 设计要求表里的稳压管、TVS、基准源都必须出现在某条计算的 `refs` 里：按 lib_id（含 Zener/TVS/TL431/LM4040/Ref 等）、
+    value 或 mpn 的系列前缀（1N47、BZX、SMBJ、PESD、TLV431、LM385 等）识别，通用符号画的其他阈值器件在 `fields.ComponentRole` 写 `threshold`；
     否则审计报 `threshold_part_uncalculated`。设计资料里写的阈值（如“对应30V包络”）必须与这条计算的数字一致。
   门槛按设计用途：`conditional` 必须用 `omitted_terms` 或 `assumptions`（字符串列表）写明假设，并在 `missing_guarantee` 里写明缺的是哪一项保证（哪个器件、哪个参数、哪个条件手册或需求没给）；写明后不阻塞设计完成，需求也可以据此记为 `design_supported`；报告把它们列在“有条件成立的计算”一节，交独立审查严格核对。只有 `failed` 计入未完成，且不能支撑 `design_supported` 的需求。
   `coverage: partial` 必须有非空 `omitted_terms`：说不出漏了什么就不是 partial。`conditional` 不是免责词：1.33 A < 3 A 这种没有缺失保证的核对要写 `bounded`/`supported`，审计报 `conditional_without_missing_guarantee` 和 `partial_without_omitted_terms`。
@@ -110,6 +110,10 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
   每条计算加非空 `parameters`，每项 `{name, value, unit, basis, ref, source, locator}`。`basis` 取：
   - `guaranteed`：手册保证的 MIN/MAX；`typical`：手册典型值。两者都要 `ref`（位号）和 `source`
     `datasheet:<库内路径>#p<页>` 加 `locator`（表名/参数符号/条件）。
+  - 手册引用的核对（`schematic_layout/citations.py`，参数、工作点、缺口里的 `datasheet:` 都核）：文件不在知识库
+    （`HARDWARE_WIKI/raw`）或声明的资料里、页码超出文档页数，记 `citation_wrong`，审计 FAIL。`guaranteed`/`typical`
+    的数值在所引页的文字里找不到（含 SI 前缀换算、百分数、尾随 0、Unicode 负号）时列入报告“引用待人工核对”，不拦。
+    `locator` 文字不核。找不到知识库或没有 poppler（`pdfinfo`/`pdftotext`）时记为“没核对”并写明原因。
   - `derived`：由其他值推出，写 `derivation`，`source` 是手册页或 `calc:<计算 id>`。
   - `design_choice`：本设计选定的值（电阻阻值、容差档、匝数），写 `ref`。
   - `model`：工程假设或折减（CTR 保持系数等），写 `reason`。
@@ -136,13 +140,13 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
     并用 `no_calculation_reason` 说明为什么，不为凑字段挂不相关的计算。
   - `consequence`：资料与假设不符时具体会出什么问题，不能只写后果等级。
   - `questions`：能直接发给负责方的问题，每条独立成句；报告按 `owner` 汇总到“要向外部要的资料”一节。
-  - `owner`：写到具体公司或角色（“Richtek 应用支持”），只由“原厂”“应用支持”“电路设计”这类泛称组成时审计报 `gap_vague_owner`。
+  - `owner`：写到具体公司或角色（“Richtek 应用支持”），问题清单按它汇总。
   - `fallback`：本项自己的替代做法和代价，或本项为什么没有替代；两件以上待办的 `fallback` 文字相同，审计报 `gap_generic_fallback`。
   - `action`：资料到手后怎么关闭这项（重算哪条计算、核对什么）。
   其他报错：缺字段 `gap_missing_fields`，位置格式不对 `gap_bad_source`，计算不存在或不是 conditional `gap_unlinked_calculation`。
   审计只查格式；问题问得对不对、替代做法能不能用，仍要人看。
   ```json
-  {"id": "W-PORT-SOA", "stage": "external", "status": "open", "severity": "P1", "owner": "Richtek 应用支持",
+  {"id": "W-PORT-SOA", "stage": "external", "status": "open", "consequence_class": "damage", "occurrence": "fault", "owner": "Richtek 应用支持",
    "missing": [{"source": "datasheet:Datasheet/.../Richtek - RT7209.pdf#p18", "given": "VOH_USBP=VO+8.5–12V，只在 RL=10MΩ 下规定",
                 "needed": "带 120nC 栅荷时的电荷泵电流、开通与关断时间"}],
    "why_external": "电荷泵驱动能力、故障到下拉的时延和重试时序在芯片内部与固件里",
@@ -163,16 +167,16 @@ python3 <skill>/scripts/verify_schematic.py root.kicad_sch --intent electrical-i
 ```
 
 审计拒绝过期证据、无效位号/依赖、未关闭依赖却声称已实现、部分计算却声称支持结论等矛盾。
-`INCOMPLETE` 表示如实记录的未完成设计；`FAIL` 表示记录/结论有矛盾或输入无效；`PASS` 只表示所声明范围内的证据和依赖闭合，**不证明公式正确、需求无遗漏、固件真实支持、ERC/看图检查通过或审查通过**。人工必须检查证据正文与分类是否成立。新设计交付使用该记录；旧重画流程可不提供，汇总明确显示 NOT_CHECKED。
+`INCOMPLETE` 表示如实记录的未完成设计；`FAIL` 表示记录/结论有矛盾或输入无效；`PASS` 只表示所声明范围内的证据和依赖闭合，**不证明公式正确、需求无遗漏、固件真实支持、ERC/图面审阅通过或审查通过**。人工必须检查证据正文与分类是否成立。新设计交付使用该记录；旧重画流程可不提供，汇总明确显示 NOT_CHECKED。
 
 ## 交付状态
 
-分别报告：图纸是否已生成、ASG 设计工作是否闭合、KiCad 自动检查、看图检查、审查意见处理、后续环节验证。设计报告由 `render_design_report.py` 按这些记录生成。
-待办记录审核 PASS 不能覆盖 ERC FAIL 或看图检查待返工；AUTOMATED_PASS 不能替代设计结论。
+分别报告：图纸是否已生成、ASG 设计工作是否闭合、KiCad 自动检查、图面审阅、审查意见处理、后续环节验证。设计报告由 `render_design_report.py` 按这些记录生成。
+待办记录审核 PASS 不能覆盖 ERC FAIL 或图面审阅待返工；AUTOMATED_PASS 不能替代设计结论。
 仍有可独立完成的设计项时继续完成，而不以“缺口已列出”作为工作结束。
 
-## 原理图定稿与交给PCB
+## 原理图设计定型与技术转交PCB
 
-原理图定稿检查需求功能、确切变体与物理脚号、启动与保护状态、参数极值、电气选型、KiCad 验证结果。封装库缺失和DFM未做本身不阻断此阶段。引脚未知、额定不足、供电未建立或保护逻辑未闭合仍属于原理图问题，不能改名为PCB待办。封装热条件影响电气额定时，当前阶段建立设计边界，后续环节验证铜面积、散热与实际温升；不得使用未满足散热条件的最大额定直接放行。
+原理图设计定型检查需求功能、确切变体与物理脚号、启动与保护状态、参数极值、电气选型、KiCad 验证结果。封装库缺失和DFM未做本身不阻断此阶段。引脚未知、额定不足、供电未建立或保护逻辑未闭合仍属于原理图问题，不能改名为PCB待办。封装热条件影响电气额定时，当前阶段建立设计边界，后续环节验证铜面积、散热与实际温升；不得使用未满足散热条件的最大额定直接放行。
 
-报告分别列出原理图待办、真实外部依赖、PCB实现交接和实测交接。交给PCB工作只改变工作归属，不自动关闭相关电气缺陷，也不代表生产放行。
+报告分别列出原理图待办、真实外部依赖、PCB实现转交和实测转交。交给PCB工作只改变工作归属，不自动关闭相关电气缺陷，也不代表生产放行。

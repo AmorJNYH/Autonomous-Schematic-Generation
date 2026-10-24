@@ -4,7 +4,7 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT/'scripts'),str(ROOT/'tests/fixtures')]
 from external_supply_cases import build
-from schematic_layout.native import find_cli
+from schematic_layout.native import compare_netlist, find_cli
 from schematic_layout.external_supply import audit_external_supply,judge,flag_references
 from schematic_layout.generate import Libraries,library_dirs
 from schematic_layout.sexpr import all_nodes,first,dump,Atom,form,parse
@@ -66,14 +66,15 @@ class NativeExternalSupplyTests(unittest.TestCase):
         # Missing cached parent must stay insufficient; installed libraries cannot fill it.
         cache.remove(base);sch.write_text(dump(root)+'\n')
         self.assertEqual(audit_external_supply(sch,[sch],intent,xml,find_cli(),self.base/'missing-parent')['status'],'INSUFFICIENT')
-    def test_identity_and_role_are_bound_to_native_component(self):
+    def test_identity_and_role_mismatch_are_the_netlist_gates(self):
         _,intent,_,xml,_=self.case('identity','PASS')
         probe=self.base/'identity/probe/external-supply-netlist.xml'
         aliases={'FLGX1':'#FLG1'}
         wrong=copy.deepcopy(intent);wrong['components'][0]['value']='different'
-        self.assertEqual(judge(probe,wrong,aliases)['status'],'FAIL')
+        self.assertEqual(compare_netlist(xml,wrong)['status'],'FAIL')    # identity is the intent_netlist gate's
         wrong=copy.deepcopy(intent);wrong['components'][0]['fields']['ComponentRole']='connector'
-        self.assertEqual(judge(probe,wrong,aliases)['status'],'FAIL')
+        self.assertEqual(compare_netlist(xml,wrong)['status'],'FAIL')
+        self.assertEqual(judge(probe,intent,aliases)['status'],'PASS')
     def test_custom_two_contact_connector_role_and_ordinary_rc(self):
         lib=Libraries(library_dirs()).load('Connector_Generic:Conn_01x02')
         lib[1]='Port'

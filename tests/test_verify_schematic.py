@@ -74,6 +74,10 @@ class VerifySchematicTests(unittest.TestCase):
         self.assertEqual({'power_pin_not_driven': 2, 'isolated_pin_label': 3}, s['gates']['erc']['by_type'])
         self.assertEqual(('FAIL', 1), (s['status'], code))
 
+    def test_rules_the_project_ignores_are_listed_and_fail(self):
+        # A page with no .kicad_pro runs on KiCad's defaults, which skip two rules ASG turns on.
+        self.assertEqual(['four_way_junction', 'single_global_label'], self.good[1]['gates']['erc']['ignored_rules'])
+
     def test_bad_drawing_fails_readability(self):
         _, s = self.bad
         self.assertEqual('FAIL', s['gates']['readability']['status'])

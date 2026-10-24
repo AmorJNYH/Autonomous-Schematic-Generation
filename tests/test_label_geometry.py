@@ -34,13 +34,13 @@ def qa(label, wire=None, pin=None):
     if pin:
         scene.symbols = [Symbol('P1', 'Audit:Pin', 1, [], None,
                                 [Pin('P1.1', *pin, (1, 0), 'passive')], [])]
-    return check_scene(scene, grid=.01, reserved=[])
+    return check_scene(scene, reserved=[])
 
 
 class LabelGeometryTests(unittest.TestCase):
     def test_native_fixture_pairs_and_own_wire_contacts(self):
         scene = read_scene(parse((FIXTURES / 'audit.kicad_sch').read_text()))
-        report = check_scene(scene, grid=.01, reserved=[])
+        report = check_scene(scene, reserved=[])
         pairs = [f for f in report['findings'] if f['code'] == 'text_overlap']
         self.assertEqual(len(pairs), 8, pairs)
         wire_hits = [f for f in report['findings'] if f['code'] == 'wire_text']
@@ -147,8 +147,7 @@ class LabelGeometryTests(unittest.TestCase):
                 self.assertIn('wire_text', qa(label, (anchor, near))['counts'])
 
     def test_connected_anchor_pass_regression_is_fail_wire_text(self):
-        report = check_scene(read_scene(parse((FIXTURES / 'connected-anchor.kicad_sch').read_text())),
-                             grid=.01, reserved=[], pin_nets={'P1.1': 'NET_A', 'P2.1': 'NET_B', 'P3.1': 'NET_B'})
+        report = check_scene(read_scene(parse((FIXTURES / 'connected-anchor.kicad_sch').read_text())), reserved=[])
         self.assertEqual(report['status'], 'FAIL')
         self.assertEqual(report['counts'], {'wire_text': 1})
         self.assertFalse(report['coverage']['gaps'])
@@ -179,7 +178,7 @@ class LabelGeometryTests(unittest.TestCase):
         # Exact own pin point attaches it without a rendered pin leg.
         scene.symbols = [Symbol('P1', 'Audit:Pin', 1, [], None,
                                 [Pin('P1.1', (80, 50), (80, 50), (1, 0), 'passive')], [])]
-        self.assertEqual(check_scene(scene, grid=.01, reserved=[])['status'], 'INSUFFICIENT')
+        self.assertEqual(check_scene(scene, reserved=[])['status'], 'INSUFFICIENT')
         # parse_justify drops unknown tokens for ordinary TextField callers;
         # global-label native coverage must retain and reject them.
         font = first(first(all_nodes(root, 'global_label')[0], 'effects'), 'font')
@@ -202,11 +201,11 @@ class LabelGeometryTests(unittest.TestCase):
         self.assertEqual(field.box(), text_field(node, label=True).box())
         scene.symbols = [Symbol('P1', 'Audit:Pin', 1, [], None,
                                 [Pin('P1.1', (80, 50), (80, 50), (1, 0), 'passive')], [])]
-        self.assertEqual(check_scene(scene, grid=.01, reserved=[])['status'], 'INSUFFICIENT')
+        self.assertEqual(check_scene(scene, reserved=[])['status'], 'INSUFFICIENT')
         box = field.box()
         mid_y = (box.y_min + box.y_max) / 2
         scene.wires = [((box.x_min - 2, mid_y), (box.x_max + 2, mid_y))]
-        report = check_scene(scene, grid=.01, reserved=[])
+        report = check_scene(scene, reserved=[])
         self.assertEqual(report['status'], 'FAIL')
         self.assertIn('wire_text', report['counts'])
         self.assertTrue(report['coverage']['gaps'])

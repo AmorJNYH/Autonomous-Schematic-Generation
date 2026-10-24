@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 import re
 import xml.etree.ElementTree as ET
+from .component_role import is_connector
 from .design_change import read_native, UnqualifiedPinlessObjects
 
 
@@ -37,23 +38,22 @@ def _text(s, context="text"):
     return s
 
 
-def verify_reference(netlist, contract, base, *, source_root=None, source_roles=None, project=None):
+def verify_reference(netlist, contract, base):
     _keys(contract, {"schema_version", "scope", "sources", "pin_maps", "checks", "features"}, context="contract")
     if contract["schema_version"] != 1:
         raise ValueError("Unsupported reference contract version")
     scope = contract["scope"]
-    _keys(scope, {"core_refs", "feature_ids"}, context="contract/scope")
+    # Which parts need a pin map follows from the netlist; core_refs is accepted but no longer decides it.
+    _keys(scope, {"feature_ids"}, {"core_refs"}, context="contract/scope")
     for values in scope.values():
         if not isinstance(values, list) or not values or any(not isinstance(x, str) or not x for x in values) or len(set(values)) != len(values):
-            raise ValueError("Scope must declare nonempty unique core_refs and feature_ids")
+            raise ValueError("Scope must declare nonempty unique feature_ids (and core_refs when given)")
     if not isinstance(contract["sources"], dict) or not isinstance(contract["pin_maps"], dict) or not isinstance(contract["checks"], list) or not isinstance(contract["features"], list):
         raise ValueError("Invalid reference contract collections")
-    context = {k: v for k, v in dict(source_root=source_root, source_roles=source_roles,
-                                    project=project).items() if v is not None}
     native_errors = []
     unqualified = []
     try:
-        native = read_native(netlist, **context)
+        native = read_native(netlist)
     except UnqualifiedPinlessObjects as exc:
         # All structural/identity/role-evidence checks ran before this exception.
         # Keep whole-input FAIL; local source-bound diagnostics cannot qualify it.
@@ -74,13 +74,13 @@ def verify_reference(netlist, contract, base, *, source_root=None, source_roles=
     base = Path(base).resolve()
     for sid, s in contract["sources"].items():
         _text(sid, "sources ID")
-        _keys(s, {"path", "sha256", "url", "document", "revision"}, context=_field_path("contract/sources", sid))
+        _keys(s, {"path", "sha256"}, {"url", "document", "revision"}, context=_field_path("contract/sources", sid))
         for key, v in s.items():
             _text(v, f"source {sid}.{key}")
         if not re.fullmatch(r"[0-9a-f]{64}", s["sha256"]):
             raise ValueError("Source SHA256 must be a lowercase 64-digit digest")
         path = (base / s["path"]).resolve()
-        record = {k: s[k] for k in ("sha256", "url", "document", "revision")}
+        record = {k: s[k] for k in ("sha256", "url", "document", "revision") if k in s}
         if not path.is_file():
             record.update(status="INSUFFICIENT", reason="Source file missing")
         else:
@@ -136,8 +136,8 @@ def verify_reference(netlist, contract, base, *, source_root=None, source_roles=
                 failures.append({"library_pins_missing_from_contract": sorted(unmapped)})
         for number, expected in spec["pins"].items():
             _text(number, f"{ref}.physical pin")
-            _keys(expected, {"names", "types"}, context=_field_path(pin_map_context + "/pins", number))
-            for field, aliases in expected.items():
+            _keys(expected, {"names", "types"}, {"datasheet_name"}, context=_field_path(pin_map_context + "/pins", number))
+            for field, aliases in ((k, v) for k, v in expected.items() if k != "datasheet_name"):
                 if not isinstance(aliases, list) or not aliases or any(not isinstance(x, str) for x in aliases) or len(set(aliases)) != len(aliases):
                     raise ValueError(f"{ref} physical pin {number} {field}: explicit nonempty unique alias list required")
                 if any(not x.strip() or x.strip() == "~" for x in aliases):
@@ -147,7 +147,12 @@ def verify_reference(netlist, contract, base, *, source_root=None, source_roles=
                 pin_gaps.append({"pin": number, "reason": "Missing, duplicate or incomplete library pin definition"})
                 continue
             observed = {"name": pins[0].get("name"), "type": pins[0].get("type")}
-            if observed["name"] not in expected["names"] or observed["type"] not in expected["types"]:
+            # A library pin left unnamed (~) is matched by the datasheet's name for it, written separately.
+            unnamed = observed["name"] in ("", "~")
+            if unnamed and not (isinstance(expected.get("datasheet_name"), str) and expected["datasheet_name"].strip()
+                                and expected["datasheet_name"].strip() != "~"):
+                failures.append({"pin": number, "actual": observed, "reason": "unnamed library pin needs datasheet_name"})
+            elif (not unnamed and observed["name"] not in expected["names"]) or observed["type"] not in expected["types"]:
                 failures.append({"pin": number, "actual": observed, "expected": expected})
             node_type = node_types.get(ref + "." + number)
             if not node_type:
@@ -159,9 +164,14 @@ def verify_reference(netlist, contract, base, *, source_root=None, source_roles=
         pin_results[ref] = {"status": "FAIL" if failures or basis == "FAIL" else "INSUFFICIENT" if pin_gaps else basis,
                             "source": spec["source"], "locator": spec["locator"], "failures": failures,
                             "coverage_gaps": pin_gaps}
-    if set(scope["core_refs"]) != set(pin_results):
-        gaps.append({"kind": "core_scope_mismatch", "missing": sorted(set(scope["core_refs"]) - pin_results.keys()),
-                     "undeclared": sorted(pin_results.keys() - set(scope["core_refs"]))})
+    # Every part with three or more pins needs a pin map, apart from connectors and pinless objects.
+    pin_counts = {}
+    for p in native["pin_nets"]:
+        pin_counts[p.rsplit(".", 1)[0]] = pin_counts.get(p.rsplit(".", 1)[0], 0) + 1
+    core = {r for r, n in pin_counts.items() if n >= 3 and not is_connector(native["components"][r])
+            and r not in native["pinless_objects"]}
+    if core - set(pin_results):
+        gaps.append({"kind": "core_scope_mismatch", "missing": sorted(core - set(pin_results))})
 
     for check_index, c in enumerate(contract["checks"]):
         check_context = f"contract/checks/{check_index}"

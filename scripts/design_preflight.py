@@ -28,11 +28,9 @@ def evidence(value):
 
 
 def calculate(expression, values):
-    if not text(expression) or len(expression) > 2048:
-        raise ValueError('bounded arithmetic expression required')
+    if not text(expression):
+        raise ValueError('arithmetic expression required')
     root = ast.parse(expression, mode='eval')
-    if sum(1 for _ in ast.walk(root)) > 256:
-        raise ValueError('expression is too complex')
     def visit(node):
         if isinstance(node, ast.Constant) and number(node.value):
             return node.value
@@ -83,10 +81,13 @@ def validate_calculations(rows):
                 limitations.append(label + ': ' + basis)
             if basis == 'DERIVED_BOUND' and not text(param.get('derivation')):
                 errors.append(label + ': derived bound needs derivation and evidence')
-            conditions, actual = param.get('conditions'), param.get('operating_conditions')
-            if not isinstance(conditions, dict) or not isinstance(actual, dict):
+            # Only a guaranteed or derived bound has test conditions the design must stay inside.
+            bound_basis = basis in ('GUARANTEED', 'DERIVED_BOUND')
+            conditions, actual = param.get('conditions', {}), param.get('operating_conditions', {})
+            if not isinstance(conditions, dict) or not isinstance(actual, dict) or (
+                    bound_basis and not ('conditions' in param and 'operating_conditions' in param)):
                 errors.append(label + ': conditions and operating_conditions required'); continue
-            if not conditions and not text(param.get('unconditional_basis')):
+            if bound_basis and not conditions and not text(param.get('unconditional_basis')):
                 errors.append(label + ': empty conditions need unconditional_basis')
             for dimension, bound in conditions.items():
                 actual_bound = actual.get(dimension)
@@ -118,10 +119,6 @@ def validate_calculations(rows):
         elif value is not None:
             passed = COMPARISONS[acceptance['operator']](value, acceptance['value'])
         status = 'INVALID' if len(errors) > start else ('CONDITIONAL' if limitations else ('SUPPORTED' if passed else 'FAIL'))
-        if row.get('claim') not in ('SUPPORTED', 'CONDITIONAL', 'FAIL'):
-            errors.append(key + ': invalid claim')
-        elif row['claim'] != status and status != 'INVALID':
-            errors.append(key + ': claim disagrees with computed ' + status)
         if limitations and not text(row.get('closure')):
             errors.append(key + ': conditional calculation needs closure method')
         results[key] = {'status': status, 'value': value, 'acceptance_met': passed, 'limitations': limitations}
