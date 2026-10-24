@@ -22,7 +22,7 @@
 | `page-plan.json` | 页面方案表：`{"schema_version": 1, "pages": [{"file", "reader_tasks": [...], "blocks": {块名: [位号]}, "patterns": {块名: "模式#做法"}}]}`；本页每个器件属于一个功能块，每块标注 `references/circuit-patterns/` 里的做法（第一页架构页免标） |
 | `selection.json` | 核心器件选型：每个角色的位号、决定性条件、≥2 个候选（选中/淘汰理由、相对知识库的手册路径）；每个 U/Q/T 器件都要属于一个角色；选定候选写外部依赖，依赖未公开资料时附 2–3 个方案、建议和用户的决定，格式见 [核心器件选型](core-part-selection.md) |
 | `lessons.json` | 本版学到的东西：`{"schema_version": 1, "events": [{"source", "cause", "change" 或 "why_none", "why_not_rule"}]}`；来源只能是 `review:<审查目录>/<待办编号>`、`datasheet:<库内路径>#p<页>`、`test:<记录>`、`user:<日期>`；`datasheet:` 来源核对文件和页码；归因与改动位置的要求见 [处理审查意见](review-comments.md) |
-| `visual-review.json` | 图面审阅：`{"status": "REVIEWED/REVIEW_PENDING/REWORK_REQUIRED", "pages": [{"page", "file", "paths", "problems", "render_review_items": [{"item", "disposition"}]}]}`；每页 `paths` 不少于读者任务数；`summary.json` 的 `geometry.render_review_items` 列出的每个待看图对象都要在对应页有非空处置，写出在本版 PDF 上看到了什么；没改动的页面也按本版 PDF 重新看，处置和路径不写“沿用”“同上一版” |
+| `visual-review.json` | 图面审阅：`{"status": "REVIEWED/REVIEW_PENDING/REWORK_REQUIRED", "pdf_sha256", "pages": [{"page", "file", "paths", "problems", "render_review_items": [{"item", "disposition"}]}]}`；每页 `paths` 不少于读者任务数；`summary.json` 的 `geometry.render_review_items` 列出的每个待看图对象都要在对应页有非空处置，写出在本版 PDF 上看到了什么；没改动的页面也按本版 PDF 重新看，处置、路径和 `method` 不写“沿用”“同上一版”；`REVIEWED` 时 `pdf_sha256` 必须是本版 `原理图/schematic.pdf` 去掉导出时间后的 SHA-256（`render_design_report.py --pdf-sha256 原理图/schematic.pdf` 给出），PDF 图面变了就要重新审阅 |
 | `delivery-evidence.json` | 导出后有没有再改过的核对记录 |
 | `review-responses.json` | 收到审查意见时必有，格式见 [处理审查意见](review-comments.md) |
 | `design-change.json` 等 | 改版时的改动核对与动手前检查 |

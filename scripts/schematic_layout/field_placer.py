@@ -247,3 +247,33 @@ def field_extent(
             max(merged.y_max, box.y_max),
         )
     return merged
+
+
+def _gap(a: Box, b: Box) -> float:
+    dx = max(a.x_min - b.x_max, b.x_min - a.x_max, 0.0)
+    dy = max(a.y_min - b.y_max, b.y_min - a.y_max, 0.0)
+    return (dx * dx + dy * dy) ** 0.5
+
+
+def swapped_label_pairs(symbols, tolerance_mm: float = 1.27) -> list[tuple[str, str]]:
+    """Pairs of parts whose Reference/Value blocks read as well swapped as in place.
+
+    A reader gives a label block to the nearest body. Two parallel parts whose
+    blocks sit side by side between them (R6 redraw: R602/R603 on CS+/CS-) can
+    be read either way, although no text overlaps. A pair is reported when the
+    swapped assignment is no more than ``tolerance_mm`` farther in total than
+    the drawn one. ``symbols`` are scene symbols with ``ref``, ``body`` and ``fields``.
+    """
+    blocks = []
+    for s in symbols:
+        boxes = [f.box() for name, f in s.fields if name in ("Reference", "Value")]
+        if s.body and boxes and not s.ref.startswith("#"):
+            blocks.append((s.ref, s.body, Box(min(b.x_min for b in boxes), min(b.y_min for b in boxes),
+                                              max(b.x_max for b in boxes), max(b.y_max for b in boxes))))
+    pairs = []
+    for i, (ref, body, block) in enumerate(blocks):
+        for other, other_body, other_block in blocks[i + 1:]:
+            kept = _gap(block, body) + _gap(other_block, other_body)
+            if other != ref and _gap(block, other_body) + _gap(other_block, body) <= kept + tolerance_mm:
+                pairs.append((ref, other))
+    return pairs

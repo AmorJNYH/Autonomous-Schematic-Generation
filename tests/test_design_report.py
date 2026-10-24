@@ -9,7 +9,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 from audit_design_closure import audit, sha256
-from render_design_report import render, REPORT
+from render_design_report import render, render_sha256, REPORT
 from pack_design import pack
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_citations import pdf
@@ -82,7 +82,8 @@ class Delivery:
         self.write('summary.json', {'status': 'INCOMPLETE', 'sheets': ['a', 'b'], 'gates': {
             'erc': {'status': 'PASS', 'violations': 0}, 'intent_netlist': {'status': 'PASS', 'errors': 0},
             'geometry': {'status': 'INSUFFICIENT'}, 'design_closure': {'status': 'INCOMPLETE'}}})
-        self.write('visual-review.json', {'status': 'REVIEWED', 'pages': [
+        self.pdf = render_sha256(self.root / '原理图' / 'schematic.pdf')
+        self.write('visual-review.json', {'status': 'REVIEWED', 'pdf_sha256': self.pdf, 'pages': [
             {'page': 1, 'file': 'board.kicad_sch', 'paths': ['VIN to VOUT'], 'problems': []}]})
         self.write('page-plan.json', {'schema_version': 1, 'pages': [
             {'file': 'board.kicad_sch', 'reader_tasks': ['跟随 VIN 到 VOUT 的能量流'], 'blocks': {'稳压': ['U1', 'R1']},
@@ -505,7 +506,7 @@ class DesignReportTests(unittest.TestCase):
         self.assertTrue(any(p.startswith('board.kicad_sch：功能块“稳压”标注的做法“不存在的做法”不在模式 output-filter-storage 里') for p in problems), problems)
         plan['pages'].insert(0, {'file': 'PD_root.kicad_sch', 'reader_tasks': ['看流向'], 'blocks': {'能量链': ['U1']}})
         self.d.write('page-plan.json', plan)
-        self.d.write('visual-review.json', {'status': 'REVIEWED', 'pages': [
+        self.d.write('visual-review.json', {'status': 'REVIEWED', 'pdf_sha256': self.d.pdf, 'pages': [
             {'page': 1, 'file': 'board.kicad_sch', 'paths': ['VIN to VOUT'], 'problems': []},
             {'page': 0, 'file': 'PD_root.kicad_sch', 'paths': ['flow'], 'problems': []}]})
         page['patterns'] = {'稳压': 'output-filter-storage#电解/聚合物 + MLCC 并联'}
@@ -520,6 +521,25 @@ class DesignReportTests(unittest.TestCase):
         _, problems = self.d.report()
         self.assertIn('board.kicad_sch：这些器件不属于任何功能块：C1', problems)
 
+    def test_a_finished_review_names_this_versions_pdf(self):
+        """R6 redraw: a review made on the previous export read as finished; KiCad's export time does not count."""
+        pdf = self.d.root / '原理图' / 'schematic.pdf'
+        pdf.write_bytes(b'%PDF-1.5 /CreationDate (D:2026:10:23:10:00:00) page')
+        review = json.loads((self.d.record / 'visual-review.json').read_text())
+        review['pdf_sha256'] = render_sha256(pdf)
+        self.d.write('visual-review.json', review)
+        pdf.write_bytes(b'%PDF-1.5 /CreationDate (D:2026:10:24:00:02:15) page')
+        self.assertEqual([], self.d.report()[1])
+        pdf.write_bytes(b'%PDF-1.5 /CreationDate (D:2026:10:24:00:02:15) moved page')
+        stale = [p for p in self.d.report()[1] if 'pdf_sha256' in p]
+        self.assertEqual(1, len(stale), stale)
+        review['status'] = 'REVIEW_PENDING'
+        self.d.write('visual-review.json', review)
+        self.assertFalse(any('pdf_sha256' in p for p in self.d.report()[1]))
+        review.update(status='REVIEWED', pdf_sha256=render_sha256(pdf), method='未改页与 R5 同图，逐项处置按位号沿用')
+        self.d.write('visual-review.json', review)
+        self.assertIn('visual-review.json 的 method 写了沿用上一版：没改动的页面也要按本版 PDF 重新看', self.d.report()[1])
+
     def test_every_render_review_item_is_dispositioned_from_this_pdf(self):
         (self.d.root / '原理图' / 'board.kicad_sch').write_text(
             '(kicad_sch (version 20250114) (generator "t") (uuid "r") (paper "A4") (lib_symbols)\n'
@@ -532,7 +552,7 @@ class DesignReportTests(unittest.TestCase):
         self.d.write('summary.json', summary)
         same = '本页 PDF 上可见的引脚号和脚名都没有被导线或文字压住。'
         def review(items, paths=('VIN to VOUT',)):
-            self.d.write('visual-review.json', {'status': 'REVIEWED', 'pages': [
+            self.d.write('visual-review.json', {'status': 'REVIEWED', 'pdf_sha256': self.d.pdf, 'pages': [
                 {'page': 1, 'file': 'board.kicad_sch', 'paths': list(paths), 'problems': [], 'render_review_items': items}]})
             return self.d.report()[1]
         # One sentence may describe several symbols; what matters is that every listed object was looked at.

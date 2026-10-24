@@ -471,6 +471,12 @@ class DerivedConclusionTests(unittest.TestCase):
         self.record['work_items'][0].update(owner='ASG', action='补算低线充电', consequence_class='function', occurrence='condition')
         self.assertNotIn('not_calculated_without_design_item', self.codes())
         self.assertEqual(['没算：低线逐周期充电'], self.basis()['reasons'])
+        # R6 redraw: a term that waits for vendor data points at the open external item instead.
+        self.record['work_items'][0]['stage'] = 'external'
+        self.assertNotIn('not_calculated_without_design_item', self.codes())
+        self.record['work_items'][0].update(stage='validation', status='handoff')
+        self.assertIn('not_calculated_without_design_item', self.codes())
+        self.record['work_items'][0].update(stage='design', status='open')
         self.record['calculations'][0]['coverage'] = 'bounded'
         self.assertIn('coverage_not_derived', self.codes())
         self.calc('guaranteed', omitted=[{'term': '十年 ESR 漂移', 'kind': 'verify_by_test', 'work_item': 'W1'}])

@@ -110,7 +110,7 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
     | 否则，有 `model` 参数或 `not_calculated` 的遗漏项 | `conditional` | `estimate` | 依赖工程估计 |
     | 都没有 | `supported` | — | 设计成立 |
 
-  - `omitted_terms`：每项 `{term, kind, work_item}`。`not_calculated`（影响检查结果却没算）指向一件未关闭的 `design` 待办，
+  - `omitted_terms`：每项 `{term, kind, work_item}`。`not_calculated`（影响检查结果却没算）指向一件未关闭的 `design` 待办，或它等着的未关闭 `external` 待办，
     有它时 `coverage` 是 `partial`，否则是 `bounded`（写错记 `coverage_not_derived`）；`verify_by_test`（只能靠样件或试验确认）
     指向一件 `validation` 阶段的 `handoff` 待办，不影响结论和 `coverage`。指错记 `not_calculated_without_design_item` /
     `verify_by_test_without_validation_handoff`。`missing_guarantee` 不再必填，缺的保证由审计从参数里列出。

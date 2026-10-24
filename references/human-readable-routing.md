@@ -203,6 +203,12 @@ Read the native-rendered full page and useful detail crops. For every block:
   lane without confusing it with its neighbor.
 - Identify every return domain and isolation crossing, and follow intentional
   label links without ambiguous names or missing destinations.
+- Read each reference/value pair as belonging to the nearest body. Two parallel
+  parts whose labels sit side by side between them (R6 redraw: R602/R603 on the
+  CS+/CS− legs) are misattributed; stagger the parts so each label sits beside
+  its own body, then rebuild. `Sheet.build()` rejects a pair whose blocks read
+  as well swapped as in place (`field_placer.swapped_label_pairs`); a block
+  near a part that has its own label nearer still is left to this review.
 
 Record sheet/block, references, the path traced, applicable rule findings and
 image/source identity. A checkbox saying "viewed all pages" is insufficient,

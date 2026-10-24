@@ -79,6 +79,8 @@ CORE_REF = re.compile(r'^[UQT]\d')
 OPTION_FIELDS = (('name', '方案名'), ('parts', '涉及型号'), ('cost', '代价'), ('pros', '优点'), ('cons', '缺点'))
 # Words that carry an earlier version's review over instead of looking at this version's PDF.
 CARRIED_OVER = ('沿用', '同上一版', '同上版', '与上一版相同', '上一版已审')
+# KiCad stamps each PDF export with its time; the review binds to the drawing, so its hash leaves the dates out.
+PDF_DATES = re.compile(rb'/(CreationDate|ModDate) \([^)]*\)')
 TERMINOLOGY = Path(__file__).resolve().parent.parent / 'references' / 'terminology.md'
 # A written total and what it is counted against (references/terminology.md).
 COUNT_PATTERN = re.compile(r'(?:共|全部)\s*(\d+)\s*(项计算|件未关闭项|条需求|条审查意见|个器件|页)')
@@ -267,13 +269,25 @@ def check_page_plan(plan, intent, visual, lessons=None, patterns_dir=PATTERNS_DI
     return errors
 
 
+def render_sha256(path):
+    """SHA-256 of a KiCad PDF without its export time: two exports of the same sheets give the same value."""
+    return hashlib.sha256(PDF_DATES.sub(b'', Path(path).read_bytes())).hexdigest()
+
+
 def check_visual_items(root, visual, summary=None):
     """Every object handed to the render review is dispositioned from this version's PDF.
 
     Each item in summary.json geometry.render_review_items has a nonempty disposition on its page,
     the symbol it names is on that page, and no disposition carries over an earlier version's review.
+    A finished review names the PDF it was made on (R6 redraw: an earlier PDF's review read as finished).
     """
     errors = []
+    pdf = root / '原理图' / 'schematic.pdf'
+    if visual.get('status') == 'REVIEWED' and pdf.is_file() and visual.get('pdf_sha256') != render_sha256(pdf):
+        errors.append('visual-review.json 的 pdf_sha256 不是本版 原理图/schematic.pdf 的（render_design_report.py --pdf-sha256 '
+                      '原理图/schematic.pdf 给出）：按本版 PDF 重新审阅，做完前 status 写 REVIEW_PENDING')
+    if any(w in str(visual.get('method', '')) for w in CARRIED_OVER):
+        errors.append('visual-review.json 的 method 写了沿用上一版：没改动的页面也要按本版 PDF 重新看')
     done = {}
     for page in visual.get('pages') or []:
         if not isinstance(page, dict):
@@ -1065,10 +1079,16 @@ def render(root, notes=None, title=None):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('delivery', help='delivery folder holding record/')
+    parser.add_argument('delivery', nargs='?', help='delivery folder holding record/')
     parser.add_argument('--notes', help='notes.json written by the agent')
     parser.add_argument('--title')
+    parser.add_argument('--pdf-sha256', metavar='PDF', help='print the hash visual-review.json names its PDF by, and exit')
     args = parser.parse_args(argv)
+    if args.pdf_sha256:
+        print(render_sha256(args.pdf_sha256))
+        return 0
+    if not args.delivery:
+        parser.error('the delivery folder is required')
     notes = json.loads(Path(args.notes).read_text(encoding='utf-8')) if args.notes else None
     report, problems = render(args.delivery, notes, args.title)
     target = Path(args.delivery) / REPORT

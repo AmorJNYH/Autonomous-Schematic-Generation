@@ -141,7 +141,8 @@ def vendor_items_of(work):
 
 
 def audit_omissions(key, row, work, error):
-    """Version 2 omitted terms: a term not calculated is open design work; one only a test can settle is handed off."""
+    """Version 2 omitted terms: a term not calculated is open design work, or open vendor data it waits for;
+    one only a test can settle is handed off."""
     omitted = row.get('omitted_terms', [])
     if not isinstance(omitted, list):
         error('schema', key + ':omitted_terms must be a list')
@@ -155,7 +156,7 @@ def audit_omissions(key, row, work, error):
         item = work.get(o.get('work_item'), {})
         if o['kind'] == 'verify_by_test' and not (item.get('stage') == 'validation' and item.get('status') == 'handoff'):
             error('verify_by_test_without_validation_handoff', key + ':' + o['term'])
-        if o['kind'] == 'not_calculated' and not (item.get('stage') == 'design' and item.get('status') == 'open'):
+        if o['kind'] == 'not_calculated' and not (item.get('stage') in ('design', 'external') and item.get('status') == 'open'):
             error('not_calculated_without_design_item', key + ':' + o['term'])
     return kinds
 

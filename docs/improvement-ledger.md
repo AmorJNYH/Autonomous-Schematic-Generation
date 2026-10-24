@@ -8,6 +8,33 @@ in the library and have the cited page); `Changed:` the files touched.
 entry that changes the ASG 纲要 or the 绘图纲要 O1–O8 also carries `Approved:
 user:<date>` and `Outline:` the hash from `check_ledger.py --outline-hash`.
 
+## 位号块互换可读即拦下 (2026-10-24)
+
+R6 重画的图面审阅发现 07_PD 的 R602/R603 两组位号与值并排夹在 CS+/CS− 两线之间，看不出归属，几何与可读性检查都通过。
+先试“字段块离别的本体不比离自己的远”：R1–R6 的 48 页里 0.5 mm 容差命中 51 处，逐个对照已审阅的 PDF，
+除 R602/R603 外都是旁边那件有自己更近的标注、读者不会认错。改为成对判断：两件的标注块互换后到本体的距离和
+不比原样多出 1.27 mm 就算读得通两种归属。它在 R1–R5、原 R6、R5 从头审查导出的 49 页里只命中 R602/R603（容差 0–3 mm 结果不变），
+重画后的 R6、tests 下 41 张图（99 个器件）和一块人工绘制的 RK3588 板为 0。`field_placer.swapped_label_pairs`
+在 `Sheet.build()` 放完字段后运行，命中即报错（草稿记入失败项）；单边靠近而对方另有标注的情况仍归图面审阅。
+
+- Event: test:R6重画图面审阅07_PD页R602与R603位号并排
+- Changed: scripts/schematic_layout/field_placer.py, scripts/schematic_layout/recipes.py, references/human-readable-routing.md, tests/test_swapped_labels.py, docs/improvement-ledger.md
+
+## R6 重画：四线交汇、图面审阅绑定本版 PDF、没算项可挂厂家资料待办 (2026-10-24)
+
+按用户 2026-10-23 决定电气不变重画 100 W PD R6。ERC 把 four_way_junction 设为 error 后，03_PFC、05_Bias_Control、07_PD
+有四处电源符号落在三线交汇点上；`Sheet.build()` 新增 `_check_junctions`：一点汇合四条以上导线、引脚和电源/标志符号即报错，
+同一符号叠放的多个引脚（功率管的几个漏极脚）按 KiCad 算一个。重画后第一次出报告，`visual-review.json` 还是上一次导出的
+审阅（method 写着“按位号沿用”），报告却写“图面审阅：已完成”：`check_visual_items` 在 `REVIEWED` 时要求 `pdf_sha256`
+等于本版 `schematic.pdf` 去掉 /CreationDate、/ModDate 后的 SHA-256（两次导出只差这两项），method 也查“沿用”，
+`render_design_report.py --pdf-sha256` 给出该值。审阅中 07_PD 的 R602/R603 两组位号并排夹在两线之间、看不出归属，
+几何与可读性都通过，写进 human-readable-routing.md 第 4 节的审阅要点。升 parameter_version 2 时 R6 的 PORT-GATE 等没算项
+等的是厂家资料，原规则只允许指向 design 待办：`not_calculated` 也可指向未关闭的 external 待办。
+R5 从头审查暂缓的 W-T301-ISAT、W-U601-CV-ACCURACY 归因为缺知识，补进 qr-flyback.md、pd-output-control.md 的必算项与已知坑。
+
+- Event: test:R6重画一键验证ERC四线交汇, test:R6重画报告把上一次导出的图面审阅当成已完成, test:R6重画图面审阅07_PD页R602与R603位号并排, review:SR-20261023-R5-从头审查-claude-5802e8c/W-T301-ISAT, review:SR-20261023-R5-从头审查-claude-5802e8c/W-U601-CV-ACCURACY, user:2026-10-23
+- Changed: scripts/schematic_layout/recipes.py, scripts/render_design_report.py, scripts/audit_design_closure.py, references/delivery-report.md, references/design-closure.md, references/human-readable-routing.md, references/circuit-patterns/qr-flyback.md, references/circuit-patterns/pd-output-control.md, tests/test_four_way_junction.py, tests/test_design_report.py, tests/test_design_closure.py, docs/improvement-ledger.md
+
 ## 计算结论分三档，由参数依据推出：parameter_version 2 (2026-10-23)
 
 R1–R6 六版 164 条计算全部 `conditional`：`supported` 要求没有任何遗漏项，而每条都能写出“样件实测”一类的项；

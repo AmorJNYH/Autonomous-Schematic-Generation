@@ -14,9 +14,10 @@ audits the drawing against them; a deviation needs a recorded reason.
 import copy
 import json
 import math
+from collections import Counter
 
 from .component_role import is_connector
-from .field_placer import FieldSpec, autoplace_fields
+from .field_placer import FieldSpec, autoplace_fields, swapped_label_pairs
 from .generate import Libraries, library_dirs, make_root, pin_clipped_body, pin_net_map
 from .geometry import Box, TextField, text_extent
 from .label_geometry import global_outline, DIRECTION_STYLE
@@ -709,6 +710,17 @@ class Sheet:
             split |= {(n, u, v) for u, v in zip(seq, seq[1:]) if u != v}
         return sorted(split), crossings
 
+    def _check_junctions(self, segments):
+        """At most three wires and pins meet at one point; KiCad's four_way_junction is an error (R6 redraw)."""
+        meets = Counter(q for _, a, b in segments for q in (a, b))
+        # Stacked pins of one symbol (a power package's drain pins) are one item at their point, as in KiCad.
+        meets.update(q for _, q in {(pid.rsplit('.', 1)[0], q) for pid, (q, _) in self.pins.items()})
+        meets.update(e for _, _, e in self.powers + self.flags)
+        crowded = sorted(q for q, n in meets.items() if n >= 4)
+        if crowded:
+            raise ValueError(f"Four or more wires and pins meet at {crowded}; move one branch or rail symbol "
+                             "to a neighbouring point of the same net (O8)")
+
     def _check_connected(self, segments):
         """Every connected pin is wired; a net's separate pieces must carry its name."""
         wired = {q for _, a, b in segments for q in (a, b)}
@@ -799,6 +811,7 @@ class Sheet:
         root, meta, uid, reserved = make_root(self.intent, layout, name, self.dirs)
         segments, crossings = self._segments()
         self._check_connected(segments)
+        self._check_junctions(segments)
         self.label_parts = self._label_parts(segments)
         scene = read_scene(root)
         page = scene.page.expanded(-FRAME_MARGIN_MM)  # the clearance the geometry gate holds every object to
@@ -1032,11 +1045,19 @@ class Sheet:
         # The page geometry gate fails bodies (parts and rail symbols) closer
         # than 1.27 mm; catch it here, while drawing, with the same check.
         from .qa import check_scene
-        close = [f["objects"] for f in check_scene(read_scene(root), reserved=reserved or None)["findings"]
+        built = read_scene(root)
+        close = [f["objects"] for f in check_scene(built, reserved=reserved or None)["findings"]
                  if f["code"] in ("body_clearance", "body_overlap")]
         if close:
             message = (f"Bodies closer than 1.27 mm on the built page: {close}; lengthen the rail/part stub, "
                        "flip its direction or widen the gap (O8)")
+            if not draft:
+                raise ValueError(message)
+            failures.append(message)
+        swapped = swapped_label_pairs(built.symbols)
+        if swapped:
+            message = (f"Reference/Value of {swapped} read as well swapped as in place; stagger the parts "
+                       "so each label sits by its own body (O8)")
             if not draft:
                 raise ValueError(message)
             failures.append(message)
