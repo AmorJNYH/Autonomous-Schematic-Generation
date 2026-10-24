@@ -229,7 +229,7 @@ different-net wire crossings, zero two-terminal connections with three or
 more bends, each reported with its location, and no sheet whose content fits
 a smaller standard paper (`oversized_paper`, HR-11). Content includes symbols,
 fields, wires, labels, graphic lines and sheet frames; the fit compares outline
-size with the 12 mm frame only, not the title-block reserve. Redraw rather than waive;
+size with the 5 mm margin only, not the title-block reserve. Redraw rather than waive;
 a waiver file entry must give the sheet, the allowed count (or
 `oversized_paper: true`) and the reason. Label count, bends, wire length,
 `cell_coverage`, `part_groups` and `longest_segment_mm` remain diagnostics

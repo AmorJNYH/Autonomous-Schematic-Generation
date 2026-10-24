@@ -111,7 +111,8 @@ symbols count as separate groups) and `longest_segment_mm`.
 name and field failures are listed in `draft_failures` instead of raised, so a
 page can be rendered while it is being fixed; a draft is never delivered. Fields
 that fit on no side (bridges, parts wired on all four sides) take a clear body
-corner. Content stays 12 mm inside the drawing-sheet frame. The report holds every recipe decision, crossing
+corner. Content stays 5 mm inside the page edge and out of the title block: `build()` raises on a wire that
+leaves that area, enters the title block or crosses a body, using the geometry gate's own check (`qa.wire_findings`). The report holds every recipe decision, crossing
 locations, label and rail sets, readability metrics with the gate, the
 structure audit, and a `layout` whose net policies `compare_netlist` uses to
 check label and rail names.
@@ -184,8 +185,9 @@ wire, left of a vertical one).
 - Unplaced parts; off-grid or coincident terminals (from `make_root`).
 - Diagonal wires; a wire over another net's terminal; different nets touching
   or overlapping (a clean perpendicular crossing is allowed but reported).
-- A wire through a part body (bodies cut back at their own pin tips), leaving the
-  drawing area or entering the title block.
+- A wire through a part body (a pin's own outward exit is not a traversal), closer
+  than 5 mm to the page edge or entering the title block: the same `qa.wire_findings`
+  check the geometry gate runs on the written wires.
 - An unwired pin; a net drawn in separate pieces unless every piece carries its
   label or rail symbol.
 - A rail symbol, label or name that collides; no clear Reference/Value position.

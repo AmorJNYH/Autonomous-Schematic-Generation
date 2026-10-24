@@ -6,11 +6,12 @@ segment and at explicit junctions; a bare perpendicular crossing stays apart.
 """
 
 from .geometry import Box
+from .qa import FRAME_MARGIN_MM
 from .routing import on_segment
 from .scene import PAPERS, read_scene
 from .sexpr import all_nodes, first, value
 
-FRAME_MM = 12.0  # content stays this far inside the sheet frame (recipes.Sheet.build)
+FRAME_MM = FRAME_MARGIN_MM  # content stays this far inside the sheet frame (Sheet.build and the geometry gate)
 # Standard papers a page may shrink to, smallest first; only the metric sizes
 # the recipes use. A page whose content fits a smaller one is oversized (HR-11).
 PAPER_ORDER = ("A4", "A3", "A2", "A1", "A0")

@@ -8,6 +8,17 @@ in the library and have the cited page); `Changed:` the files touched.
 entry that changes the ASG 纲要 or the 绘图纲要 O1–O8 also carries `Approved:
 user:<date>` and `Outline:` the hash from `check_ledger.py --outline-hash`.
 
+## 建图与几何检查共用一条导线判定，页边统一 5 mm (2026-10-23)
+
+`Sheet.build()` 手写了三条导线检查（离开 12 mm 内框、进标题栏、穿器件本体），几何检查又用 5 mm 边距和另一段
+穿本体判定各查一遍，标题栏保留区的数在 `qa.py` 与 `generate.py` 各抄一份；同一根线可能建图不过而门禁通过，或反过来。
+用户定为统一 5 mm。现在 `qa.wire_findings` 是唯一判定（`FRAME_MARGIN_MM = 5`、`title_block()`），建图对计划中的线段、
+门禁对写出的导线各调用一次；建图时电源符号与标签的页内范围、可读性的纸张判断（HR-11）也用同一边距。
+R6 八页的纸张判断不变，全部 PASS。
+
+- Event: user:2026-10-23
+- Changed: scripts/schematic_layout/qa.py, scripts/schematic_layout/recipes.py, scripts/schematic_layout/generate.py, scripts/schematic_layout/readability.py, references/drawing-recipes.md, references/human-readable-routing.md, tests/test_wire_envelope.py, docs/improvement-ledger.md
+
 ## 检查只为电路正确或交代不确定性：合并改动 (2026-10-23)
 
 用户审定 9 个改进点后要求全量审查每一项检查：凡不服务于电路正确、也不交代不确定性的检查删除或改写，

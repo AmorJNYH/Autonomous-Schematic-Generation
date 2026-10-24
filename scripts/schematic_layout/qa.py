@@ -79,6 +79,39 @@ def own_pin_exit(a, b, exits):
     return False
 
 
+FRAME_MARGIN_MM = 5.0   # drawn objects keep this clearance from the page edge
+
+
+def title_block(page):
+    """Default reserved region: the title block in the lower right corner of the page."""
+    return Box(page.x_max - 120, page.y_max - 45, page.x_max - 5, page.y_max - 5)
+
+
+def wire_findings(scene, wires, reserved=None):
+    """off_page, reserved_region and wire_body for named wires ``[(name, a, b)]``.
+
+    Shared by Sheet.build (planned segments, before they are written) and the
+    geometry gate (written wires), so both judge with the same numbers.
+    """
+    reserved = [title_block(scene.page)] if reserved is None else reserved
+    findings = []
+    def add(code, objects, detail):
+        findings.append({"code": code, "objects": objects, "detail": detail, "severity": "error"})
+    bodies = [(f"{s.ref}:unit{s.unit}", s.body, {p.point: p.direction for p in s.pins if p.point == p.inner},
+               {p.point: p.direction for p in s.pins if p.point != p.inner}) for s in scene.symbols if s.body]
+    for name, a, b in wires:
+        box = wire_box(a, b, 0)
+        if not box.inside(scene.page, margin_mm=FRAME_MARGIN_MM):
+            add("off_page", [name], "Object outside page/frame clearance")
+        if any(box.overlaps(r) for r in reserved):
+            add("reserved_region", [name], "Object intrudes into reserved title/block region")
+        for body_name, body, terminals, exits in bodies:
+            if (segment_hits_box(a, b, body) and not body_terminal_contact(a, b, body, terminals)
+                    and not own_pin_exit(a, b, exits)):
+                add("wire_body", [name, body_name], "Wire passes through a symbol body")
+    return findings
+
+
 def check_scene(scene, reserved=None, body_clearance=1.27):
     findings = []
 
@@ -102,25 +135,9 @@ def check_scene(scene, reserved=None, body_clearance=1.27):
     gaps += ["Global label native coverage gap: " + ", ".join(outline.gaps)
              for outline in global_labels.values() if outline.gaps]
     pins = [p for s in scene.symbols for p in s.pins]
-    body_terminals = {
-        f"{s.ref}:unit{s.unit}": {
-            p.point: p.direction for p in s.pins if p.point == p.inner
-        }
-        for s in scene.symbols
-    }
-    pin_exits = {
-        f"{s.ref}:unit{s.unit}": {p.point: p.direction for p in s.pins if p.point != p.inner}
-        for s in scene.symbols
-    }
     if reserved is None:
-        reserved = [
-            Box(
-                scene.page.x_max - 120,
-                scene.page.y_max - 45,
-                scene.page.x_max - 5,
-                scene.page.y_max - 5,
-            )
-        ]
+        reserved = [title_block(scene.page)]
+    findings += wire_findings(scene, [(f"wire:{i}", a, b) for i, (a, b) in enumerate(scene.wires)], reserved)
     for i, (a, box) in enumerate(bodies):
         for b, other in bodies[i + 1 :]:
             if box.overlaps(other):
@@ -142,10 +159,7 @@ def check_scene(scene, reserved=None, body_clearance=1.27):
                 pin.point, pin.inner, box if a in global_labels else box.expanded(-0.04)
             ) and not (a in global_labels and global_labels[a].terminal_contact(pin.point, pin.inner)):
                 add("text_pin_overlap", [a, pin.id], "Visible text crosses a pin leg")
-    extents = bodies + fields
-    extents += [
-        (f"wire:{i}", wire_box(a, b, 0)) for i, (a, b) in enumerate(scene.wires)
-    ]
+    extents = bodies + fields      # wires are judged by wire_findings above
     extents += [(f"pin:{p.id}", wire_box(p.point, p.inner, 0)) for p in pins]
     extents += [
         (f"junction:{i}", Box.from_center(*p, 0.8, 0.8))
@@ -156,7 +170,7 @@ def check_scene(scene, reserved=None, body_clearance=1.27):
         for i, p in enumerate(scene.no_connects)
     ]
     for name, box in extents:
-        if not box.inside(scene.page, margin_mm=5):
+        if not box.inside(scene.page, margin_mm=FRAME_MARGIN_MM):
             add("off_page", [name], "Object outside page/frame clearance")
         if any(box.overlaps(r) for r in reserved):
             add(
@@ -173,7 +187,7 @@ def check_scene(scene, reserved=None, body_clearance=1.27):
         radius = width / 2
         extent = wire_box(a, b, radius)
         graphic_extents.append((name, extent))
-        if not extent.inside(scene.page, margin_mm=5):
+        if not extent.inside(scene.page, margin_mm=FRAME_MARGIN_MM):
             add("off_page", [name], "Graphic ink outside page/frame clearance")
         if any(_round_stroke_hits_box(a, b, r, radius) for r in reserved):
             add("reserved_region", [name], "Graphic ink enters reserved title/block region")
@@ -199,15 +213,6 @@ def check_scene(scene, reserved=None, body_clearance=1.27):
             add("zero_wire", [f"wire:{i}"], "Zero-length wire")
         if a[0] != b[0] and a[1] != b[1]:
             add("diagonal_wire", [f"wire:{i}"], "Non-orthogonal wire")
-        for name, box in bodies:
-            if (segment_hits_box(a, b, box)
-                    and not body_terminal_contact(a, b, box, body_terminals[name])
-                    and not own_pin_exit(a, b, pin_exits[name])):
-                add(
-                    "wire_body",
-                    [f"wire:{i}", name],
-                    "Wire passes through a symbol body",
-                )
         for name, box in fields:
             if (segment_hits_box(a, b, box if name in global_labels else box.expanded(-0.04))
                     and not (name in global_labels and global_labels[name].terminal_contact(a, b))):
@@ -295,7 +300,7 @@ def check_scene(scene, reserved=None, body_clearance=1.27):
             if ink_gap(ink, [[a,b,width]]) <= 0:
                 add("native_pin_wire_text", [name,f"wire:{wi}"], "Wire intersects native pin-name ink")
     for name,box in native_extents:
-        if not box.inside(scene.page,margin_mm=5): add("off_page",[name],"Native geometry outside page/frame clearance")
+        if not box.inside(scene.page,margin_mm=FRAME_MARGIN_MM): add("off_page",[name],"Native geometry outside page/frame clearance")
         if any(box.overlaps(r) for r in reserved): add("reserved_region",[name],"Native geometry enters reserved region")
     extents += native_extents
     content = union(box for name, box in extents + graphic_extents)

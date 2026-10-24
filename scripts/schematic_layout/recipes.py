@@ -21,6 +21,7 @@ from .generate import Libraries, library_dirs, make_root, pin_clipped_body, pin_
 from .geometry import Box, TextField, text_extent
 from .label_geometry import global_outline, DIRECTION_STYLE
 from .net_roles import validate_net_roles
+from .qa import FRAME_MARGIN_MM, wire_findings
 from .readability import gate, measure
 from .routing import on_segment, segment_hits_box, wire_box
 from .scene import read_scene
@@ -800,17 +801,14 @@ class Sheet:
         self._check_connected(segments)
         self.label_parts = self._label_parts(segments)
         scene = read_scene(root)
-        page = scene.page.expanded(-12.0)  # inside the drawing-sheet frame
+        page = scene.page.expanded(-FRAME_MARGIN_MM)  # the clearance the geometry gate holds every object to
         bodies = {s.ref: pin_clipped_body(s.body, [p for p in s.pins if p.point != p.inner]) for s in scene.symbols}
-        for n, a, b in segments:
-            if not (page.contains_point(*a) and page.contains_point(*b)):
-                raise ValueError(f"{n} wire {a}-{b} leaves the drawing area")
-            for box in reserved:
-                if segment_hits_box(a, b, box):
-                    raise ValueError(f"{n} wire {a}-{b} enters the title block")
-            for ref, box in bodies.items():
-                if segment_hits_box(a, b, box.expanded(-0.05)):
-                    raise ValueError(f"{n} wire {a}-{b} crosses the body of {ref}")
+        # Fail fast with the geometry gate's own judgment: page margin, title block, wire through a body.
+        planned = [(f"{n} wire {a}-{b}", a, b) for n, a, b in segments]
+        for f in wire_findings(scene, planned, reserved):
+            where = {"off_page": "leaves the drawing area", "reserved_region": "enters the title block",
+                     "wire_body": "crosses the body of"}[f["code"]]
+            raise ValueError(" ".join([f["objects"][0], where] + f["objects"][1:]))
         obstacles = [b.expanded(0.2) for b in bodies.values()] + list(reserved)
         # Provenance parallels the original boxes. Do not replace their identity:
         # the global-label terminal check below relies on id(pin_obstacle).

@@ -21,7 +21,7 @@ from .routing import (
     normalize_wires,
     segment_hits_box,
 )
-from .qa import check_scene
+from .qa import FRAME_MARGIN_MM, check_scene, title_block
 
 
 def digest(data):
@@ -363,21 +363,9 @@ def make_root(intent, layout, name, dirs=()):
                 form("pin", p.id.split(".")[-1], form("uuid", uid("pin:" + p.id)))
             )
     # Make geometry obstacles before adding fields or wires.
-    page = scene.page.expanded(-5.0)
-    reserved = [
-        Box(*b)
-        for b in layout.get(
-            "reserved",
-            [
-                [
-                    scene.page.x_max - 120,
-                    scene.page.y_max - 45,
-                    scene.page.x_max - 5,
-                    scene.page.y_max - 5,
-                ]
-            ],
-        )
-    ]
+    page = scene.page.expanded(-FRAME_MARGIN_MM)
+    reserved = ([Box(*b) for b in layout["reserved"]] if "reserved" in layout
+                else [title_block(scene.page)])
     bodies = [s.body for s in scene.symbols]
     if any(
         a.overlaps(b, gap_mm=1.27 - 1e-6)
