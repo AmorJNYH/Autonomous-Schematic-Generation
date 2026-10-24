@@ -400,6 +400,96 @@ class ParameterSourceTests(unittest.TestCase):
         self.assertIn('operating_point_source', self.codes())
 
 
+class DerivedConclusionTests(unittest.TestCase):
+    """parameter_version 2: the conclusion follows from the inputs (R1-R6: all 164 calculations were conditional)."""
+    setUp = DesignClosureTests.setUp
+    run_audit = DesignClosureTests.run_audit
+    codes = DesignClosureTests.codes
+    SHEET = 'datasheet:Datasheet/X/Vendor - XYZ.pdf#p4'
+
+    def calc(self, *bases, conclusion='supported', rests_on=None, omitted=()):
+        self.record['parameter_version'] = 2
+        params = {'guaranteed': {'name': 'Vref', 'ref': 'U1', 'value': 1.2, 'unit': 'V', 'source': self.SHEET, 'locator': '表 6'},
+                  'design_choice': {'name': 'R1', 'ref': 'U1', 'value': 1e4, 'unit': 'ohm'},
+                  'requirement': {'name': 'P_out', 'value': 100, 'unit': 'W', 'source': 'req:R1'},
+                  'constant': {'name': 'rho_Cu', 'value': 1.72e-8, 'unit': 'ohm*m', 'reason': '铜 20°C 电阻率'},
+                  'model': {'name': 'eta', 'value': 0.88, 'unit': '1', 'reason': '满载效率工程包络'},
+                  'typical': {'name': 'Vf', 'ref': 'U1', 'value': 0.7, 'unit': 'V', 'source': self.SHEET, 'locator': '典型曲线'}}
+        c = self.record['calculations'][0]
+        c.update(parameters=[dict(params[b], basis=b) for b in bases], conclusion=conclusion, omitted_terms=list(omitted),
+                 coverage='partial' if any(isinstance(o, dict) and o.get('kind') == 'not_calculated' for o in omitted) else 'bounded')
+        c.pop('rests_on', None)
+        if rests_on:
+            c['rests_on'] = rests_on
+        return c
+
+    def basis(self):
+        return self.run_audit()['calculation_basis']['C1']
+
+    def test_guaranteed_inputs_requirements_and_constants_hold_the_design(self):
+        self.calc('guaranteed', 'design_choice', 'requirement', 'constant')
+        self.assertEqual('PASS', self.run_audit()['status'])
+        self.assertEqual({'conclusion': 'supported', 'rests_on': None, 'reasons': []}, self.basis())
+
+    def test_an_engineering_model_rests_on_the_estimate(self):
+        self.calc('guaranteed', 'model')
+        self.assertIn('conclusion_not_derived', self.codes())
+        self.record['requirements'][0]['status'] = 'conditional'
+        self.calc('guaranteed', 'model', conclusion='conditional', rests_on='estimate')
+        self.assertNotIn('conclusion_not_derived', self.codes())
+        self.assertEqual(['eta'], self.basis()['reasons'])
+
+    def test_a_typical_value_or_an_open_vendor_item_rests_on_the_vendor(self):
+        self.record['requirements'][0]['status'] = 'conditional'
+        self.calc('guaranteed', 'model', 'typical', conclusion='conditional', rests_on='vendor_data')
+        self.assertNotIn('conclusion_not_derived', self.codes())
+        self.assertEqual(['Vf', 'eta'], self.basis()['reasons'])
+        self.calc('guaranteed', conclusion='conditional', rests_on='vendor_data')
+        self.record['work_items'].append({'id': 'W-V', 'stage': 'external', 'status': 'open', 'requirements': ['R1'],
+                                          'evidence': [], 'calculations': ['C1'], 'owner': 'v', 'action': 'a',
+                                          'consequence_class': 'function', 'occurrence': 'normal'})
+        self.record['requirements'][0]['depends_on'] = ['W1', 'W-V']
+        self.assertNotIn('conclusion_not_derived', self.codes())
+        self.assertEqual(['待办 W-V'], self.basis()['reasons'])
+
+    def test_a_failed_check_fails_whatever_is_written(self):
+        c = self.calc('guaranteed')
+        c['checks'][0]['value'] = 40
+        self.assertIn('conclusion_not_derived', self.codes())
+        self.assertEqual('failed', self.basis()['conclusion'])
+
+    def test_a_requirement_holds_only_when_its_calculations_do(self):
+        self.calc('model', conclusion='conditional', rests_on='estimate')
+        self.assertIn('requirement_status_not_derived', self.codes())
+
+    def test_omitted_terms_are_open_design_work_or_a_handed_off_test(self):
+        self.record['requirements'][0]['status'] = 'conditional'
+        self.calc('guaranteed', conclusion='conditional', rests_on='estimate',
+                  omitted=[{'term': '低线逐周期充电', 'kind': 'not_calculated', 'work_item': 'W1'}])
+        self.assertIn('not_calculated_without_design_item', self.codes())   # W1 is closed
+        self.record['work_items'][0]['status'] = 'open'
+        self.record['work_items'][0].update(owner='ASG', action='补算低线充电', consequence_class='function', occurrence='condition')
+        self.assertNotIn('not_calculated_without_design_item', self.codes())
+        self.assertEqual(['没算：低线逐周期充电'], self.basis()['reasons'])
+        self.record['calculations'][0]['coverage'] = 'bounded'
+        self.assertIn('coverage_not_derived', self.codes())
+        self.calc('guaranteed', omitted=[{'term': '十年 ESR 漂移', 'kind': 'verify_by_test', 'work_item': 'W1'}])
+        self.record['requirements'][0]['status'] = 'design_supported'
+        self.assertIn('verify_by_test_without_validation_handoff', self.codes())
+        self.record['work_items'][0].update(stage='validation', status='handoff', evidence=['E1'])
+        self.assertNotIn('verify_by_test_without_validation_handoff', self.codes())
+        self.assertEqual('supported', self.basis()['conclusion'])
+        self.calc('guaranteed', omitted=['寿命'])
+        self.assertIn('schema', self.codes())
+
+    def test_requirement_inputs_name_a_requirement(self):
+        c = self.calc('requirement')
+        c['parameters'][0]['source'] = 'req:R9'
+        self.assertIn('requirement_parameter_without_requirement', self.codes())
+        self.record['parameter_version'] = 1
+        self.assertIn('schema', self.codes())   # version 1 has no requirement basis
+
+
 class DataGapTests(unittest.TestCase):
     """An open external item says what the datasheet gives, what is missing, what to ask and a fallback of its own."""
     setUp = DesignClosureTests.setUp

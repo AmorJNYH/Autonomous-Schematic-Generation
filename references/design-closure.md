@@ -62,7 +62,7 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 1, "parameter_version": 2,
   "intent_sha256": "<electrical-intent.json 的 SHA256>",
   "coverage": "complete",
   "evidence": [
@@ -74,13 +74,19 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
   ],
   "work_items": [
     {"id": "W1", "stage": "external", "status": "open", "requirements": ["R1"], "evidence": ["E1"],
-     "consequence_class": "function", "occurrence": "fault", "owner": "厂商", "action": "取得确切固件故障态依据", "fallback": "评估独立关断实现及其供电保持"}
+     "consequence_class": "function", "occurrence": "fault", "owner": "厂商", "action": "取得确切固件故障态依据", "fallback": "评估独立关断实现及其供电保持"},
+    {"id": "W2", "stage": "design", "status": "open", "requirements": ["R1"], "evidence": [],
+     "consequence_class": "function", "occurrence": "fault", "owner": "ASG", "action": "补算故障期间辅助供电保持"}
   ],
   "calculations": [
     {"id": "C1", "requirements": ["R1"], "evidence": ["E1"], "refs": ["D403", "R408", "U402"],
-     "kind": "threshold", "coverage": "partial", "conclusion": "conditional",
-     "assumptions": ["辅助绕组漏感尖峰按稳态值的10%计"], "omitted_terms": ["故障期间辅助供电保持"],
-     "missing_guarantee": "BZT52H-B75 在 200µA、−10..105°C 的 Vz 范围手册没有给",
+     "kind": "threshold", "coverage": "partial", "conclusion": "conditional", "rests_on": "vendor_data",
+     "assumptions": ["辅助绕组漏感尖峰按稳态值的10%计"],
+     "omitted_terms": [{"term": "故障期间辅助供电保持", "kind": "not_calculated", "work_item": "W2"}],
+     "parameters": [
+       {"name": "Vz", "ref": "D403", "value": 30, "unit": "V", "basis": "typical",
+        "source": "datasheet:Datasheet/.../Nexperia - BZT52H.pdf#p3", "locator": "表 7，IZ=5mA；200µA 下没有给"},
+       {"name": "漏感尖峰比", "value": 0.1, "unit": "1", "basis": "model", "reason": "按稳态值的 10% 计"}],
      "checks": [
        {"name": "21V输出时AUX_DC峰值 对 动作下限(Vz最小+FAULT门限最小)", "side": "no_false_trip",
         "value": 67.6, "operator": "<", "limit": 69.5, "unit": "V"},
@@ -93,7 +99,23 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
 - `coverage`：全部适用需求/设计工作均已审查才填 `complete`；抽查或历史回放填 `partial`。这不是工具自动证明的完整性。
 - 需求状态 `design_supported` / `conditional` / `open`；`implementation` 描述功能而非只列料号。
 - `work_items`：阶段 `requirement`（等用户定需求）/ `design` / `external` / `validation` / `pcb`；状态 `open` / `closed` / `handoff`；`validation` 与 `pcb` 允许 `handoff`。未关闭项需 owner/action；`open` 项还需 `consequence_class`（不做的后果：`safety` 安全 / `damage` 器件损坏 / `function` 功能失效 / `margin` 性能余量 / `optimization` 优化）和 `occurrence`（何时出现：`normal` 正常工作 / `condition` 特定工况 / `fault` 仅故障时），等级由审计按规则推出，不手填：安全 P0；器件损坏 P0，仅故障时 P1；功能失效 P1，仅故障时 P2；性能余量 P2，仅故障时 P3；优化 P3。报告按等级排序；写了 `severity` 而与规则不符记 `severity_contradicts_rule`；external 的资料缺口按下面的 `gap_version 1` 写；requirement 还需 `assumption` 写明本版按什么假设设计，只用于不改变架构的需求缺口（改变架构的先问用户再设计，见 requirements-to-intent.md 第 1 节）。closed 与 handoff 均需证据。`pcb` 须声明 `scope` 为 `footprint_library` / `layout_implementation` / `dfm`，并用非空 `electrical_preconditions` 指向已关闭的 design 工作；这些前提须有选定变体、物理脚号及相关电气边界证据，不能用“已建封装”自证。该分类仍需人工检查，脚本不理解正文电气内容。
-- 计算：`coverage` 为 `bounded` / `partial`；`conclusion` 为 `supported` / `conditional` / `failed`。有遗漏项不能填 bounded 或 supported。无适用计算时提供 `no_calculations_reason`，不能用空列表绕过。
+- 计算：`coverage` 为 `bounded` / `partial`；`conclusion` 为 `supported` / `conditional` / `failed`。无适用计算时提供 `no_calculations_reason`，不能用空列表绕过。
+  - **结论由记录推出**（`parameter_version: 2`）：审计按下表推出结论，写的 `conclusion`/`rests_on` 与推出的不一致记
+    `conclusion_not_derived`。报告按三档计数，分“依赖厂家资料的计算”“依赖工程估计的计算”两节列出每条依赖的参数或项。
+
+    | 记录里有 | `conclusion` | `rests_on` | 报告用语 |
+    |---|---|---|---|
+    | 任一 `checks` 不满足 | `failed` | — | 不满足 |
+    | `typical`/`unspecified` 参数，或计算 id 出现在未关闭 external 待办的 `calculations` 里 | `conditional` | `vendor_data` | 依赖厂家资料 |
+    | 否则，有 `model` 参数或 `not_calculated` 的遗漏项 | `conditional` | `estimate` | 依赖工程估计 |
+    | 都没有 | `supported` | — | 设计成立 |
+
+  - `omitted_terms`：每项 `{term, kind, work_item}`。`not_calculated`（影响检查结果却没算）指向一件未关闭的 `design` 待办，
+    有它时 `coverage` 是 `partial`，否则是 `bounded`（写错记 `coverage_not_derived`）；`verify_by_test`（只能靠样件或试验确认）
+    指向一件 `validation` 阶段的 `handoff` 待办，不影响结论和 `coverage`。指错记 `not_calculated_without_design_item` /
+    `verify_by_test_without_validation_handoff`。`missing_guarantee` 不再必填，缺的保证由审计从参数里列出。
+  - 需求：挂着不是设计成立的计算时，不能记 `design_supported`（`requirement_status_not_derived`）。
+  - `parameter_version: 1` 的旧记录照旧审计（下面两段），报告写明“结论没有按依据分层”。
   - `refs`：这条计算决定了哪些位号的取值，非空，且都在设计要求表里。
   - `checks`：非空列表，每项是一个算出来的值和它必须满足的门槛 `{name, value, operator(<=,<,>=,>), limit, unit}`。
     **结论由数字决定**：任一项不满足，`conclusion` 只能是 `failed`；全部满足才可以是 `conditional`/`supported`。
@@ -104,9 +126,9 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
   - 设计要求表里的稳压管、TVS、基准源都必须出现在某条计算的 `refs` 里：按 lib_id（含 Zener/TVS/TL431/LM4040/Ref 等）、
     value 或 mpn 的系列前缀（1N47、BZX、SMBJ、PESD、TLV431、LM385 等）识别，通用符号画的其他阈值器件在 `fields.ComponentRole` 写 `threshold`；
     否则审计报 `threshold_part_uncalculated`。设计资料里写的阈值（如“对应30V包络”）必须与这条计算的数字一致。
-  门槛按设计用途：`conditional` 必须用 `omitted_terms` 或 `assumptions`（字符串列表）写明假设，并在 `missing_guarantee` 里写明缺的是哪一项保证（哪个器件、哪个参数、哪个条件手册或需求没给）；写明后不阻塞设计完成，需求也可以据此记为 `design_supported`；报告把它们列在“有条件成立的计算”一节，交独立审查严格核对。只有 `failed` 计入未完成，且不能支撑 `design_supported` 的需求。
+  旧记录（`parameter_version: 1`）：门槛按设计用途：`conditional` 必须用 `omitted_terms` 或 `assumptions`（字符串列表）写明假设，并在 `missing_guarantee` 里写明缺的是哪一项保证（哪个器件、哪个参数、哪个条件手册或需求没给）；写明后不阻塞设计完成，需求也可以据此记为 `design_supported`；报告把它们列在“有条件成立的计算”一节，交独立审查严格核对。只有 `failed` 计入未完成，且不能支撑 `design_supported` 的需求。
   `coverage: partial` 必须有非空 `omitted_terms`：说不出漏了什么就不是 partial。`conditional` 不是免责词：1.33 A < 3 A 这种没有缺失保证的核对要写 `bounded`/`supported`，审计报 `conditional_without_missing_guarantee` 和 `partial_without_omitted_terms`。
-- **参数来源**（`"parameter_version": 1`，新交付必填；没有时报告提出问题、`pack_design.py` 拒绝打包）：
+- **参数来源**（新交付写 `"parameter_version": 2`；两版都没有时报告提出问题、`pack_design.py` 拒绝打包）：
   每条计算加非空 `parameters`，每项 `{name, value, unit, basis, ref, source, locator}`。`basis` 取：
   - `guaranteed`：手册保证的 MIN/MAX；`typical`：手册典型值。两者都要 `ref`（位号）和 `source`
     `datasheet:<库内路径>#p<页>` 加 `locator`（表名/参数符号/条件）。
@@ -116,7 +138,9 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
     `locator` 文字不核。找不到知识库或没有 poppler（`pdfinfo`/`pdftotext`）时记为“没核对”并写明原因。
   - `derived`：由其他值推出，写 `derivation`，`source` 是手册页或 `calc:<计算 id>`。
   - `design_choice`：本设计选定的值（电阻阻值、容差档、匝数），写 `ref`。
-  - `model`：工程假设或折减（CTR 保持系数等），写 `reason`。
+  - `model`：工程假设或折减（CTR 保持系数、效率包络等），写 `reason`。
+  - `requirement`（版本 2）：来自需求的输入（额定功率、最低输入电压），`source` 写 `req:<需求编号>`，编号须在 `requirements` 里。
+  - `constant`（版本 2）：物理常数（铜电阻率），写 `reason`。
   - `unspecified`：手册没给的器件参数。`source`/`locator` 写查过的位置，`operating_point` 指向一条 `specified: false` 的工作点；
     `value` 可留空。含 `typical` 或 `unspecified` 的计算不能是 `supported`。
 - **工作点**（`operating_points`，与 `parameter_version` 一起检查）：`{id, refs, pins, mode, specified, source, locator}`。
@@ -135,8 +159,8 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
   - `missing`：非空列表，每项 `{source, given, needed}`。`source` 是发现缺口的位置：`datasheet:<库内路径>#p<页>`、
     `review:<审查目录>/<待办编号>` 或 `user:<日期>`；`given` 写手册给了什么（含测试条件），`needed` 写设计还需要什么。
   - `why_external`：为什么只能由这个负责方给，例如行为在芯片内部或固件里，外部推不出来。
-  - `calculations`：依赖这项资料的计算 id，非空，且都是 `conditional`；报告在待办下列出这些计算的 `missing_guarantee`，
-    并在“有条件成立的计算”表里反查对应待办。确实没有计算依赖它（固件行为确认、安规资格这类）时写空列表，
+  - `calculations`：依赖这项资料的计算 id，非空，且都是 `conditional`；报告在待办下列出这些计算依赖的参数（版本 1 为 `missing_guarantee`），
+    并在“依赖厂家资料的计算”表（版本 1 为“有条件成立的计算”）里反查对应待办。确实没有计算依赖它（固件行为确认、安规资格这类）时写空列表，
     并用 `no_calculation_reason` 说明为什么，不为凑字段挂不相关的计算。
   - `consequence`：资料与假设不符时具体会出什么问题，不能只写后果等级。
   - `questions`：能直接发给负责方的问题，每条独立成句；报告按 `owner` 汇总到“要向外部要的资料”一节。

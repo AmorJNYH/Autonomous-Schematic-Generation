@@ -8,6 +8,21 @@ in the library and have the cited page); `Changed:` the files touched.
 entry that changes the ASG 纲要 or the 绘图纲要 O1–O8 also carries `Approved:
 user:<date>` and `Outline:` the hash from `check_ledger.py --outline-hash`.
 
+## 计算结论分三档，由参数依据推出：parameter_version 2 (2026-10-23)
+
+R1–R6 六版 164 条计算全部 `conditional`：`supported` 要求没有任何遗漏项，而每条都能写出“样件实测”一类的项；
+`missing_guarantee` 是自由文字，R6 的 PFC-CS 与 `omitted_terms` 逐字相同；98 个 `model` 参数里有 12 个需求输入和 1 个物性常数。
+用户按 `docs/proposals/2026-10-23-计算结论分层草案.md` 定为三档。`parameter_version: 2` 时审计用 `calculation_basis()` 推出结论：
+有 `typical`/`unspecified` 参数或挂着未关闭的缺资料待办为依赖厂家资料，有 `model` 参数或没算的项为依赖工程估计，
+否则设计成立；写的 `conclusion`/`rests_on`/`coverage` 与推出的不一致即 FAIL。遗漏项分 `not_calculated`（指向未关闭的 design 待办）
+和 `verify_by_test`（指向 validation 技术转交）；依据加 `requirement`、`constant`；需求挂着不成立的计算不能记 `design_supported`。
+报告按三档计数并分两节列出每条依赖的参数。版本 1 照旧审计，报告写明没有分层；R6 不回改。
+
+- Event: user:2026-10-23
+- Changed: SKILL.md, references/design-closure.md, references/delivery-report.md, references/terminology.md, scripts/audit_design_closure.py, scripts/render_design_report.py, tests/test_design_closure.py, tests/test_design_report.py, docs/proposals/2026-10-23-计算结论分层草案.md, docs/improvement-ledger.md
+- Approved: user:2026-10-23
+- Outline: bc996312760f5e9a
+
 ## 按步审视的修正：工况角点、停产料号、暂缓意见归因 (2026-10-23)
 
 按步审视 ASG 第 0–8 步对照 R1–R6 记录：R5 验收与从头审查的电气错误全部出在第 2 步，画图一侧没有。

@@ -47,7 +47,14 @@ WINDOW_SIDES = ('no_false_trip', 'protection')
 # Where each number in a calculation comes from (parameter_version 1). A device
 # parameter cites the datasheet page it was read from; one the datasheet does
 # not give is "unspecified" and ties to a recorded operating-point decision.
+# Version 2 adds requirement inputs and physical constants, no longer filed as models.
 PARAMETER_BASES = ('guaranteed', 'typical', 'derived', 'design_choice', 'model', 'unspecified')
+PARAMETER_BASES_V2 = PARAMETER_BASES + ('requirement', 'constant')
+# Version 2: the conclusion follows from the inputs. A typical or unspecified device value, or an open
+# vendor-data item, leaves it resting on the vendor; an engineering model or a term not calculated
+# leaves it resting on ASG's own estimate; otherwise the design holds.
+VENDOR_BASES, ESTIMATE_BASES = ('typical', 'unspecified'), ('model',)
+OMISSION_KINDS = ('not_calculated', 'verify_by_test')
 DATASHEET = re.compile(r'^datasheet:.+#p\d+$')
 # Where a data gap was found (gap_version 1): a datasheet page, a review item or a user decision.
 GAP_SOURCE = re.compile(r'^(datasheet:.+#p\d+|review:[^/\s]+/\S+|user:\d{4}-\d{2}-\d{2})$')
@@ -102,7 +109,58 @@ def audit_operating_points(record, work, refs, error, need):
     return points
 
 
-def audit_parameters(key, row, refs, points, calculations, error):
+def calculation_basis(row, vendor_items=()):
+    """(conclusion, rests_on, reasons) a parameter_version 2 calculation follows to.
+
+    ``vendor_items`` are the open external work items whose ``calculations`` name this one.
+    """
+    failing = [c.get('name') for c in row.get('checks') or [] if isinstance(c, dict) and c.get('operator') in OPERATORS
+               and finite(c.get('value')) and finite(c.get('limit')) and not OPERATORS[c['operator']](c['value'], c['limit'])]
+    if failing:
+        return 'failed', None, failing
+    params = [p for p in row.get('parameters') or [] if isinstance(p, dict)]
+    vendor = [p.get('name') for p in params if p.get('basis') in VENDOR_BASES] + ['待办 %s' % w for w in vendor_items]
+    estimate = [p.get('name') for p in params if p.get('basis') in ESTIMATE_BASES]
+    estimate += ['没算：%s' % o.get('term') for o in row.get('omitted_terms') or []
+                 if isinstance(o, dict) and o.get('kind') == 'not_calculated']
+    if vendor:
+        return 'conditional', 'vendor_data', vendor + estimate
+    if estimate:
+        return 'conditional', 'estimate', estimate
+    return 'supported', None, []
+
+
+def vendor_items_of(work):
+    """{calculation id: [open external work item ids naming it]}."""
+    found = {}
+    for key, row in work.items():
+        if row.get('stage') == 'external' and row.get('status') != 'closed' and isinstance(row.get('calculations'), list):
+            for cid in row['calculations']:
+                found.setdefault(cid, []).append(key)
+    return found
+
+
+def audit_omissions(key, row, work, error):
+    """Version 2 omitted terms: a term not calculated is open design work; one only a test can settle is handed off."""
+    omitted = row.get('omitted_terms', [])
+    if not isinstance(omitted, list):
+        error('schema', key + ':omitted_terms must be a list')
+        return []
+    kinds = []
+    for i, o in enumerate(omitted):
+        if not isinstance(o, dict) or not text(o.get('term')) or o.get('kind') not in OMISSION_KINDS:
+            error('schema', key + ':omitted_terms[%d] needs term and kind (%s)' % (i, '/'.join(OMISSION_KINDS)))
+            continue
+        kinds.append(o['kind'])
+        item = work.get(o.get('work_item'), {})
+        if o['kind'] == 'verify_by_test' and not (item.get('stage') == 'validation' and item.get('status') == 'handoff'):
+            error('verify_by_test_without_validation_handoff', key + ':' + o['term'])
+        if o['kind'] == 'not_calculated' and not (item.get('stage') == 'design' and item.get('status') == 'open'):
+            error('not_calculated_without_design_item', key + ':' + o['term'])
+    return kinds
+
+
+def audit_parameters(key, row, refs, points, calculations, error, version=1, requirements=()):
     params = row.get('parameters')
     if not isinstance(params, list) or not params:
         error('missing_parameters', key)
@@ -114,8 +172,9 @@ def audit_parameters(key, row, refs, points, calculations, error):
             continue
         where = key + ':' + p['name']
         basis = p.get('basis')
-        if basis not in PARAMETER_BASES:
-            error('schema', where + ':basis must be one of ' + '/'.join(PARAMETER_BASES))
+        bases = PARAMETER_BASES_V2 if version == 2 else PARAMETER_BASES
+        if basis not in bases:
+            error('schema', where + ':basis must be one of ' + '/'.join(bases))
             continue
         if basis != 'unspecified' and not finite(p.get('value')):
             error('schema', where + ':value must be a finite number')
@@ -130,13 +189,16 @@ def audit_parameters(key, row, refs, points, calculations, error):
                     (isinstance(source, str) and DATASHEET.match(source)) or
                     (isinstance(source, str) and source.startswith('calc:') and source[5:] in calculations)):
                 error('derived_parameter_without_basis', where)
-        if basis == 'model' and not text(p.get('reason')):
-            error('model_parameter_without_reason', where)
+        if basis in ('model', 'constant') and not text(p.get('reason')):
+            error(basis + '_parameter_without_reason', where)
+        if basis == 'requirement' and not (isinstance(p.get('source'), str) and p['source'].startswith('req:')
+                                           and p['source'][4:] in requirements):
+            error('requirement_parameter_without_requirement', where)
         if basis == 'unspecified':
             point = points.get(p.get('operating_point'))
             if not point or point.get('specified') is not False:
                 error('unspecified_parameter_without_operating_point', where)
-        if basis in ('typical', 'unspecified') and row.get('conclusion') == 'supported':
+        if version == 1 and basis in ('typical', 'unspecified') and row.get('conclusion') == 'supported':
             error('supported_with_unguaranteed_parameter', where)
 
 
@@ -213,6 +275,46 @@ def resolve(p, root, inputs):
             if candidate.is_file() and candidate.name == Path(p).name:
                 return candidate
     return None
+
+
+def audit_calculation_v2(key, row, work, vendor_items, derived, error, need):
+    """The written conclusion, rests_on and coverage must be the ones the record follows to."""
+    kinds = audit_omissions(key, row, work, error)
+    assumptions = row.get('assumptions', [])
+    if not isinstance(assumptions, list) or any(not isinstance(x, str) for x in assumptions):
+        error('schema', key + ':assumptions must be a string list')
+    checks = row.get('checks')
+    if not isinstance(checks, list) or not checks:
+        error('missing_checks', key)
+        checks = []
+    sides = set()
+    for i, c in enumerate(checks):
+        where = key + ':checks[' + str(i) + ']'
+        if (not isinstance(c, dict) or not isinstance(c.get('name'), str) or not c['name'].strip()
+                or not finite(c.get('value')) or not finite(c.get('limit'))
+                or c.get('operator') not in OPERATORS or not isinstance(c.get('unit'), str)):
+            error('schema', where + ' needs name, finite value/limit, operator (<=, <, >=, >) and unit')
+            continue
+        if c.get('side') is not None:
+            if c['side'] not in WINDOW_SIDES:
+                error('schema', where + ':side must be no_false_trip or protection')
+            sides.add(c['side'])
+    if row.get('kind') == 'threshold':
+        for side in WINDOW_SIDES:
+            if side not in sides:
+                error('threshold_window_incomplete', key + ':' + side)
+    elif row.get('kind') is not None:
+        error('schema', key + ':kind must be threshold when present')
+    conclusion, rests_on, reasons = calculation_basis(row, vendor_items)
+    derived[key] = {'conclusion': conclusion, 'rests_on': rests_on, 'reasons': reasons}
+    if (row.get('conclusion'), row.get('rests_on')) != (conclusion, rests_on):
+        error('conclusion_not_derived', '%s: 写的 %s/%s，按记录是 %s/%s' % (
+            key, row.get('conclusion'), row.get('rests_on'), conclusion, rests_on))
+    coverage = 'partial' if 'not_calculated' in kinds else 'bounded'
+    if row.get('coverage') != coverage:
+        error('coverage_not_derived', '%s: 写的 %s，按遗漏项是 %s' % (key, row.get('coverage'), coverage))
+    if conclusion == 'failed':
+        need('calculation_failed', key)
 
 
 def audit(record, intent_path, artifact_root, inputs=None):
@@ -328,18 +430,23 @@ def audit(record, intent_path, artifact_root, inputs=None):
                 error('unsupported_requirement_claim', key + ':' + dep)
 
     parameters = 'parameter_version' in record
-    if parameters and record['parameter_version'] != 1:
-        error('schema', 'parameter_version must be 1')
+    if parameters and record['parameter_version'] not in (1, 2):
+        error('schema', 'parameter_version must be 1 or 2')
         parameters = False
+    version = record['parameter_version'] if parameters else None
     points = audit_operating_points(record, work, refs, error, need) if parameters else {}
+    vendor_items, derived = vendor_items_of(work), {}
     for key, row in calculations.items():
         if parameters:
-            audit_parameters(key, row, refs, points, calculations, error)
+            audit_parameters(key, row, refs, points, calculations, error, version, requirements)
         linked(row, 'requirements', requirements, True)
         linked(row, 'evidence', evidence, True)
         coverage, conclusion = row.get('coverage'), row.get('conclusion')
         if coverage not in ('bounded', 'partial') or conclusion not in ('supported', 'conditional', 'failed'):
             error('schema', key + ':invalid coverage/conclusion')
+        if version == 2:
+            audit_calculation_v2(key, row, work, vendor_items.get(key, []), derived, error, need)
+            continue
         omitted = row.get('omitted_terms')
         if not isinstance(omitted, list) or any(not isinstance(x, str) for x in omitted):
             error('schema', key + ':omitted_terms must be a string list')
@@ -400,6 +507,12 @@ def audit(record, intent_path, artifact_root, inputs=None):
             for rid in row.get('requirements', []):
                 if rid in requirements and requirements[rid].get('status') == 'design_supported':
                     error('unsupported_calculation_dependency', rid + ':' + key)
+    if version == 2:
+        for rid, req in requirements.items():
+            weak = [k for k, row in calculations.items() if rid in (row.get('requirements') or [])
+                    and derived.get(k, {}).get('conclusion') != 'supported']
+            if req.get('status') == 'design_supported' and weak:
+                error('requirement_status_not_derived', rid + ': rests on ' + '、'.join(weak))
     gaps = 'gap_version' in record
     if gaps and record['gap_version'] != 1:
         error('schema', 'gap_version must be 1')
@@ -430,7 +543,8 @@ def audit(record, intent_path, artifact_root, inputs=None):
             'severities': {k: severity_of(v) for k, v in work.items() if v.get('status') == 'open' and severity_of(v)},
             'pcb_handoffs': [k for k, v in work.items() if v.get('stage') == 'pcb' and v.get('status') == 'handoff'],
             'counts': {k: len(v) for k, v in tables.items()}, 'convergence': convergence,
-            'parameters': 'CHECKED' if parameters else 'NOT_CHECKED',
+            'parameters': 'CHECKED' if parameters else 'NOT_CHECKED', 'parameter_version': version,
+            'calculation_basis': derived,
             'gaps': 'CHECKED' if gaps else 'NOT_CHECKED', 'citations': citations,
             'unspecified_operations': sorted(k for k, v in points.items() if v.get('specified') is False),
             'downstream_handoffs': [k for k, v in work.items() if v.get('stage') in ('validation', 'pcb') and v.get('status') == 'handoff']}

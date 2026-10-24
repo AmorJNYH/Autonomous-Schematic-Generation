@@ -15,7 +15,7 @@ from collections import Counter, OrderedDict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from audit_design_closure import severity_of  # noqa: E402
+from audit_design_closure import calculation_basis, severity_of, vendor_items_of  # noqa: E402
 from schematic_layout.citations import check as check_citation, check_source  # noqa: E402
 from schematic_layout import lifecycle  # noqa: E402
 from schematic_layout.sexpr import all_nodes, first, parse  # noqa: E402
@@ -47,6 +47,8 @@ GATE_RESULTS = OrderedDict([('PASS', '通过（PASS）'), ('FAIL', '没通过（
 VISUAL = {'REVIEWED': '已完成', 'REVIEW_PENDING': '未完成', 'REWORK_REQUIRED': '发现需返工的问题'}
 STAGES = {'requirement': '待用户确认需求', 'design': '设计未完成', 'external': '外部资料缺口', 'validation': '样机或试验验证', 'pcb': 'PCB 实现'}
 REQUIREMENTS = OrderedDict([('design_supported', '有设计依据'), ('conditional', '有条件成立'), ('open', '还没有设计')])
+# parameter_version 2: what a calculation rests on, derived from its inputs.
+TIERS = OrderedDict([('supported', '设计成立'), ('estimate', '依赖工程估计'), ('vendor_data', '依赖厂家资料'), ('failed', '不满足')])
 RESPONSES = OrderedDict([
     ('REDESIGN', ('改图', 'changes')), ('CALC_DOC', ('补计算/补文档', 'changes')), ('DESIGN', ('补设计', 'work_items')),
     ('OBTAIN_DATA', ('补资料', 'work_items')), ('ASK_USER', ('请用户定需求', 'detail')),
@@ -109,7 +111,7 @@ def prose(closure, notes, responses=None):
             continue
         for field, word in (('assumptions', '假设'), ('omitted_terms', '没算进去的项')):
             for i, v in enumerate(c.get(field) or []):
-                found.append(('计算 %s %s %d' % (c.get('id'), word, i + 1), v))
+                found.append(('计算 %s %s %d' % (c.get('id'), word, i + 1), v.get('term') if isinstance(v, dict) else v))
         for i, chk in enumerate(c.get('checks') or []):
             if isinstance(chk, dict):
                 found.append(('计算 %s 核对项 %d' % (c.get('id'), i + 1), chk.get('name')))
@@ -681,9 +683,13 @@ def render(root, notes=None, title=None):
     work = {w['id']: w for w in closure.get('work_items') or [] if isinstance(w, dict) and text(w.get('id'))}
     requirements = [r for r in closure.get('requirements') or [] if isinstance(r, dict)]
     calculations = [c for c in closure.get('calculations') or [] if isinstance(c, dict)]
-    if closure and closure.get('parameter_version') != 1:
-        problems.append('计算没有逐项登记参数来源：design-closure.json 要写 parameter_version 1，'
+    if closure and closure.get('parameter_version') not in (1, 2):
+        problems.append('计算没有逐项登记参数来源：design-closure.json 要写 parameter_version 2，'
                         '每条计算的 parameters 写明每个器件参数的值、依据和手册页码（见 design-closure.md）')
+    layered = closure.get('parameter_version') == 2
+    vendor_items = vendor_items_of(work)
+    basis = {c.get('id'): calculation_basis(c, vendor_items.get(c.get('id'), [])) for c in calculations} if layered else {}
+    tier = {cid: rests or conclusion for cid, (conclusion, rests, _) in basis.items()}
     if closure.get('gap_version') != 1 and any(isinstance(w, dict) and w.get('stage') == 'external' and w.get('status') != 'closed'
                                                for w in closure.get('work_items') or []):
         problems.append('缺外部资料的待办没有写清缺口：design-closure.json 要写 gap_version 1，每件写明手册给了什么、'
@@ -747,6 +753,26 @@ def render(root, notes=None, title=None):
     out.append('- **图面审阅**：%s。' % VISUAL.get(visual.get('status'), '没有记录'))
     out.append('- **需求**：共 %d 条。%s。' % (len(requirements), '，'.join(
         '%s %d 条' % (label, req_counts.get(key, 0)) for key, label in REQUIREMENTS.items())))
+    if layered:
+        tier_counts = Counter(tier.values())
+        out.append('- **计算**：共 %d 项。%s。' % (len(calculations), '，'.join(
+            '%s %d 项' % (label, tier_counts.get(key, 0)) for key, label in TIERS.items())))
+        # A conditional requirement rests on the vendor when any of its calculations or dependencies does.
+        rests = Counter()
+        for r in requirements:
+            if r.get('status') != 'conditional':
+                continue
+            tiers = {tier.get(c.get('id')) for c in calculations if r.get('id') in (c.get('requirements') or [])}
+            if 'vendor_data' in tiers or any(work.get(d, {}).get('stage') == 'external' and work[d].get('status') == 'open'
+                                             for d in r.get('depends_on') or []):
+                rests['vendor_data'] += 1
+            elif 'estimate' in tiers:
+                rests['estimate'] += 1
+        if rests:
+            out[-2] = out[-2][:-1] + '（有条件成立的需求中%s）。' % '、'.join(
+                '%s %d 条' % (TIERS[k], rests[k]) for k in ('vendor_data', 'estimate') if rests.get(k))
+    else:
+        out.append('- **计算**：共 %d 项，记录是 parameter_version 1，结论没有按依据分层。' % len(calculations))
     if items:
         out.append('- **收到的审查意见**：%d 条。%s。' % (len(items), '，'.join(
             '%s %d 条' % (label, reply_counts[key]) for key, (label, _) in RESPONSES.items() if reply_counts.get(key))))
@@ -897,7 +923,8 @@ def render(root, notes=None, title=None):
                 calcs = {c.get('id'): c for c in calculations}
                 if w.get('calculations'):
                     out.append('- **关联计算**：')
-                    out += ['  - %s：%s' % (cid, calcs.get(cid, {}).get('missing_guarantee') or '（计算不存在）')
+                    out += ['  - %s：%s' % (cid, ('依赖 ' + '、'.join(map(str, basis[cid][2]))) if cid in basis
+                                            else calcs.get(cid, {}).get('missing_guarantee') or '（计算不存在）')
                             for cid in w['calculations']]
                 elif text(w.get('no_calculation_reason')):
                     out.append('- **关联计算**：无。%s' % w['no_calculation_reason'])
@@ -929,7 +956,25 @@ def render(root, notes=None, title=None):
                                             cell(w.get('action') or '')))
         out.append('')
 
-    conditional = [c for c in calculations if c.get('conclusion') == 'conditional']
+    for key in ('vendor_data', 'estimate') if layered else ():
+        group = [c for c in calculations if tier.get(c.get('id')) == key]
+        if not group:
+            continue
+        out += ['## %s的计算' % TIERS[key], '',
+                ('这些计算的输入里有典型值、手册没给的参数，或挂着未关闭的缺资料待办；按“外部资料需求”取得资料后复算。'
+                 if key == 'vendor_data' else
+                 '这些计算的输入里有 ASG 自己的工程估计或没算的项；收紧估计、补算，或在样件上验证。'),
+                '逐个参数的形式化最坏情况证明留给独立审查。', '',
+                '| 计算 | 涉及的需求 | 算出的值与门槛 | 依赖的参数或项 | 对应待办 |', '|---|---|---|---|---|']
+        for c in group:
+            owed = [w['id'] for w in open_work if c.get('id') in (w.get('calculations') or [])]
+            owed += [o['work_item'] for o in c.get('omitted_terms') or []
+                     if isinstance(o, dict) and o.get('kind') == 'not_calculated' and text(o.get('work_item'))]
+            out.append('| %s | %s | %s | %s | %s |' % (c.get('id'), '、'.join(c.get('requirements') or []),
+                                                     cell('；'.join(check_text(k) for k in c.get('checks') or [])),
+                                                     cell('、'.join(map(str, basis[c.get('id')][2]))), '、'.join(owed)))
+        out.append('')
+    conditional = [c for c in calculations if c.get('conclusion') == 'conditional'] if not layered else []
     if conditional:
         out += ['## 有条件成立的计算', '',
                 '这些计算按设计用途已经够用，不阻塞出图；结论建立在下面写明的假设或没算进去的项上，'
@@ -1002,7 +1047,9 @@ def render(root, notes=None, title=None):
             '| 器件 / 图纸页数 | %d / %d |' % (parts, sheets),
             '| 需求：%s | %s |' % (' / '.join(REQUIREMENTS.values()), ' / '.join(str(req_counts.get(k, 0)) for k in REQUIREMENTS)),
             '| 计算：上下界完整 / 只算了一部分 | %d / %d |' % (cov.get('bounded', 0), cov.get('partial', 0)),
-            '| 计算结论：满足 / 有条件满足 / 不满足 | %d / %d / %d |' % (con.get('supported', 0), con.get('conditional', 0), con.get('failed', 0)),
+            ('| 计算结论：%s | %s |' % (' / '.join(TIERS.values()), ' / '.join(str(Counter(tier.values()).get(k, 0)) for k in TIERS))
+             if layered else
+             '| 计算结论：满足 / 有条件满足 / 不满足 | %d / %d / %d |' % (con.get('supported', 0), con.get('conditional', 0), con.get('failed', 0))),
             '| 未关闭项：设计未完成 / 外部资料缺口 | %d / %d |' % (stage_status.get(('design', 'open'), 0), stage_status.get(('external', 'open'), 0)),
         ] + (['| 未关闭项：待用户确认需求 | %d |' % stage_status[('requirement', 'open')]]
              if stage_status.get(('requirement', 'open')) else []) + [

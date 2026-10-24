@@ -194,7 +194,34 @@ class DesignReportTests(unittest.TestCase):
         del self.d.closure['parameter_version']
         self.d.write('design-closure.json', self.d.closure)
         _, problems = self.d.report()
-        self.assertTrue(any('parameter_version 1' in p for p in problems), problems)
+        self.assertTrue(any('parameter_version 2' in p for p in problems), problems)
+
+    def test_version_2_reports_what_each_calculation_rests_on(self):
+        c1 = self.d.closure['calculations'][0]
+        c1.update(rests_on='vendor_data', omitted_terms=[{'term': '纹波电流', 'kind': 'not_calculated', 'work_item': 'W-CALC'}])
+        c2 = dict(c1, id='C2', coverage='bounded', conclusion='conditional', rests_on='estimate', omitted_terms=[], parameters=[
+            {'name': 'eta', 'value': 0.9, 'unit': '1', 'basis': 'model', 'reason': '满载效率工程包络'}])
+        c3 = dict(c1, id='C3', coverage='bounded', conclusion='supported', omitted_terms=[
+            {'term': '满载温升', 'kind': 'verify_by_test', 'work_item': 'W-TEST'}], parameters=[
+            {'name': 'P_out', 'value': 30, 'unit': 'W', 'basis': 'requirement', 'source': 'req:R-OUT'}])
+        del c3['rests_on']
+        self.d.closure.update(parameter_version=2, calculations=[c1, c2, c3])
+        self.d.write('design-closure.json', self.d.closure)
+        self.d.write('design-closure-audit.json', audit(self.d.closure, self.d.record / 'electrical-intent.json', self.d.root))
+        text, problems = self.d.report()
+        self.assertEqual([], [p for p in problems if '计算' in p], problems)
+        self.assertIn('- **计算**：共 3 项。设计成立 1 项，依赖工程估计 1 项，依赖厂家资料 1 项，不满足 0 项。', text)
+        self.assertIn('（有条件成立的需求中依赖厂家资料 1 条）', text)
+        vendor = text.split('## 依赖厂家资料的计算')[1].split('\n## ')[0]
+        self.assertIn('| C1 | R-OUT | 输出纹波：18 ≤ 30 mV | 待办 W-FW、没算：纹波电流 | W-FW、W-CALC |', vendor)
+        self.assertIn('| C2 |', text.split('## 依赖工程估计的计算')[1].split('\n## ')[0])
+        self.assertNotIn('## 有条件成立的计算', text)
+        self.assertIn('  - C1：依赖 待办 W-FW、没算：纹波电流', text)
+        self.assertIn('| 计算结论：设计成立 / 依赖工程估计 / 依赖厂家资料 / 不满足 | 1 / 1 / 1 / 0 |', text)
+
+    def test_version_1_says_its_conclusions_are_not_layered(self):
+        text, _ = self.d.report()
+        self.assertIn('记录是 parameter_version 1，结论没有按依据分层', text)
 
     def test_kept_unspecified_operating_point_is_listed(self):
         c = self.d.closure
