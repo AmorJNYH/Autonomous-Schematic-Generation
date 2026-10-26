@@ -8,6 +8,25 @@ in the library and have the cited page); `Changed:` the files touched.
 entry that changes the ASG 纲要 or the 绘图纲要 O1–O8 also carries `Approved:
 user:<date>` and `Outline:` the hash from `check_ledger.py --outline-hash`.
 
+## 术语统一与步骤–任务分解 (2026-10-26)
+
+用户要求像 schematic-review 那样把 ASG 的名词统一成专业术语，并按“步骤–任务”分解。同一概念此前有几种叫法
+（`electrical-intent.json` 叫设计要求表、整板设计要求表、intent；`verify_schematic.py` 叫一键验证、一键自动检查；
+“回路”既指回流又指控制环路），17 份 reference 中 16 份是英文。原九步（0–8）有四处与实际设计流程不符：分页放在架构一步、
+选型与计算同一步、组装根图放在验证一步、“继续可完成的设计项”放在交付一步。按确认的草案
+（`docs/proposals/2026-10-26-术语统一与步骤任务草案.md`）：主流程改为五个步骤、15 项任务（① 需求与方案、② 详细设计、
+③ 原理图绘制、④ 设计检查、⑤ 设计输出），每项任务以“做完的标志”结尾，标志取自脚本已有的输出；架构一节加步骤–任务总表；
+原各步规则文字搬到对应任务下，未删内容。统一用词写进 `terminology.md` 的“技能文档用词”表；16 份英文 reference 译成中文，
+绘图纲要标题随之改为“绘图纲要（怎样决定结构）”（`check_ledger.py` 的 OUTLINE 同步）；`deliver.py` 的“一键验证”一步改名“自动检查”，
+报告与打包提示里的“设计要求表”改为“设计网表”。新增 `tests/test_terminology.py`（文档里出现替换掉的词即失败）和
+`tests/test_skill_steps.py`（每步 1–5 项连续编号的任务、每项以做完的标志结尾、总表与正文一致）。旧交付不回改。
+
+- Event: user:2026-10-26
+- Causes: knowledge_wrong 1
+- Changed: SKILL.md, references/*.md (31 份), scripts/check_ledger.py, scripts/deliver.py, scripts/pack_design.py, scripts/render_design_report.py, tests/test_deliver.py, tests/test_design_report.py, tests/test_terminology.py, tests/test_skill_steps.py, docs/proposals/2026-10-26-术语统一与步骤任务草案.md, docs/improvement-ledger.md
+- Approved: user:2026-10-26
+- Outline: ed0ddfd0d1f4176a
+
 ## 位号块互换可读即拦下 (2026-10-24)
 
 R6 重画的图面审阅发现 07_PD 的 R602/R603 两组位号与值并排夹在 CS+/CS− 两线之间，看不出归属，几何与可读性检查都通过。

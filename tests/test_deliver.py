@@ -93,7 +93,7 @@ class DeliverTests(unittest.TestCase):
     def test_full_run_in_order_with_fresh_evidence(self):
         code, steps, failure = self.run_deliver()
         self.assertEqual((0, None), (code, failure))
-        self.assertEqual(['待办审计', '生成前预检', '出图', '一键验证', '交付预检', '生成报告', '交付证据', '证据新鲜度', '打包'],
+        self.assertEqual(['待办审计', '生成前预检', '出图', '自动检查', '交付预检', '生成报告', '交付证据', '证据新鲜度', '打包'],
                          [s['step'] for s in steps])
         self.assertEqual('CONDITIONAL', steps[1]['status'])          # non-zero exit, but not a failure
         self.assertEqual('new', (self.root / '原理图' / 'board.kicad_sch').read_text())
@@ -116,8 +116,8 @@ class DeliverTests(unittest.TestCase):
     def test_fail_stops_the_run_at_that_step(self):
         code, steps, failure = self.run_deliver({'verify_schematic': 'FAIL'})
         self.assertEqual(1, code)
-        self.assertEqual('一键验证', steps[-1]['step'])
-        self.assertIn('一键验证', failure)
+        self.assertEqual('自动检查', steps[-1]['step'])
+        self.assertIn('自动检查', failure)
         self.assertFalse((self.root / '设计报告.md').exists())
 
     def test_audit_fail_stops_before_drawing(self):
@@ -147,7 +147,7 @@ class DeliverTests(unittest.TestCase):
 
     def test_unknown_status_stops(self):
         code, steps, _ = self.run_deliver({'verify_schematic': 'BROKEN'})
-        self.assertEqual((1, '一键验证'), (code, steps[-1]['step']))
+        self.assertEqual((1, '自动检查'), (code, steps[-1]['step']))
 
     def test_lone_preflight_file_fails(self):
         (self.root / 'record' / 'change-contract.json').unlink()

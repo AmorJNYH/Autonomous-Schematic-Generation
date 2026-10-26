@@ -274,7 +274,7 @@ class DesignReportTests(unittest.TestCase):
             {'file': 'board.kicad_sch', 'reader_tasks': ['任务一', '任务二'], 'blocks': {'a': ['U1', 'R9'], 'b': ['U1']}},
             {'file': 'other.kicad_sch', 'reader_tasks': [], 'blocks': {}}]})
         _, problems = self.d.report()
-        self.assertIn('board.kicad_sch：功能块“a”里的 R9 不在设计要求表里', problems)
+        self.assertIn('board.kicad_sch：功能块“a”里的 R9 不在设计网表里', problems)
         self.assertIn('board.kicad_sch：U1 同时在功能块“a”和“b”里', problems)
         self.assertIn('board.kicad_sch：读者任务 2 条，图面审阅只追了 1 条路径', problems)
         self.assertIn('other.kicad_sch：要写明读者任务（reader_tasks）', problems)
@@ -389,7 +389,7 @@ class DesignReportTests(unittest.TestCase):
         self.d.write('selection.json', sel)
         self.d.write('electrical-intent.json', {'components': [{'ref': 'U1', 'value': 'OTHER'}, {'ref': 'Q1', 'value': 'M'}]})
         _, problems = self.d.report()
-        self.assertIn('选型角色“稳压器”的位号 U9 不在设计要求表里', problems)
+        self.assertIn('选型角色“稳压器”的位号 U9 不在设计网表里', problems)
         self.assertIn('位号 U1 的 value/mpn “OTHER” 都不含选定型号 XYZ100', problems)
         self.assertIn('核心器件没有选型记录：Q1', problems)
 
@@ -403,7 +403,7 @@ class DesignReportTests(unittest.TestCase):
         self.d.write('lessons.json', {'schema_version': 1, 'events': [
             {'source': 'SR-R3/W-1', 'cause': 'rule_missing', 'change': 'scripts/x.py'},
             {'source': 'review:SR-R3/W-2', 'cause': 'knowledge_missing', 'change': 'scripts/x.py'},
-            {'source': 'review:SR-R3/W-3', 'cause': 'judgment', 'change': 'SKILL.md 第 2 步'},
+            {'source': 'review:SR-R3/W-3', 'cause': 'judgment', 'change': 'SKILL.md 任务 2.1'},
             {'source': 'review:SR-R3/W-4', 'cause': 'none', 'why_none': '看过了'},
             {'source': 'review:SR-R3/W-5', 'cause': 'oops'}]})
         text, problems = self.d.report()
@@ -444,7 +444,7 @@ class DesignReportTests(unittest.TestCase):
         item = {'id': 'W-A', 'source': 'SR', 'locator': 'W-A', 'comment': 'a', 'response': 'DECLINE', 'detail': '不采纳 a',
                 'evidence': ['E1'], 'cause': 'judgment', 'recurs_from': 'review:SR-R4/W-7'}
         self.d.write('lessons.json', {'schema_version': 1, 'events': [
-            {'source': 'review:SR-R5/W-A', 'cause': 'judgment', 'change': 'SKILL.md 第 3 步', 'why_not_rule': 'x'}]})
+            {'source': 'review:SR-R5/W-A', 'cause': 'judgment', 'change': 'SKILL.md 任务 2.3', 'why_not_rule': 'x'}]})
         self.d.write('review-responses.json', {'schema_version': 1, 'sources': [{'id': 'SR', 'path': 'r.md', 'sha256': 'x'}],
                                                'items': [item]})
         text, problems = self.d.report()
@@ -550,7 +550,7 @@ class DesignReportTests(unittest.TestCase):
         summary = json.loads((self.d.record / 'summary.json').read_text())
         summary['gates']['geometry']['render_review_items'] = {'board.kicad_sch': listed}
         self.d.write('summary.json', summary)
-        same = '本页 PDF 上可见的引脚号和脚名都没有被导线或文字压住。'
+        same = '本页 PDF 上可见的引脚号和引脚名都没有被导线或文字压住。'
         def review(items, paths=('VIN to VOUT',)):
             self.d.write('visual-review.json', {'status': 'REVIEWED', 'pdf_sha256': self.d.pdf, 'pages': [
                 {'page': 1, 'file': 'board.kicad_sch', 'paths': list(paths), 'problems': [], 'render_review_items': items}]})
@@ -559,10 +559,10 @@ class DesignReportTests(unittest.TestCase):
         self.assertEqual([], review([{'item': k, 'disposition': same} for k in listed]))
         problems = review([{'item': listed[0], 'disposition': same}, {'item': 'pin-name:ccc:1: x', 'disposition': 'C9 看过'}])
         self.assertIn('board.kicad_sch：条目“pin-name:ccc:1: x”的符号在图里找不到', problems)
-        self.assertIn('board.kicad_sch：2 个待看图对象在 visual-review.json 里没有处置（如 pin-name:bbb:1: nonunique/noncausal text removal）',
+        self.assertIn('board.kicad_sch：2 个图面待审对象在 visual-review.json 里没有处置（如 pin-name:bbb:1: nonunique/noncausal text removal）',
                       problems)
         problems = review([{'item': listed[0], 'disposition': ''}] + [{'item': k, 'disposition': same} for k in listed[1:]])
-        self.assertIn('board.kicad_sch：1 个待看图对象在 visual-review.json 里没有处置（如 pin-number:aaa: physical pin numbers need native）',
+        self.assertIn('board.kicad_sch：1 个图面待审对象在 visual-review.json 里没有处置（如 pin-number:aaa: physical pin numbers need native）',
                       problems)
         problems = review([{'item': k, 'disposition': '沿用上一版的处置'} for k in listed])
         self.assertIn('board.kicad_sch：处置“沿用上一版的处置”沿用上一版：没改动的页面也要按本版 PDF 重新看', problems)
@@ -570,11 +570,11 @@ class DesignReportTests(unittest.TestCase):
         self.assertTrue(any('同上一版' in p for p in problems), problems)
 
     def test_records_and_notes_use_the_terminology_table(self):
-        _, problems = self.d.report({'summary': '本版原生网表与设计要求表一致，可以定稿。', 'items': {'W-FW': '过压配置待厂家交接。'}})
+        _, problems = self.d.report({'summary': '本版原生网表与设计网表一致，可以定稿。', 'items': {'W-FW': '过压配置待厂家交接。'}})
         self.assertEqual(1, len(problems), problems)
-        self.assertIn('notes summary：“本版原生网表与设计要求表一致，可以定稿。”（定稿、原生）', problems[0])
+        self.assertIn('notes summary：“本版原生网表与设计网表一致，可以定稿。”（定稿、原生）', problems[0])
         self.assertIn('notes 待办 W-FW：“过压配置待厂家交接。”（交接）', problems[0])
-        self.assertEqual([], self.d.report({'summary': '电压环为闭环控制，KiCad 导出网表与设计要求表一致。'})[1])
+        self.assertEqual([], self.d.report({'summary': '电压环为闭环控制，KiCad 导出网表与设计网表一致。'})[1])
 
     def test_written_totals_match_the_records(self):
         notes = {'summary': '共 2 个器件，共 2 页；全部 1 项计算，共 2 件未关闭项，共 1 条需求。其中 1 条需求有条件成立。'}
@@ -772,7 +772,7 @@ class PackDesignTests(unittest.TestCase):
             'items': [{'id': 'RC1', 'source': 'S1', 'locator': '1', 'comment': 'c', 'cause': 'none', 'response': 'REDESIGN',
                        'detail': 'R1 改 470Ω', 'changes': ['R1 改 470Ω']}]})
         errors, _ = pack(self.d.root, {'requirements': str(self.inputs), 'previous': str(prev)})
-        self.assertIn('previous: RC1 标为“改图”，但 R1 在设计要求表里与上一版相同', errors)
+        self.assertIn('previous: RC1 标为“改图”，但 R1 在设计网表里与上一版相同', errors)
         self.d.write('electrical-intent.json', {'components': [{'ref': 'U1'}, {'ref': 'R1', 'value': '470R'}]})
         self.d.closure['intent_sha256'] = sha256(self.d.record / 'electrical-intent.json')
         self.d.write('design-closure.json', self.d.closure)

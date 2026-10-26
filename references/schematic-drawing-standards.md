@@ -1,157 +1,100 @@
-# Schematic Drawing Standards
+# 原理图绘制标准
 
-Read before creating, adding, editing or redrawing a schematic. The drawing
-standard governs readability; datasheets and established intent govern the
-electrical circuit. Backend/schema details: [schematic-generation.md](schematic-generation.md).
+新建、添加、编辑或重画原理图前阅读。绘制标准管可读性；电路本身由数据手册和已确立的设计网表决定。
+后端/格式细节见 [schematic-generation.md](schematic-generation.md)。
 
-## 1. Preserve electrical intent
+## 1. 保持电气不变
 
-- Keep real MPN, library ID, pin numbers, footprint, values, assembly state and
-  net membership independent of placement and routes. Account for NC pins.
-- On a redraw, export the baseline native netlist and save the source hash.
-  Compare the regenerated native pin partitions and component identity exactly.
-  Do not silently change questionable values during a geometry-only redraw.
-- Connector pin assignments come from the actual interface, never a drawing
-  convention such as “pin 1 must be power”. Do not redesign a symbol's pin
-  mapping to make layout easier.
+- 真实 MPN、库 ID、引脚号、封装、值、装配状态和网络归属与摆放、走线无关。NC 引脚也要计入。
+- 重画时导出基线的 KiCad 网表并保存源文件哈希。逐一比较重新生成后 KiCad 导出的引脚分区和器件身份。
+  只改几何的重画中，不悄悄修改有疑问的值。
+- 连接器引脚分配来自实际接口，从不来自“1 脚必须是电源”之类的绘图习惯。不为方便布图重新设计符号的引脚映射。
 
-## 2. Select the functional structure
+## 2. 选择功能结构
 
-| Topology | Preferred visual structure |
+| 拓扑 | 推荐的视觉结构 |
 | --- | --- |
-| Asynchronous Buck | Input → IC/SW → L → output; visible capacitor branches, catch diode SW-to-GND, local BOOT/feedback/control bands. |
-| Synchronous Buck | Same energy-flow structure, using the actual integrated/external switch topology. No invented catch diode. |
-| LDO | Input → regulator → output with local input/output capacitors and enable/feedback as present. No SW node or inductor. |
-| Integrated-inductor module | Input → module → output. Show external parts actually required by the datasheet. |
-| Boost/inverting supply | Follow its real energy path, polarity and return reference; do not force the Buck bus sequence. |
-| RC/LC filter, divider | Signal direction is evident; branch/shunt elements visibly terminate at the correct return. |
-| Crystal/decoupling | Keep associated IC pins and local support parts in one readable group. |
-| MCU/SoC/interfaces | Group by function/power domain; maintain real unit and sheet identities, one cross-sheet net registry and local protection/termination. |
+| 异步 Buck | 输入 → IC/SW → L → 输出；电容支路可见，续流二极管从 SW 到 GND，BOOT/反馈/控制在局部成带。 |
+| 同步 Buck | 同样的能量流结构，按实际的集成/外置开关拓扑画。不编造续流二极管。 |
+| LDO | 输入 → 稳压器 → 输出，局部输入/输出电容，有使能/反馈时画出。没有 SW 节点或电感。 |
+| 集成电感模块 | 输入 → 模块 → 输出。画出数据手册实际要求的外部器件。 |
+| Boost/反相电源 | 按它真实的能量路径、极性和回流参考画；不硬套 Buck 的母线顺序。 |
+| RC/LC 滤波、分压 | 信号方向一目了然；支路/并联元件可见地终止在正确的地网络上。 |
+| 晶振/去耦 | 相关的 IC 引脚和局部支持器件放成一个可读的组。 |
+| MCU/SoC/接口 | 按功能/电源域分组；保持真实的单元和页身份、一份跨页网络登记，以及局部的保护/端接。 |
 
-The accepted LM5013 example remains a **Buck-specific reference**: continuous
-input-to-output bus, bottom return bus, visible passive branches and an orderly
-control band. Apply its readability principles to other blocks without inventing
-its circuit structure. These are layout patterns, not verified design templates.
+已认可的 LM5013 例子仍是 **Buck 专用的参考**：连续的输入到输出母线、底部的地网络母线、可见的无源支路和整齐的控制带。
+把它的可读性原则用到其他功能块，但不编造它的电路结构。这些是布图样式，不是经核实的设计模板。
 
-## 3. Place bodies, fields and blocks separately
+## 3. 本体、字段和功能块分开放置
 
-- Use actual cached/library symbol graphics and active units, including rotation
-  and mirror. A fixed-size box or all-units pin envelope is insufficient.
-- Keep at least 1.27 mm between bodies where feasible. Account separately for
-  wire/pin exit corridors and visible Reference/Value/labels; moving only the
-  body does not resolve text collisions.
-  The geometry gate records separated bodies below this spacing as
-  `body_clearance` requiring native review; actual overlapping body bounds
-  remain `body_overlap` errors. A spacing warning does not yield an automated
-  PASS, and it does not close independent text, pin, wire or coverage findings.
-- Keep ordinary fields horizontal and clearly associated with their component.
-  A dense, regular capacitor bank may use consistent 90-degree Reference/Value
-  fields with measured pitch and native visual verification; see
-  [engineer-template-comparison.md](engineer-template-comparison.md). Reserve
-  text space before routing. Prefer a clear side; if none exists, expand or move
-  the block instead of returning the least-overlapping position as success.
-- Keep input/output direction apparent. Separate functional blocks with clear
-  space; avoid interleaving unrelated control parts or scattering support parts.
-- Reserve page frame, title, notes and other keepouts. Review whole-page
-  allocation as well as crowded regions. A sparse small test block does not
-  establish good packing for a multi-block product schematic.
+- 用实际的缓存/库符号图形和活动单元，包括旋转和镜像。固定尺寸的框或所有单元引脚的包络都不够。
+- 可行时本体之间至少留 1.27 mm。导线/引脚出线通道和可见的 Reference/Value/标签分开计算；只移动本体解决不了文字碰撞。
+  几何检查项把间距不足但分开的本体记为 `body_clearance`，需要在 KiCad 渲染上审阅；实际重叠的本体外框仍是 `body_overlap` 错误。
+  间距警告不产生自动 PASS，也不关闭独立的文字、引脚、导线或覆盖范围发现。
+- 普通字段保持水平，并明显归属于它的器件。密集、规整的电容组可以用一致的 90° Reference/Value 字段，
+  间距要实测并在 KiCad 渲染上目视核对；见 [engineer-template-comparison.md](engineer-template-comparison.md)。
+  走线前预留文字空间。优先选空出的一侧；没有就扩大或移动功能块，不要把重叠最少的位置当作成功返回。
+- 输入/输出方向要明显。功能块之间用明确的空白分开；不要把无关的控制器件穿插进来，也不要把支持器件散开。
+- 预留图框、标题、注释和其他禁布区。既看整页的分配，也看拥挤的区域。稀疏的小测试块不能证明多块的产品原理图排得好。
 
-## 4. Wiring and label policy
+## 4. 连线与标签策略
 
-Apply [human-readable-routing.md](human-readable-routing.md) before fixing
-placement: functional membership, visible local paths, rails/returns and
-label boundaries constrain routing. Its path-tracing review is required
-in addition to the electrical and geometry checks below.
+确定摆放前先按 [human-readable-routing.md](human-readable-routing.md)：功能归属、可见的局部路径、电源轨/地网络和标签边界约束走线。
+除下面的电气和几何检查外，还必须做它的路径追踪审阅。
 
-- Use orthogonal wires on a grid compatible with actual pin positions
-  (usually 1.27 mm; some symbols require 0.635 mm). Do not silently snap pins.
-- Wires must avoid body graphics, visible text and other nets' terminal/route
-  corridors. Pin direction constrains how a wire leaves the component.
-- Prefer visible local connections. Use named rails and labels where meaningful;
-  remote labels are an explicit intent/layout choice, not a silent fallback
-  when routing fails. Do not label every local wire automatically.
-- Label roles (HR-07): global labels (1.27 mm) only for nets leaving the sheet;
-  rails and returns as power symbols whose Value is the exact net name; small
-  1.0 mm local names on the wire of selected local nets (default: nets touching
-  a part with three or more pins); local join labels only at a declared block
-  boundary. Other local nets stay unnamed.
-- A generated or redrawn sheet must pass `scripts/check_schematic_readability.py`
-  (no different-net crossings, no two-terminal connection with three or more
-  bends) or carry a reasoned per-sheet waiver.
-- Scope block-local names (`SW_5V`, `FB_5V`, etc.) so unrelated blocks cannot
-  short through reused labels. Label-connected islands must use the exact same
-  net name and scope.
-- Split rails at branches and contacts; merge duplicate collinear same-net
-  segments and preserve attachment points. Add dots for real multiway
-  junctions, not every corner. Different-net overlap/contact is a defect.
-- Label anchors belong on the correct wire/pin. Check field justification and
-  text extents after writing, including native rotation behavior.
-- Add PWR_FLAG only where a justified source drives a power net. Its geometry
-  does not establish source capability; verify native ERC and the actual power
-  topology. Avoid gratuitous flags used to suppress real errors. In generated
-  designs the only flags are the declared connector-fed supplies
-  (`external_supply` in the intent) and supplies derived through one declared
-  series passive (`filtered_supply`), drawn with `Sheet.power_flag()`; the
-  `external_supply` gate rejects any other flag.
+- 用正交导线，栅格与实际引脚位置兼容（通常 1.27 mm；有些符号需要 0.635 mm）。不悄悄把引脚吸附到栅格。
+- 导线必须避开本体图形、可见文字和其他网络的端子/走线通道。引脚方向约束导线离开器件的方式。
+- 优先用可见的局部连接。有意义时用有名字的电源轨和标签；远程标签是设计网表/布图上明确的选择，不是走线失败时悄悄的回退。
+  不要自动给每根局部导线加标签。
+- 标签角色（HR-07）：全局标签（1.27 mm）只用于出页网络；电源轨和地网络用 Value 恰好等于网络名的电源符号；
+  选定的局部网络在导线上标 1.0 mm 的小局部网络名（默认：接到三脚及以上器件的网络）；局部连接标签只用于声明的功能块边界。
+  其他局部网络不命名。
+- 生成或重画的页必须通过 `scripts/check_schematic_readability.py`（没有异网交叉，没有三折及以上的两端连接），
+  否则要有逐页说明理由的豁免。
+- 功能块内的局部网络名（`SW_5V`、`FB_5V` 等）要限定范围，防止无关功能块通过重用的标签短路。
+  靠标签连接的孤岛必须用完全相同的网络名和范围。
+- 在分支和接点处拆分电源轨；合并重复的共线同网线段并保留连接点。只在真正的多路交汇处打点，不是每个拐角。
+  异网重叠/接触是缺陷。
+- 标签锚点要落在正确的导线/引脚上。写出后核对字段对齐和文字范围，包括 KiCad 的旋转行为。
+- 只在有依据的来源驱动电源网络处加 PWR_FLAG。它的几何不能确立来源的供电能力；核对 KiCad ERC 和实际的电源拓扑。
+  不用多余的旗标压住真实错误。生成的设计中，旗标只用于声明的连接器供电（设计网表中的 `external_supply`）和经一颗声明的串联无源件派生的供电
+  （`filtered_supply`），用 `Sheet.power_flag()` 画；`external_supply` 检查项拒绝其他任何旗标。
 
-### Version-specific connectivity facts
+### 与版本相关的连接事实
 
-Native KiCad XML is the authority. The current regression suite tests unnamed
-direct pin-to-pin wires and an unsplit T with an explicit junction on the locally
-installed KiCad version. On **10.0.4** these are connected as expected. Therefore:
+以 KiCad 导出的 XML 为准。当前的回归测试在本机安装的 KiCad 版本上测试了无名的引脚直连导线和带显式交汇点的未拆分 T 形。
+在 **10.0.4** 上它们按预期连接。因此：
 
-- Do not claim that a single wire between pins or an unnamed net is always
-  dropped. Those earlier skill statements were overgeneralized.
-- Explicit branch splitting remains the writer's normalization convention, not
-  proof that every unsplit branch is illegal in every KiCad.
-- Coincident pin tips and legacy KiCad versions need their own native probes;
-  do not infer behavior from appearance. The bounded generator rejects
-  coincident terminals instead of silently selecting a connectivity policy.
+- 不要声称引脚之间的单根导线或无名网络总会丢失。技能早先的这些说法概括过度。
+- 显式拆分分支仍是写出器的规范化约定，不证明未拆分的分支在所有 KiCad 中都不合法。
+- 重合的引脚端点和旧版 KiCad 需要各自的 KiCad 探测；不从外观推断行为。有界生成器拒绝重合端子，不悄悄选择一种连接策略。
 
-## 5. Mandatory verification gate
+## 5. 必须通过的检查
 
-`scripts/verify_schematic.py <root> --intent <intent> --out <fresh dir>` runs
-items 1–3 plus symbol integrity and the readability gate in one pass and
-writes `summary.json`; items 4–5 stay manual.
+`scripts/verify_schematic.py <root> --intent <设计网表> --out <新目录>` 一次运行第 1–3 项以及符号完整性和可读性检查项，
+写出 `summary.json`；第 4–5 项仍靠人工。
 
-1. Native ERC: no unresolved errors/warnings. Keep the full report, exclusions,
-   ignored-check metadata, command result and exact KiCad version. An explained
-   residual warning is still a residual warning, not “0/0”.
-2. Native XML netlist: all intended `reference.pin` partitions match exactly;
-   no unintended shorts, opens, lost pins or component identity changes; every
-   drawn net name equals the intent name of the same pins (sheet path prefix
-   allowed). Use source-to-output comparison too for a redraw.
-3. Geometry: explicitly account for body overlap, wire-through-body, all visible
-   field/label collisions (including same-owner), wire/text and pin/text overlap,
-   page/title intrusion, electrical grid, wire/label/NC/junction attachment and
-   cross-net contact. Report unsupported objects as coverage gaps.
-4. Native PDF/PNG: inspect the full page and crowded regions. Confirm text
-   direction, legibility, pin names/numbers, association, local paths and page
-   composition. Geometry uses approximate text boxes and conservative arcs.
-5. Electrical evidence: pinout/package, ratings, values and required networks
-   meet the design intent and datasheet. A geometry fixture is not a qualified
-   electrical design.
+1. KiCad ERC：没有未解决的错误/警告。保留完整报告、排除项、被忽略检查的元数据、命令结果和确切的 KiCad 版本。
+   说明过理由的残余警告仍是残余警告，不是“0/0”。
+2. KiCad XML 网表：所有预期的 `位号.引脚` 分区完全一致；没有意外的短路、开路、丢脚或器件身份变化；
+   图上画出的每个网络名等于设计网表中同一组引脚的网络名（允许页路径前缀）。重画时还要做源到输出的比较。
+3. 几何：逐项计算本体重叠、导线穿本体、所有可见字段/标签碰撞（包括同一归属）、导线/文字和引脚/文字重叠、
+   侵入图框/标题、电气栅格、导线/标签/NC/交汇点的连接以及跨网接触。不支持的对象报告为覆盖缺口。
+4. KiCad PDF/PNG：检查整页和拥挤区域。确认文字方向、清晰度、引脚名/引脚号、归属、局部路径和页面构成。
+   几何检查用的是近似的文字框和保守的圆弧。
+5. 电气证据：引脚定义/封装、额定值、值和必需的网络满足设计网表和数据手册。几何测试样例不是合格的电气设计。
 
-`AUTOMATED_PASS` only covers automated gates; visual and datasheet reviews
-remain pending. Do not report completion from ERC alone,
-API success or a solver's `solved` flag.
+`AUTOMATED_PASS` 只覆盖自动检查；图面审阅和数据手册审查仍待完成。不要只凭 ERC、API 成功或 solver 的 `solved` 标志报告完成。
 
-## 6. Repair, rerun and handoff
+## 6. 修复、重跑与转交
 
-Keep exact failing inputs and findings, adjust the relevant layout block, and
-regenerate into a new output directory. Repeat affected native/geometry/render
-checks after edits. Do not make untracked coordinate patches bypassing intent.
+保留确切的失败输入和发现，调整相关的布图功能块，重新生成到新的输出目录。修改后重做受影响的 KiCad/几何/渲染检查。
+不做绕过设计网表、未记录的坐标补丁。
 
-For unsupported native KiCad authoring, use a scoped project writer; preserve
-multi-unit/hierarchy information and apply the same gates instead of
-flattening the input.
+KiCad 原生不支持的写出，用限定范围的工程写出脚本；保留多单元/层次信息并执行同样的检查，不拍平输入。
 
-Encoded-slash hierarchical label text retains its conservative raw-text extent
-and native-review coverage gaps. Only the default scalar fallback with strict
-native styles (0/90 with left, 180/270 with right; square .889/1.0/1.27 mm font;
-no extra formatting, variables or other encodings) uses readable 180→0 and
-270→90 text orientation. It does not decode or shorten the model text, move the
-anchor, qualify the outline or native font, or exempt owner wires/pins/bodies.
-Rejecting that narrow style qualification retains the original fallback. Native
-render inspection and actual finding identities remain required; absence of a
-finding with coverage gaps is not a geometry PASS.
+编码斜杠的层次标签文字保留其保守的原文范围和 KiCad 审阅覆盖缺口。只有默认的标量回退、且符合严格的 KiCad 样式
+（0/90 左对齐、180/270 右对齐；方形 .889/1.0/1.27 mm 字体；没有额外格式、变量或其他编码）时，才使用可读的 180→0 和 270→90 文字方向。
+它不解码或缩短模型文字，不移动锚点，不判定轮廓或 KiCad 字体合格，也不豁免所属的导线/引脚/本体。
+拒绝这项窄的样式资格时保留原回退。KiCad 渲染检查和实际发现的身份仍然必需；有覆盖缺口时没有发现不是几何 PASS。

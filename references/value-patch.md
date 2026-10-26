@@ -1,6 +1,6 @@
 # 保持图面的 Value 局部修改
 
-已授权且有工程依据的参数更改，例如 R1 的 `1k`→`2k`，可以用 `scripts/patch_schematic_values.py`。工具只替换放置符号的 Value 字符串，保留原来的坐标、连线、UUID、其他字段和层次文本；多单元器件每个单元一起改。不是通用属性编辑器，换型号/脚号、改网络、DNP、封装或拓扑继续走电气改版工作流。
+已授权且有工程依据的参数更改，例如 R1 的 `1k`→`2k`，可以用 `scripts/patch_schematic_values.py`。工具只替换放置符号的 Value 字符串，保留原来的坐标、连线、UUID、其他字段和层次文本；多单元器件每个单元一起改。不是通用属性编辑器，换型号/引脚号、改网络、DNP、封装或拓扑继续走电气改版工作流。
 
 先锁定原工程。`baseline_files` 必须完整列出根图及全部子图的 SHA256，有根图同名 `.kicad_pro` 时也包括它；可从 `schematic_layout.project_audit.audit_project` 的 `file_sha256` 取得图文件列表，用 `schematic_layout.value_patch.frozen_files` 加入项目配置。不要从候选回填旧值。
 
@@ -21,4 +21,4 @@ python3 scripts/patch_schematic_values.py 原工程/board.kicad_sch \
 
 候选保存在 `project/`，原始 KiCad XML、PDF、ERC 在 `evidence/`，报告 `patch-report.json`。KiCad before/after 网表必须满足独立 Value 改动核对记录：物理脚分区和其他器件身份不变；候选层次和 PDF 页数也须通过。`PATCH_VERIFIED` 只表示局部修改及这些检查成立，**ERC 已导出不表示 ERC 零违规**；不自动声明 `AUTOMATED_PASS`。
 
-根据变化更新独立设计要求表、生成脚本和计算/需求文档，避免下一次生成覆盖此次 Value。继续按主流程第 6–8 步做完整自动检查、图面审阅、证据是否最新核查；图面 Value 变长可能影响文字间距，必须看实际 PDF。未通过的候选留 FAIL 报告，不写回原工程；确认基线新鲜且完成审查后再按项目约定替换版本。
+根据变化更新设计网表、生成脚本和计算/需求文档，避免下一次生成覆盖此次 Value。继续按主流程步骤 ④–⑤ 做完整自动检查、图面审阅、证据是否最新核查；图面 Value 变长可能影响文字间距，必须看实际 PDF。未通过的候选留 FAIL 报告，不写回原工程；确认基线新鲜且完成审查后再按项目约定替换版本。

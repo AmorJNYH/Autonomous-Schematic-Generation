@@ -157,7 +157,7 @@ def check_against_previous(root, previous):
             for c in item.get('changes') or []:
                 named |= set(re.findall(r'(?<![A-Za-z0-9])[A-Z]{1,3}\d{1,4}(?![A-Za-z0-9])', str(c)))
             if named and not named & changed:
-                errors.append('previous: %s 标为“改图”，但 %s 在设计要求表里与上一版相同' % (item.get('id'), '、'.join(sorted(named))))
+                errors.append('previous: %s 标为“改图”，但 %s 在设计网表里与上一版相同' % (item.get('id'), '、'.join(sorted(named))))
     return errors
 
 
@@ -231,7 +231,7 @@ def pack(root, inputs, wiki=DEFAULT_WIKI):
     if 'datasheets' in declared:
         missing = datasheets_not_in_library(inputs['datasheets'], Path(wiki))
         if missing:
-            errors.append('%d datasheets are not in the library %s yet; file them per SKILL.md step 2 '
+            errors.append('%d datasheets are not in the library %s yet; file them per SKILL.md task 2.1 '
                           '(find_parts.py --file <pdf> shows where one already is): %s'
                           % (len(missing), wiki, ', '.join(missing[:8]) + ('…' if len(missing) > 8 else '')))
     if errors:

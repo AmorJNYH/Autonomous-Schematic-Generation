@@ -1,133 +1,99 @@
-# Drawing recipes (readable sheets from pin geometry)
+# 绘图画法（按引脚几何画出可读的页面）
 
-Use for every sheet a person will read, new or redrawn. The agent writes a short
-page script that states **structure**; `schematic_layout.recipes.Sheet` derives
-the geometry from the real library pins and writes explicit wires. This is the
-construction layer behind [human-readable-routing.md](human-readable-routing.md).
+每张给人读的页面都用，无论新画还是重画。agent 写一段简短的图页脚本说明**结构**；`schematic_layout.recipes.Sheet`
+从真实的库引脚推出几何并写出显式导线。这是 [human-readable-routing.md](human-readable-routing.md) 背后的构图层。
 
-Readable wiring is a placement problem. When a pin faces away from the net it
-joins, every router has to loop back. On a 100 W charger the hand-placed v0.2.2
-pages had 29 different-net crossings and 237 bends. The same circuit, redrawn by
-placing support parts from their pins with explicit spines, had 0 crossings and
-82 bends.
+可读的连线是摆放问题。引脚背对它所接的网络时，任何走线器都只能绕回来。一块 100 W 充电器上，手工摆放的 v0.2.2 页面有 29 处异网交叉、
+237 个拐弯。同一电路从引脚出发放置支持器件、用显式主干重画后，交叉为 0，拐弯 82 个。
 
-## Workflow
+## 做法
 
-1. Write the presentation plan (reading path, blocks, rails, labels) per
-   human-readable-routing.md section 1. For a board, get each page's intent and
-   external nets from `pages.page_intents(board, rails=...)`.
-2. `sheet = Sheet(intent, rails={...}, external=[...])` and read `sheet.plan`:
-   the proposed role of every part and the label role of every net.
-3. Write the page script following the outline rules below: place anchors,
-   then draw every other part with the recipe its role allows. Keep coordinates
-   only for anchors and deliberate Z legs. Record each intended deviation with
-   `sheet.justify(part_or_net, reason)` where it is made.
-   List the actual planned local names and fonts before placing their runs.
-   For the relevant series leg or own-pin stub, explicitly reserve
-   `max(existing_gap, sheet.name_run_steps(net, font))`, then call `name` with
-   that same raw logical name and font. Budget each net separately in a chain;
-   do not enlarge all gaps or change the naming policy.
-4. `root, report = sheet.build(name)`, then write `dump(root)`. Build raises on
-   any hard defect (see below); fix the structure, not the symptom.
-5. `report["structure"]` must be PASS: every finding is either fixed or a
-   recorded deviation with its reason.
-6. Run `scripts/verify_schematic.py <root.kicad_sch> --intent <intent.json>
-   --out <fresh dir>`: native ERC, intent partitions and identity, hierarchy/PDF,
-   symbol integrity, the mandatory readability gate and geometry on every
-   active sheet, in one pass. At board level every drawn (non-automatic) net
-   name must equal the intent name of the same pin set, allowing only a sheet
-   path prefix. `compare_netlist(xml, intent, report["layout"])` instead checks
-   a single page's label and rail names against its layout policy.
-7. Render natively and trace each declared reading task.
+1. 按 human-readable-routing.md 第 1 节写分页方案（阅读路径、功能块、电源轨、标签）。整板时用
+   `pages.page_intents(board, rails=...)` 得到每页的设计网表和出页网络。
+2. `sheet = Sheet(intent, rails={...}, external=[...])`，读 `sheet.plan`：每个器件建议的角色和每个网络的标签角色。
+3. 按下面的绘图纲要写图页脚本：先放锚点，再按角色允许的画法画其他器件。只给锚点和有意的 Z 形段写坐标。
+   每处有意的偏离在做出时用 `sheet.justify(part_or_net, reason)` 记录。
+   放置走线之前列出实际规划的局部网络名和字号。在相应的串联段或本引脚短线处显式预留
+   `max(existing_gap, sheet.name_run_steps(net, font))`，再用同一个原始逻辑名和字号调用 `name`。链中每个网络分别预算；
+   不要放大所有间隙，也不要改命名策略。
+4. `root, report = sheet.build(name)`，然后写出 `dump(root)`。遇到任何硬缺陷 build 都会报错（见下）；改结构，不改症状。
+5. `report["structure"]` 必须为 PASS：每条发现要么已修正，要么是记录了理由的偏离。
+6. 运行 `scripts/verify_schematic.py <root.kicad_sch> --intent <设计网表> --out <新目录>`：一次完成 KiCad ERC、
+   设计网表分区与身份、层次/PDF、符号完整性、必需的可读性检查项，以及每张活动页的几何检查。整板时，图上画出的每个（非自动的）网络名
+   必须等于设计网表中同一组引脚的网络名，只允许页路径前缀。`compare_netlist(xml, intent, report["layout"])` 则按单页的布图策略
+   核对该页的标签和电源轨名字。
+7. 用 KiCad 渲染，并追每个声明的读者任务。
 
-## Outline rules (how to decide the structure)
+## 绘图纲要（怎样决定结构）
 
-These rules are the 绘图纲要 inside the ASG 纲要 of SKILL.md: any change to
-them needs a draft approved by a person first (SKILL.md, 纲要的修改).
+这些规则是 SKILL.md 中 ASG 纲要里的绘图纲要：任何改动都须先把草案交给人确认（SKILL.md「纲要的修改」）。
 
-The agent owns the topology decisions; these rules make them repeatable. Apply
-them in order. A later rule refines an earlier one and never reverses it; only
-O8 changes an earlier decision, in the order it states.
+拓扑决定由 agent 做；这些规则让决定可重复。按顺序使用。后面的规则细化前面的，从不推翻；只有 O8 按它写明的顺序改变前面的决定。
 
-| # | Decision | Rule |
+| # | 决定 | 规则 |
 | --- | --- | --- |
-| O1 | Page flow | Pick the page's reading task first. A **path page** (power stage, filter, protected interface) runs its main energy/signal path left to right along one row, from the input interface to the output interface; a second path gets its own row below, rows ordered by their position in the system. When the main path is wider than the drawing area, fold it into the next row at a node that is already a bank, rail or test point; a fold continues the same path. A **controller page** (MCU, PD/protocol controller, PHY) centres the controller; each pin group's support circuit sits on that pin group's side, and external interfaces sit on the page edge facing their connector or sheet. |
-| O2 | Anchors | Anchors are parts with three or more pins and connectors (`sheet.plan` proposes them). Place anchors first, upright where possible; rotate or mirror (`place(..., facing=...)`) only so inputs face upstream and outputs downstream. Anchors that form one function, such as a controller with its FETs or a driver with its bridge, share one block; otherwise one block per anchor, in path order. |
-| O3 | Ownership | A two-pin part belongs to the anchor whose pin net it touches. If several anchors share that net, it belongs to the pin that gives it its function (a pull-up to the open-drain output it pulls, a bypass to the supply pin it decouples, a gate resistor to its gate), else to the first anchor in path order. A part between two anchors, or in a passive chain with no anchor pin, belongs to the path segment it lies on and is drawn in path order. Never draw a support part inside another anchor's block. |
-| O4 | Recipe by role | Use the proposed role from `sheet.plan`: `series` on the path axis; `shunt` off its node toward its rail (returns down, positive supplies up, a negative rail below its return); `bank` for parallel parts on the same nets, as one bank with one return; `divider` stacked with the tap sideways to the sense pin; `lane_*` as identical series+shunt lanes with the same arrangement; `decoupling` as a shunt or bank at its anchor's supply pin. |
-| O5 | Pin exits | Start each branch from the pin along its outward direction (`stub`, or a recipe started at the pin). A support branch that must reach a pin on the far side of its anchor goes over or under the anchor block, never through another branch; if that is impossible, move the part to that pin's side. |
-| O6 | Rails and labels | Rails and returns are power symbols from the declared `rails`; global labels only on `external` nets; small names on the plan's `name` nets; a local join label only with a boundary reason. |
-| O7 | Spacing | Recipe gaps are at least two grid steps and at most `MAX_SPACING_STEPS` (12, about 15 mm) unless the script records why; the same cap applies to stubs, explicit bank pitches and leads, and rail/label leads. Widen a gap before moving parts by hand, then shrink it back once the build passes. A net that carries a small name needs one straight run longer than the name plus two grid steps. A vertical part with a long value needs that text width free on one side. Blocks are separated by more space than parts inside a block; a page is not padded to fill its paper. |
-| O8 | Repair order | On a build error or failing gate, first change the recipe direction, gap or order; then the anchor position or orientation; then fold the path or split the block into rows (O1). Never add a label to hide a failed wire. After the page passes, read `report["readability"]`: shrink gaps that the audit lists, and if `fits_paper` is smaller than the sheet, move to that paper or bring the page's remaining blocks onto it. |
+| O1 | 页面流向 | 先选这页的读者任务。**路径页**（功率级、滤波、受保护接口）的主能量/信号路径沿一行从左到右，从输入接口到输出接口；第二条路径在下面另起一行，各行按它们在系统中的位置排序。主路径比绘图区宽时，在已是电容组、电源轨或测试点的节点折到下一行；折行延续同一条路径。**控制器页**（MCU、PD/协议控制器、PHY）把控制器放在中间；每个引脚组的支持电路放在该引脚组一侧，对外接口放在朝向其连接器或页的页边。 |
+| O2 | 锚点 | 锚点是三脚及以上的器件和连接器（`sheet.plan` 会建议）。先放锚点，尽量正立；只为让输入朝上游、输出朝下游才旋转或镜像（`place(..., facing=...)`）。构成一个功能的锚点（如控制器及其 MOS、驱动器及其桥）共用一个功能块；否则每个锚点一个功能块，按路径顺序排列。 |
+| O3 | 归属 | 两脚器件归属于它所接引脚网络的锚点。几个锚点共用该网络时，归属于赋予它功能的那个引脚（上拉归它拉的开漏输出，去耦归它去耦的电源引脚，栅极电阻归它的栅极），否则归路径顺序上的第一个锚点。位于两个锚点之间、或在没有锚点引脚的无源链中的器件，归属于它所在的路径段，按路径顺序画。从不把支持器件画进另一个锚点的功能块里。 |
+| O4 | 按角色选画法 | 用 `sheet.plan` 建议的角色：`series` 在路径轴上；`shunt` 从其节点引向其电源轨（地网络向下，正电源向上，负电源轨在其地网络下方）；`bank` 用于接在相同网络上的并联器件，画成一组、一个地网络；`divider` 竖直叠放，抽头侧向引到检测引脚；`lane_*` 画成排列相同的串联+并联通道；`decoupling` 在其锚点的电源引脚处画成并联支路或组。 |
+| O5 | 引脚出线 | 每条支路从引脚沿其向外方向开始（`stub`，或从引脚起始的画法）。需要够到锚点另一侧引脚的支持支路，从锚点功能块的上方或下方绕过，从不穿过另一条支路；做不到就把器件移到那个引脚一侧。 |
+| O6 | 电源轨与标签 | 电源轨和地网络用声明的 `rails` 里的电源符号；全局标签只用于 `external` 网络；小网络名用于方案里的 `name` 网络；局部连接标签只在有边界理由时使用。 |
+| O7 | 间距 | 画法的间隙至少两格，至多 `MAX_SPACING_STEPS`（12 格，约 15 mm），除非脚本记录了理由；同样的上限适用于短线、显式的组间距和引线，以及电源轨/标签引线。先加大间隙再手工移动器件，构建通过后再缩回。带小网络名的网络需要一段比名字长两格以上的直线。带长值的竖放器件需要一侧留出那段文字的宽度。功能块之间的间隔大于块内器件之间的间隔；不为填满纸张而撑大页面。 |
+| O8 | 修复顺序 | 构建出错或检查项失败时，先改画法的方向、间隙或顺序；再改锚点的位置或朝向；然后折行或把功能块拆成几行（O1）。从不加标签来掩盖失败的导线。页面通过后读 `report["readability"]`：缩小审计列出的间隙；`fits_paper` 比当前纸张小时，换到那张纸，或把本页剩下的功能块并过去。 |
 
-What is checked automatically:
+自动检查覆盖的部分：
 
-| Rule | Checked by | Not checked (trace in the render) |
+| 规则 | 由谁检查 | 不检查的（在渲染图上追） |
 | --- | --- | --- |
-| O4 | structure audit: recipe against role, banks drawn as one bank, identical lanes | whether the role itself suits the circuit |
-| O6 | structure audit: global labels exactly on external nets, rails only as their power symbols, selected names present, no unselected local label without a reason; with `blocks`, a local join label whose wired parts all belong to one block | label wording |
-| O7 | `build()` hard rejections: body clearance, text collisions, wires through bodies; structure audit: gaps, stubs, pitches, leads beyond `MAX_SPACING_STEPS` without a reason; readability gate: a sheet whose content fits a smaller paper | block-versus-part spacing, whether a low `cell_coverage` page should be merged |
-| O1, O2, O3, O5 | readability gate catches some consequences (crossings, U-turns) | path order, block membership, ownership, branch side |
+| O4 | 结构审计：画法与角色是否相符、组是否画成一组、通道是否相同 | 角色本身是否适合电路 |
+| O6 | 结构审计：全局标签恰好在出页网络上、电源轨只用其电源符号、选定的网络名都在、没有无理由的未选定局部标签；提供 `blocks` 时，连接的器件都属于同一功能块的局部连接标签 | 标签措辞 |
+| O7 | `build()` 硬拒绝：本体间距、文字碰撞、导线穿本体；结构审计：超过 `MAX_SPACING_STEPS` 且无理由的间隙、短线、间距、引线；可读性检查项：内容放得进更小纸张的页 | 功能块与器件间距之比、`cell_coverage` 低的页是否该并页 |
+| O1、O2、O3、O5 | 可读性检查项能抓到部分后果（交叉、U 形回头） | 路径顺序、功能块成员、归属、支路所在侧 |
 
-A structure audit PASS therefore covers O4 and O6 only. Review the other rules
-on the rendered page before calling the page readable.
+所以结构审计 PASS 只覆盖 O4 和 O6。称页面可读之前，在渲染页上审阅其他规则。
 
 ## API
 
-| Call | Draws |
+| 调用 | 画什么 |
 | --- | --- |
-| `Sheet(intent, rails, external, paper, dirs, power_ref_start, blocks)` | One sheet. `rails` maps nets to `power:` symbols, `external` lists nets leaving the sheet; both enable `plan` and the audit. `power_ref_start` keeps `#PWR` references unique across pages. `blocks` is the page plan's `{block: [refs]}`; with it the audit rejects a local join label that only joins parts of one block (HR-01). |
-| `plan` | `{"parts": {ref: {role, why, ...}}, "nets": {net: "power" \| "global" \| "name" \| None}}`. A net is a return when `intent["net_roles"]` says so; only undeclared rails fall back to the power symbol's direction. A resistor is a `Device:R*` part or one whose `fields.ComponentRole` is `resistor`. |
-| `justify(part_or_net, reason, conflict)` | Records an intended deviation; the audit lists it with the reason. A spacing deviation also needs `conflict`: the part, pin or `text:<field>` the extra room avoids. |
-| `place(ref, at, rotation, mirror, pin, facing, order)` | An anchor: controller, connector, magnetic, bridge. `facing={pin: direction}` picks rotation/mirror from the required pin exits (`order=(a, b, axis)` keeps pin a before b); with `pin`, `at` is that pin's tip. |
-| `orient(ref, facing, order)` | The (rotation, mirror) that `facing` would choose; raises when no orientation gives those exits. |
-| `put(ref, pin, at, toward)` | Part with `pin` on `at`, extending along `toward` (pin faces back). Parts with more than two pins stay upright. |
-| `stub(pin, n)` | Pin exit along its own direction; returns the end point. |
-| `series(start, [refs], toward, gap, net)` | Series chain on one axis in circuit order; the pin on the current net faces the start. Returns far-pin points. |
-| `shunt(node, ref, toward, gap, rail)` | Two-pin branch off a node; far pin gets its declared rail symbol (`rail=False`: the far pin is returned). |
-| `bank(start, refs, toward, hang, pitch, gap, rail, common, depth, lead)` | Parallel parts off a spine at a measured pitch; with `common` one straight return line and one symbol (`rail=False`: the common line is a signal net, e.g. N_EMI under L_EMI, or a gate line beside a drive line). `depth` fixes the common line's distance; `lead=0` puts the first part at `start` (inline with a pin). `hang=RIGHT` with `toward=DOWN` gives the classic side-by-side parallel pair. Returns the spine end. |
-| `divider(top, upper, lower, toward, gap, rail)` | Stacked divider; returns the tap point on the midpoint wire. |
-| `connect(a, b, first, x, y)` | L (`first` h/v) or Z (middle leg at `x` or `y`) between pins/points. |
-| `wire(*pins_or_points, net)` | Explicit orthogonal polyline; every pin must be on `net`. |
-| `power(target, symbol, net, length)` | Rail/return symbol whose Value is the net name (declared symbol by default); a perpendicular pin is left sideways far enough to clear the part body. |
-| `label(target, kind, length, outward, net, reason)` | Global label where the net leaves the sheet, or a local join with `reason`. Extends along the pin direction or `outward`: left, right, up or down. |
-| `name_run_steps(net, font=1.0)` | Read-only necessary straight-run budget: the existing local `label_geometry` width for this declared raw logical net/font plus two grid steps, rounded up to grid steps. No placement or label is added. |
-| `name(net, at, font=1.0)` | Small local name on the net's own wire, mid-segment and clear of pins and dots: above a horizontal wire, else beside a vertical one. Only on a connected piece that has no label or rail symbol of that net yet; when every piece already shows the name, `build()` skips it (`report["names_skipped_already_labelled"]`), and an explicit `at` on such a piece is an error. |
-| `select_local_names(intent, external, rails)` | Default selection: page-local nets touching a part with three or more pins. |
-| `text(text, at, font)` | Block title or note. |
+| `Sheet(intent, rails, external, paper, dirs, power_ref_start, blocks)` | 一张页。`rails` 把网络映射到 `power:` 符号，`external` 列出离开本页的网络；两者使 `plan` 和审计可用。`power_ref_start` 让 `#PWR` 位号在各页间唯一。`blocks` 是分页方案的 `{功能块: [位号]}`；提供后审计拒绝只连接同一功能块器件的局部连接标签（HR-01）。 |
+| `plan` | `{"parts": {ref: {role, why, ...}}, "nets": {net: "power" \| "global" \| "name" \| None}}`。`intent["net_roles"]` 声明为 return 的网络是地网络；只有未声明的电源轨才退回按电源符号方向判断。电阻是 `Device:R*` 器件或 `fields.ComponentRole` 为 `resistor` 的器件。 |
+| `justify(part_or_net, reason, conflict)` | 记录一处有意的偏离；审计连同理由一起列出。间距偏离还需要 `conflict`：多出的空间避开的器件、引脚或 `text:<字段>`。 |
+| `place(ref, at, rotation, mirror, pin, facing, order)` | 锚点：控制器、连接器、磁件、桥。`facing={pin: direction}` 按要求的引脚出线方向选旋转/镜像（`order=(a, b, axis)` 让引脚 a 在 b 之前）；给了 `pin` 时，`at` 是该引脚的端点。 |
+| `orient(ref, facing, order)` | `facing` 会选出的 (rotation, mirror)；没有朝向能给出这些出线时报错。 |
+| `put(ref, pin, at, toward)` | 把器件的 `pin` 放在 `at`，沿 `toward` 延伸（引脚朝回）。多于两脚的器件保持正立。 |
+| `stub(pin, n)` | 沿引脚自身方向出线；返回端点。 |
+| `series(start, [refs], toward, gap, net)` | 按电路顺序在一条轴上的串联链；接当前网络的引脚朝向起点。返回各远端引脚的点。 |
+| `shunt(node, ref, toward, gap, rail)` | 从节点引出的两脚支路；远端引脚接其声明的电源轨符号（`rail=False`：返回远端引脚）。 |
+| `bank(start, refs, toward, hang, pitch, gap, rail, common, depth, lead)` | 从主干按实测间距引出的并联器件；`common` 时一条笔直的公共地网络线和一个符号（`rail=False`：公共线是信号网络，如 L_EMI 下的 N_EMI，或驱动线旁的栅极线）。`depth` 固定公共线的距离；`lead=0` 把第一个器件放在 `start`（与引脚对齐）。`hang=RIGHT` 配 `toward=DOWN` 得到经典的并排并联对。返回主干末端。 |
+| `divider(top, upper, lower, toward, gap, rail)` | 叠放的分压；返回中点导线上的抽头点。 |
+| `connect(a, b, first, x, y)` | 引脚/点之间的 L 形（`first` 为 h/v）或 Z 形（中段在 `x` 或 `y`）。 |
+| `wire(*pins_or_points, net)` | 显式的正交折线；每个引脚都必须在 `net` 上。 |
+| `power(target, symbol, net, length)` | Value 为网络名的电源轨/地网络符号（默认用声明的符号）；垂直方向的引脚会侧向引出，足以避开器件本体。 |
+| `label(target, kind, length, outward, net, reason)` | 网络离开本页处的全局标签，或带 `reason` 的局部连接标签。沿引脚方向或 `outward`（left、right、up、down）延伸。 |
+| `name_run_steps(net, font=1.0)` | 只读的必需直线段预算：对声明的原始逻辑网络/字号，取已有局部 `label_geometry` 的宽度加两格，向上取整到格数。不添加摆放或标签。 |
+| `name(net, at, font=1.0)` | 网络自身导线上的小局部网络名，放在线段中部并避开引脚和点：水平导线在上方，否则在竖直导线旁。只用于尚无该网络标签或电源轨符号的连通片段；每个片段都已显示名字时 `build()` 跳过它（`report["names_skipped_already_labelled"]`），对这样的片段显式给 `at` 会报错。 |
+| `select_local_names(intent, external, rails)` | 默认选择：接到三脚及以上器件的页内局部网络。 |
+| `text(text, at, font)` | 功能块标题或注释。 |
 
-Every recipe records a gap, stub, pitch, lead or lead length beyond
-`MAX_SPACING_STEPS` in `sheet.spacing`; the audit lists each as a `spacing`
-finding unless `justify(ref_or_pin, reason)` says why the run needs the room,
-and more than `MAX_SPACING_DEVIATIONS`
-(3) justified spacing deviations on one page is itself a finding: fold or
-re-anchor the page (O8). A measured bank pitch (`pitch_for`) is never a finding. The readability metrics in the report add
-`paper`, `content_size_mm`, `fits_paper`, `oversized_paper` (a gate reason),
-`occupancy`, `cell_coverage` (share of 25.4 mm cells holding any object),
-`part_groups`/`part_group_refs` (parts joined only through labels or rail
-symbols count as separate groups) and `longest_segment_mm`.
+每种画法把超过 `MAX_SPACING_STEPS` 的间隙、短线、间距、引线或引线长度记入 `sheet.spacing`；除非 `justify(ref_or_pin, reason)`
+说明这段走线为什么需要空间，审计把每处列为 `spacing` 发现；一页超过 `MAX_SPACING_DEVIATIONS`（3）处有理由的间距偏离本身就是一条发现：
+折行或重新定锚点（O8）。实测的组间距（`pitch_for`）从不算发现。报告中的可读性指标另有
+`paper`、`content_size_mm`、`fits_paper`、`oversized_paper`（检查项不通过的原因之一）、`occupancy`、`cell_coverage`（有任何对象的 25.4 mm 格占比）、
+`part_groups`/`part_group_refs`（只靠标签或电源轨符号相连的器件算不同的组）和 `longest_segment_mm`。
 
-`build(name, draft=False)` returns the native root and a report. With `draft=True`
-name and field failures are listed in `draft_failures` instead of raised, so a
-page can be rendered while it is being fixed; a draft is never delivered. Fields
-that fit on no side (bridges, parts wired on all four sides) take a clear body
-corner. Content stays 5 mm inside the page edge and out of the title block: `build()` raises on a wire that
-leaves that area, enters the title block or crosses a body, using the geometry gate's own check (`qa.wire_findings`). The report holds every recipe decision, crossing
-locations, label and rail sets, readability metrics with the gate, the
-structure audit, and a `layout` whose net policies `compare_netlist` uses to
-check label and rail names.
+`build(name, draft=False)` 返回 KiCad 根对象和一份报告。`draft=True` 时，名字和字段失败列在 `draft_failures` 里而不报错，
+这样修页面期间可以出图；草稿从不交付。哪一侧都放不下的字段（桥、四面都连线的器件）放在本体空着的角上。
+内容保持在页边以内 5 mm、不进入标题栏：导线离开该区域、进入标题栏或穿过本体时 `build()` 报错，用的是几何检查项自己的检查
+（`qa.wire_findings`）。报告包含每个画法决定、交叉位置、标签和电源轨集合、带检查项结果的可读性指标、结构审计，
+以及一份 `layout`，`compare_netlist` 用其网络策略核对标签和电源轨名字。
 
-`name_run_steps` validates a declared logical net and a finite positive numeric
-font; it does not decode names, shorten them, resolve variables or pick a font.
-The grid is 1.27 mm; the local-name font defaults to 1.0 mm, independently of
-Reference/Value field defaults. Explicit reservation before placement can avoid
-a later insufficient-length rejection, but sufficient length is only a space
-budget. Parts, text, foreign wires, junctions, page boundaries and native glyph
-coverage still need the unchanged strict build and native verification. The
-query gives no new qualification for encoded/markup/CJK/variable text, external
-fonts or mirrored glyphs. Keep their existing source and coverage boundaries.
+`name_run_steps` 校验声明的逻辑网络和有限的正数字号；它不解码、不缩短名字，不解析变量，也不选字号。栅格为 1.27 mm；
+局部网络名字号默认 1.0 mm，与 Reference/Value 字段的默认值无关。摆放前显式预留可以避免之后因长度不足被拒，但长度足够只是空间预算。
+器件、文字、外来导线、交汇点、页边界和 KiCad 字形覆盖仍需不变的严格构建和 KiCad 检查。这个查询不给编码/标记/CJK/变量文字、
+外部字体或镜像字形任何新的资格。保留它们已有的来源和覆盖边界。
 
-For a declared local net `node`, one series leg may be planned as:
+对一个声明的局部网络 `node`，一段串联可以这样规划：
 
 ```python
 font = 1.0
@@ -136,19 +102,13 @@ sheet.series(start_pin, [support_ref], toward, gap=gap)
 sheet.name(node, font=font)
 ```
 
-`start_pin` must actually be on `node`; every later leg in a multi-part chain
-can have a different net and needs its own budget. The same query can explicitly
-budget `stub(pin, max(existing_length, ...))` before wiring that own-pin exit.
-It does not move existing anchors or promise that an entire first build passes.
+`start_pin` 必须确实在 `node` 上；多器件链中后面每一段的网络可能不同，各需自己的预算。同一查询也可以在连那个本引脚出线之前显式预算
+`stub(pin, max(existing_length, ...))`。它不移动已有锚点，也不保证整个第一次构建就通过。
 
-For a multi-page project keep one board intent (see
-[requirements-to-intent.md](requirements-to-intent.md)) and split it with
-`schematic_layout.pages.page_intents(board, rails=...)`: each page gets its own
-components, the page-local part of every net, its NC pins and its `external`
-nets (nets with pins on another page that are not rails). Build each page with
-its own `power_ref_start`. For a redraw, restore the baseline identity (symbol
-properties, UUIDs, pin UUIDs, instance paths, page UUID, title block) before
-writing. Assemble the root with `schematic_layout.root.Root`:
+多页工程保留一份整板设计网表（见 [requirements-to-intent.md](requirements-to-intent.md)），用 `schematic_layout.pages.page_intents(board, rails=...)` 拆分：
+每页得到自己的器件、每个网络在本页的部分、本页的 NC 引脚和 `external` 网络（在其他页也有引脚、且不是电源轨的网络）。
+每页用自己的 `power_ref_start` 构建。重画时，写出前恢复基线身份（符号属性、UUID、引脚 UUID、实例路径、页 UUID、标题栏）。
+用 `schematic_layout.root.Root` 组装根图：
 
 ```python
 from schematic_layout.root import Root
@@ -163,54 +123,36 @@ r.isolation(x=302.26)                                       # straight line labe
 r.write(out_dir, libraries={"PD100": "PD100.kicad_sym"})
 ```
 
-`page` takes the root returned by `Sheet.build` (or a `.kicad_sch` path) and
-numbers pages in the order added, from 2. A flow without `via` needs the two
-blocks to share a row or column band; `via` points give an orthogonal route
-whose first and last legs leave and enter the blocks straight. The flow name
-sits beside its longest leg; `label_at` moves it. `write` rewrites every child
-symbol's instance path to the root project, writes the cover, pages,
-`.kicad_pro` and `sym-lib-table` into a fresh directory, and raises when a
-cover text sits on a line or the System_block audit fails. Then run
-`scripts/verify_schematic.py` on the root with the board intent. The charger redraw (`design/v0.2.5-recipes/scripts/redraw.py` in that
-project) is a worked example of nine hierarchical pages drawn this way.
+`page` 接受 `Sheet.build` 返回的根对象（或 `.kicad_sch` 路径），按添加顺序从 2 开始给页编号。没有 `via` 的流向线要求两个页块在同一行或同一列带；
+`via` 点给出一条正交路线，首末两段笔直地离开和进入页块。流向线名字放在最长一段旁；`label_at` 可移动它。
+`write` 把每个子页符号的实例路径改写到根工程，把封面、各页、`.kicad_pro` 和 `sym-lib-table` 写入一个新目录；
+封面文字压在线上或系统框图审计不通过时报错。然后用整板设计网表对根图运行 `scripts/verify_schematic.py`。
+充电器重画（该工程中的 `design/v0.2.5-recipes/scripts/redraw.py`）是用这种方式画九张层次页的实例。
 
-Native label styles (render-verified on KiCad 10.0.6): global labels extend
-left at 0/`right`, right at 180/`left`, up at 90/`left`, down at 270/`right`;
-local labels use 0/`left bottom`, 180/`right bottom`, 90/`left bottom`,
-270/`right bottom`, and KiCad draws their text readable (above a horizontal
-wire, left of a vertical one).
+KiCad 标签样式（在 KiCad 10.0.6 上经渲染核实）：全局标签在 0/`right` 时向左延伸，180/`left` 向右，90/`left` 向上，270/`right` 向下；
+局部标签用 0/`left bottom`、180/`right bottom`、90/`left bottom`、270/`right bottom`，KiCad 会把文字画成可读的方向（水平导线上方、竖直导线左侧）。
 
-## Hard rejections in `build()`
+## `build()` 的硬拒绝
 
-- Unplaced parts; off-grid or coincident terminals (from `make_root`).
-- Diagonal wires; a wire over another net's terminal; different nets touching
-  or overlapping (a clean perpendicular crossing is allowed but reported).
-- A wire through a part body (a pin's own outward exit is not a traversal), closer
-  than 5 mm to the page edge or entering the title block: the same `qa.wire_findings`
-  check the geometry gate runs on the written wires.
-- An unwired pin; a net drawn in separate pieces unless every piece carries its
-  label or rail symbol.
-- A rail symbol, label or name that collides; no clear Reference/Value position.
+- 未摆放的器件；离栅或重合的端子（来自 `make_root`）。
+- 斜线；导线压过另一网络的端子；不同网络相接或重叠（干净的垂直交叉允许，但会报告）。
+- 导线穿过器件本体（引脚自身的向外出线不算穿过）、距页边不足 5 mm 或进入标题栏：与几何检查项对写出的导线运行的同一个 `qa.wire_findings` 检查。
+- 未连线的引脚；一个网络画成分开的几段，除非每段都带它的标签或电源轨符号。
+- 碰撞的电源轨符号、标签或网络名；Reference/Value 没有空位。
 
-Typical fixes: lengthen a `gap` or stub, change a recipe direction, move or
-reorient an anchor, split a crowded block into rows, reverse a chain's order.
+典型的修法：加长 `gap` 或短线、改变画法方向、移动或重新定向锚点、把拥挤的功能块拆成几行、反转链的顺序。
 
-A rail-placement rejection keeps its net/anchor prefix and adds `diagnostic=`
-JSON for the first failing `body` or `Value` envelope. It identifies actual
-foreign-wire segments, obstacle references/pins/annotation or reserved-region
-indices, earlier rail requests and page edges. These are construction locators
-and conservative envelope checks, not native object UUIDs, ink measurements or
-electrical-short findings. Use them with O8; they neither move a rail nor waive
-the original rejection. A coordinate alone does not establish a pin owner.
+电源轨摆放被拒时保留其网络/锚点前缀，并为第一个失败的 `body` 或 `Value` 包络附加 `diagnostic=` JSON。它指出实际的外来导线段、
+障碍的位号/引脚/注释或预留区序号、之前的电源轨请求和页边。这些是构图定位线索和保守的包络检查，不是 KiCad 对象 UUID、墨迹测量或电气短路发现。
+按 O8 使用它们；它们既不移动电源轨，也不豁免原来的拒绝。单凭坐标不能确立引脚归属。
 
-Two pins 7.62 mm apart cannot both hang a shunt down: fold one branch up or make
-the lower pin's run shorter than the upper one's. Never replace a failed wire
-with a label unless the plan declares that boundary.
+相距 7.62 mm 的两个引脚不能都向下挂并联支路：把一条支路折向上，或让下方引脚的走线比上方的短。除非方案声明了那个边界，
+从不用标签代替失败的导线。
 
-## Worked example
+## 实例
 
-`tests/fixtures/drawing/recipe_board.py` draws a 12 V to 5 V buck, a 3.3 V LDO
-with indicator, and two USB ESD lanes on A4 (22 parts, 0 crossings, 11 bends):
+`tests/fixtures/drawing/recipe_board.py` 在 A4 上画了一个 12 V 转 5 V 的 buck、一个带指示灯的 3.3 V LDO 和两条 USB ESD 通道
+（22 个器件，0 处交叉，11 个拐弯）：
 
 ```python
 s = Sheet(INTENT, rails={'GND': 'power:GND', '+5V': 'power:+5V', '+3V3': 'power:+3V3'},
@@ -227,27 +169,18 @@ tap = s.wire(r1, add(r1, RIGHT, 2)); s.shunt(tap, 'R2', DOWN)
 fb = s.stub('U1.4', 2); s.connect(fb, tap, y=fb[1] - 10.16)   # FB over the top
 ```
 
-`draw(bad=True)` is the negative example: the same netlist with the feedback
-wire dropped through the +5 V spine and the LED reversed into a U-turn. The gate
-names the crossing (`+5V`/`FB`) and the tortuous connection (`D3.2`, `R3.2`);
-the structure audit names D3, placed by hand although its role is a shunt.
+`draw(bad=True)` 是反例：同一网表，反馈导线从 +5 V 主干穿过，LED 反向画成 U 形回头。检查项点名交叉（`+5V`/`FB`）和曲折的连接
+（`D3.2`、`R3.2`）；结构审计点名 D3：它的角色是并联支路却被手工摆放。
 
-## Keep the generator with the delivery
+## 生成脚本随交付保存
 
-Store the page scripts (intent derivation, recipe redraw, assembly) inside every delivered
-revision directory, next to the native project. The next electrical revision regenerates only
-its changed pages from the previous revision's intent plus these scripts; a delivery without its
-generator forces hand edits of readable pages, which this workflow forbids. Directory clean-ups
-must not delete a revision's generator while a later revision still derives from it.
+把图页脚本（设计网表推导、画法重画、组装）存在每个交付版本目录里，放在 KiCad 工程旁。下一次电气改版只从上一版的设计网表加这些脚本
+重新生成改动过的页面；交付不带生成脚本就只能手改可读的页面，而本流程禁止手改。整理目录时，只要后续版本仍从某一版派生，就不得删除该版的生成脚本。
 
-## Limits
+## 限制
 
-- The agent chooses structure; nothing here recognizes a topology.
-- Single-unit symbols only. A functional pin-grouped presentation symbol needs
-  its own verified physical pin map (see symbol-and-peripheral-contracts.md).
-- One `Sheet` per page. For a hierarchical project, copy each symbol's project
-  instance path and UUID from the baseline page, as a redraw must preserve them.
-- `check_scene` accepts a pin's own straight outward exit through graphics
-  that reach past its tip (LED arrows, magnetics arcs, thermistor marks); any
-  other wire through the body box is still reported.
-- Text widths are estimates; native render review remains mandatory.
+- 结构由 agent 选择；这里没有任何东西识别拓扑。
+- 只支持单单元符号。按功能分组引脚的表示用符号需要自己的、经核实的物理引脚映射（见 symbol-and-peripheral-contracts.md）。
+- 每页一个 `Sheet`。层次工程从基线页复制每个符号的工程实例路径和 UUID，因为重画必须保留它们。
+- `check_scene` 接受引脚自身笔直向外、穿过伸出其端点的图形的出线（LED 箭头、磁件圆弧、热敏电阻标记）；其他穿过本体框的导线仍会报告。
+- 文字宽度是估计；KiCad 渲染审阅仍是必需的。

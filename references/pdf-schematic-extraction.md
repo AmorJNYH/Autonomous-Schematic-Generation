@@ -1,155 +1,155 @@
-# PDF Schematic Analysis & Extraction
+# PDF 原理图分析与提取
 
-How to analyze schematics provided as PDF files — reference designs, dev board schematics, eval board docs, application notes — and extract useful information for incorporation into KiCad projects.
+如何分析以 PDF 形式提供的原理图（参考设计、开发板原理图、评估板文档、应用笔记），并提取有用的信息纳入 KiCad 工程。
 
-## Table of Contents
+## 目录
 
-1. [Common Sources of PDF Schematics](#common-sources-of-pdf-schematics)
-2. [Reading PDF Schematics](#reading-pdf-schematics)
-3. [Extraction Workflow](#extraction-workflow)
-4. [Component Extraction](#component-extraction)
-5. [Net and Connectivity Extraction](#net-and-connectivity-extraction)
-6. [Subcircuit Extraction](#subcircuit-extraction)
-7. [Translating to KiCad](#translating-to-kicad)
-8. [Validation Against Datasheets](#validation-against-datasheets)
-9. [Common Pitfalls](#common-pitfalls)
+1. [PDF 原理图的常见来源](#pdf-原理图的常见来源)
+2. [阅读 PDF 原理图](#阅读-pdf-原理图)
+3. [提取流程](#提取流程)
+4. [器件提取](#器件提取)
+5. [网络与连接提取](#网络与连接提取)
+6. [子电路提取](#子电路提取)
+7. [转成 KiCad](#转成-kicad)
+8. [对照数据手册核对](#对照数据手册核对)
+9. [常见陷阱](#常见陷阱)
 
 ---
 
-## Common Sources of PDF Schematics
+## PDF 原理图的常见来源
 
-| Source | What You Get | Example |
+| 来源 | 得到什么 | 例子 |
 |--------|-------------|---------|
-| **Dev board schematics** | Complete board design — power, MCU, peripherals, connectors | ESP32-DevKitC, STM32 Nucleo, Arduino, Raspberry Pi Pico |
-| **Eval board / reference designs** | Manufacturer's recommended circuit for a specific IC | TI EVM boards, Analog Devices eval boards |
-| **Application notes** | Focused subcircuits solving specific problems | AN-XXX from TI, Maxim, NXP, etc. |
-| **Chip datasheets** | Typical application circuit (usually 1-2 pages) | "Typical Application" section of any IC datasheet |
-| **Open-source hardware** | Full designs shared as PDFs (when source files aren't available) | Adafruit, SparkFun, community projects |
+| **开发板原理图** | 完整的板级设计：电源、MCU、外设、连接器 | ESP32-DevKitC、STM32 Nucleo、Arduino、Raspberry Pi Pico |
+| **评估板 / 参考设计** | 厂家针对某颗 IC 推荐的电路 | TI EVM 板、Analog Devices 评估板 |
+| **应用笔记** | 解决具体问题的专门子电路 | TI、Maxim、NXP 等的 AN-XXX |
+| **芯片数据手册** | 典型应用电路（通常 1–2 页） | 任何 IC 数据手册的 "Typical Application" 一节 |
+| **开源硬件** | 以 PDF 分享的完整设计（拿不到源文件时） | Adafruit、SparkFun、社区项目 |
 
-These PDFs are invaluable because they represent tested, working circuits — often designed by the IC manufacturer's own application engineers.
-
----
-
-## Reading PDF Schematics
-
-Read specific pages of the PDF using page range selection. Schematics are visual — multimodal LLMs can interpret the circuit diagrams directly from the rendered PDF pages.
-
-### Strategy for multi-page schematics
-
-1. **Read the first page** — usually a title block or table of contents. Note the page count and sheet names.
-2. **Read the table of contents or sheet index** — many reference designs list sheets by function (Power, MCU, Connectivity, IO, etc.)
-3. **Read pages by functional area** — focus on the subcircuits relevant to your design goal.
-4. **Read the BOM page** (if included) — some PDFs include a BOM table on the last pages.
-
-### Tips for reading
-
-- Request 2-4 pages at a time to keep context manageable
-- For complex pages, focus on one area at a time (e.g., "the voltage regulator in the top-left quadrant")
-- If text is small or blurry, note component values you can't read clearly and cross-reference with the BOM or datasheet
-- Schematic PDFs from manufacturers are usually high-quality vector graphics — they render well
+这些 PDF 很有价值，因为它们是测试过、能工作的电路，常由 IC 厂家自己的应用工程师设计。
 
 ---
 
-## Extraction Workflow
+## 阅读 PDF 原理图
 
-### Step 1: Understand the purpose
+按页码范围读 PDF 的指定页。原理图是图形，多模态 LLM 可以直接从渲染的 PDF 页面理解电路图。
 
-Before extracting, clarify what you're taking from the PDF and why:
-- **Whole design**: recreating the entire board in KiCad (e.g., cloning a dev board)
-- **Specific subcircuit**: borrowing a power supply, USB interface, or sensor circuit
-- **Component selection**: seeing what parts the manufacturer chose and why
-- **Value verification**: checking your own design against a known-good reference
+### 多页原理图的读法
 
-### Step 2: Read and catalog
+1. **先读第一页**：通常是标题栏或目录。记下页数和页名。
+2. **读目录或页索引**：很多参考设计按功能列出各页（电源、MCU、通信、IO 等）。
+3. **按功能区读页**：集中看与你的设计目标相关的子电路。
+4. **读 BOM 页**（如果有）：有些 PDF 在最后几页附 BOM 表。
 
-Read through the schematic pages. For each page/sheet, note:
-- Sheet title and function
-- Key ICs and their part numbers
-- Power rails and voltages
-- Connectors and interfaces
-- Any notes or comments on the schematic (designers often annotate important decisions)
+### 阅读技巧
 
-### Step 3: Extract what you need
-
-Depending on your goal, extract:
-- Full BOM (all components with designators, values, footprints, part numbers)
-- Subcircuit topology (which components connect to which, net names)
-- Component values and their rationale
-- Design decisions (why certain values/parts were chosen)
-
-### Step 4: Translate to KiCad
-
-Recreate the extracted circuit in your KiCad schematic with proper symbols, values, and properties.
-
-### Step 5: Validate
-
-Cross-reference the extracted circuit against the IC datasheets to confirm correctness. PDF schematics can contain errors (even from manufacturers), and your application conditions may differ.
+- 一次读 2–4 页，让上下文可控。
+- 复杂的页一次只看一个区域（如“左上角的稳压器”）。
+- 文字小或模糊时，记下读不清的器件值，再与 BOM 或数据手册交叉核对。
+- 厂家的原理图 PDF 通常是高质量矢量图，渲染效果好。
 
 ---
 
-## Component Extraction
+## 提取流程
 
-When reading a PDF schematic, extract a structured BOM.
+### 第 1 步：弄清目的
 
-### What to capture per component
+提取前先明确从 PDF 拿什么、为什么拿：
+- **整个设计**：在 KiCad 中重建整块板（如复制一块开发板）
+- **特定子电路**：借用电源、USB 接口或传感器电路
+- **器件选择**：看厂家选了哪些器件、为什么
+- **数值核对**：用已知可用的参考设计检查自己的设计
 
-| Field | Source in PDF | Notes |
+### 第 2 步：通读并编目
+
+通读原理图各页。每页/每张记下：
+- 页标题和功能
+- 关键 IC 及其料号
+- 电源轨和电压
+- 连接器和接口
+- 原理图上的注释（设计者常把重要的决定标注在图上）
+
+### 第 3 步：提取所需内容
+
+按目标提取：
+- 完整 BOM（所有器件的位号、值、封装、料号）
+- 子电路拓扑（哪些器件接到哪些器件、网络名）
+- 器件值及其理由
+- 设计决定（为什么选某些值/器件）
+
+### 第 4 步：转成 KiCad
+
+在 KiCad 原理图中用正确的符号、值和属性重建提取的电路。
+
+### 第 5 步：核对
+
+对照 IC 数据手册交叉核对提取的电路是否正确。PDF 原理图可能有错（即使来自厂家），你的应用条件也可能不同。
+
+---
+
+## 器件提取
+
+读 PDF 原理图时提取一份结构化的 BOM。
+
+### 每个器件要记的内容
+
+| 字段 | 在 PDF 中的位置 | 说明 |
 |-------|--------------|-------|
-| Reference | Printed next to symbol (R1, C5, U3) | May follow different convention than your project |
-| Value | Printed on or near symbol | "100n", "10K", "4.7u" — note the notation style |
-| Part number / MPN | In the BOM table, or printed on the symbol | Not always visible on the schematic itself |
-| Package / Footprint | Sometimes in BOM, sometimes from context | "0402", "0603", "SOT-23-5" |
-| Voltage rating | Sometimes annotated, often only in BOM | Critical for caps — "16V", "25V" |
-| Tolerance | Rarely on schematic, usually in BOM | "1%", "5%", "10%" |
-| Notes | Designer annotations near the component | "DNP", "Optional", "Select for 3.3V" |
+| 位号 | 印在符号旁（R1、C5、U3） | 编号习惯可能与你的工程不同 |
+| 值 | 印在符号上或附近 | "100n"、"10K"、"4.7u"：注意记法 |
+| 料号 / MPN | 在 BOM 表中，或印在符号上 | 原理图本身不一定看得到 |
+| 封装 | 有时在 BOM，有时要从上下文判断 | "0402"、"0603"、"SOT-23-5" |
+| 耐压 | 有时有标注，常常只在 BOM 中 | 对电容至关重要："16V"、"25V" |
+| 容差 | 原理图上很少有，通常在 BOM 中 | "1%"、"5%"、"10%" |
+| 注释 | 器件旁的设计者标注 | "DNP"、"Optional"、"Select for 3.3V" |
 
-### Notation conventions in PDF schematics
+### PDF 原理图中的记法
 
-Different manufacturers use different shorthand:
+不同厂家用不同的简写：
 
-| PDF Notation | Meaning |
+| PDF 记法 | 含义 |
 |-------------|---------|
-| `100n`, `0.1u`, `100nF` | 100 nanofarads |
-| `4R7`, `4.7R` | 4.7 ohms (R marks decimal point) |
-| `10K`, `10k` | 10 kilohms |
-| `2M2` | 2.2 megohms |
-| `4u7`, `4.7u` | 4.7 microfarads |
-| `22p` | 22 picofarads |
-| `NF`, `NP`, `NC` | Not fitted / Not populated / No connect |
-| `DNP`, `DNS` | Do Not Populate / Do Not Stuff |
+| `100n`、`0.1u`、`100nF` | 100 纳法 |
+| `4R7`、`4.7R` | 4.7 欧（R 表示小数点） |
+| `10K`、`10k` | 10 千欧 |
+| `2M2` | 2.2 兆欧 |
+| `4u7`、`4.7u` | 4.7 微法 |
+| `22p` | 22 皮法 |
+| `NF`、`NP`、`NC` | 不装 / 不贴 / 不连接 |
+| `DNP`、`DNS` | 不装配 / 不贴装 |
 
-### Handling missing information
+### 缺失信息的处理
 
-PDF schematics often omit details that KiCad needs:
-- **No MPN shown**: search the value + package on DigiKey/Mouser to find a suitable part
-- **No footprint shown**: infer from context (dev boards typically use 0402 or 0603 for passives) or check the BOM if included
-- **No voltage rating on caps**: check the rail voltage and select appropriate rating (1.5-2x)
-- **Generic part numbers**: "100nF" without MPN — select a specific part during your own BOM enrichment
+PDF 原理图常常省略 KiCad 需要的细节：
+- **没写 MPN**：按值 + 封装在 DigiKey/Mouser 上找合适的器件
+- **没写封装**：从上下文推断（开发板的无源件通常用 0402 或 0603），有 BOM 就查 BOM
+- **电容没写耐压**：看所在电源轨的电压，选合适的额定值（1.5–2 倍）
+- **通用料号**：只写 "100nF" 没有 MPN 时，在自己补全 BOM 时选定具体料号
 
 ---
 
-## Net and Connectivity Extraction
+## 网络与连接提取
 
-### Reading connections from PDF schematics
+### 从 PDF 原理图读连接
 
-PDF schematics show connectivity through:
-- **Wires** — lines connecting component pins
-- **Net labels** — text labels on wires (same label = same net, even across pages)
-- **Power symbols** — VCC, GND, +3V3, +5V, VBAT, etc.
-- **Port/off-page connectors** — arrows or symbols indicating connections to other sheets
-- **Bus notation** — thick lines with slash labels (D[0:7], A[0:15])
+PDF 原理图通过这些方式表示连接：
+- **导线**：连接器件引脚的线
+- **网络标签**：导线上的文字标签（同名标签 = 同一网络，跨页也一样）
+- **电源符号**：VCC、GND、+3V3、+5V、VBAT 等
+- **端口/出页连接符**：表示连到其他页的箭头或符号
+- **总线记法**：带斜线标签的粗线（D[0:7]、A[0:15]）
 
-### Multi-page connectivity
+### 多页连接
 
-For multi-page schematics, track inter-sheet connections:
-1. Note all port/off-page connector labels on each page
-2. Match labels across pages — same label = same net
-3. Power rails (VCC, GND, etc.) are typically global across all pages
-4. Some designs use hierarchical labels — note the hierarchy
+多页原理图要跟踪页间连接：
+1. 记下每页所有的端口/出页连接符标签
+2. 跨页匹配标签：同名标签 = 同一网络
+3. 电源轨（VCC、GND 等）通常在所有页上都是全局的
+4. 有些设计用层次标签：记下层次关系
 
-### Creating a net map
+### 建网络图
 
-For complex extractions, build a net map:
+复杂的提取要建一份网络图：
 
 ```
 Net Name: USB_DP
@@ -165,151 +165,154 @@ Net Name: +3V3
   Page 3: R8, R9 (I2C pull-ups)
 ```
 
-This map becomes the basis for recreating the schematic in KiCad.
+这份网络图是在 KiCad 中重建原理图的基础。
 
 ---
 
-## Subcircuit Extraction
+## 子电路提取
 
-The most common use case — extracting a specific subcircuit from a reference design to use in your own project.
+最常见的用法：从参考设计中提取某个子电路用到自己的工程里。
 
-### What makes a good subcircuit to extract
+### 适合提取的子电路
 
-- **Power supply circuits** — LDO, buck, boost, battery charger. These are the most commonly borrowed subcircuits because getting them wrong is consequential and the reference design is known to work.
-- **Interface circuits** — USB, Ethernet, CAN, RS-485. Protocol-specific circuits with precise component requirements.
-- **Sensor front-ends** — amplifier, filter, and ADC input stages from eval boards.
-- **Wireless module circuits** — antenna matching, crystal, bypass caps for WiFi/BT/LoRa modules.
-- **Protection circuits** — ESD, reverse polarity, overcurrent. Safety-critical, better to copy a proven design.
+- **电源电路**：LDO、buck、boost、电池充电器。这是最常借用的子电路，因为做错的后果严重，而参考设计已知能工作。
+- **接口电路**：USB、以太网、CAN、RS-485。协议专用电路，器件要求精确。
+- **传感器前端**：评估板上的放大、滤波和 ADC 输入级。
+- **无线模块电路**：WiFi/BT/LoRa 模块的天线匹配、晶振、去耦电容。
+- **保护电路**：ESD、防反接、过流。安全关键，最好照搬验证过的设计。
 
-### Extraction checklist
+### 提取检查清单
 
-For each subcircuit you extract:
+每个提取的子电路：
 
-- [ ] All components identified with values
-- [ ] All connections traced (including power and ground)
-- [ ] Net names recorded (use the PDF's names or create your own)
-- [ ] Any notes or annotations from the original designer captured
-- [ ] IC datasheet cross-referenced to verify the subcircuit
-- [ ] Any components shared with other subcircuits identified (e.g., bulk cap shared between regulators)
-- [ ] Board-specific components identified and excluded (e.g., test points, debug headers you don't need)
-- [ ] Voltage rails and current requirements documented
+- [ ] 所有器件已识别并有值
+- [ ] 所有连接已追踪（包括电源和地）
+- [ ] 网络名已记录（用 PDF 的名字或自己起名）
+- [ ] 原设计者的注释或标注已记下
+- [ ] 已对照 IC 数据手册核对子电路
+- [ ] 已识别与其他子电路共用的器件（如几个稳压器共用的大电容）
+- [ ] 已识别并排除板子专用的器件（如你不需要的测试点、调试排针）
+- [ ] 电源轨和电流要求已写明
 
-### Adapting extracted subcircuits
+### 改造提取的子电路
 
-Rarely can you copy a subcircuit verbatim. Common adaptations:
+几乎不能原样照抄子电路。常见的改造：
 
-| Adaptation | When Needed | How |
+| 改造 | 何时需要 | 怎么做 |
 |-----------|-------------|-----|
-| **Different input voltage** | Your power source differs from the reference | Recalculate input caps, voltage ratings, feedback dividers |
-| **Different output current** | Your load is lighter or heavier | Check regulator rating, adjust inductor/cap sizing |
-| **Different package** | You want a different footprint (e.g., larger for hand soldering) | Find same MPN in different package, or equivalent part |
-| **Removing unused features** | Reference has features you don't need | Identify which components are optional (check datasheet) |
-| **Adding features** | Reference is minimal, you want power-good or soft-start | Add components per datasheet |
-| **Different component availability** | Original parts hard to source | Find equivalents using DigiKey/Mouser/LCSC (match key specs) |
+| **输入电压不同** | 你的电源与参考设计不同 | 重新计算输入电容、耐压、反馈分压 |
+| **输出电流不同** | 你的负载更轻或更重 | 核对稳压器额定，调整电感/电容规格 |
+| **封装不同** | 你想用别的封装（如便于手焊的大封装） | 找同一 MPN 的其他封装，或等效器件 |
+| **去掉不用的功能** | 参考设计有你不需要的功能 | 找出哪些器件是可选的（查数据手册） |
+| **增加功能** | 参考设计是最简的，你想要 power-good 或软启动 | 按数据手册加器件 |
+| **器件供货不同** | 原器件难买 | 用 DigiKey/Mouser/LCSC 找等效器件（匹配关键参数） |
 
 ---
 
-## Translating to KiCad
+## 转成 KiCad
 
-### Mapping PDF components to KiCad symbols
+### PDF 器件到 KiCad 符号的对应
 
-| PDF Symbol | KiCad Library | Notes |
+| PDF 符号 | KiCad 库 | 说明 |
 |-----------|--------------|-------|
-| Resistor (rectangle or zigzag) | `Device:R` | Add MPN, value, footprint |
-| Capacitor (two lines) | `Device:C` or `Device:C_Polarized` | Polarized for electrolytic/tantalum |
-| Inductor (coil) | `Device:L` | Check if shielded version needed |
-| Diode (triangle) | `Device:D` or `Device:D_Schottky` or `Device:D_Zener` | Match type to function |
-| LED | `Device:LED` | Note color for correct VF |
-| N-FET | `Device:Q_NMOS_GDS` | Check pin order matches |
-| P-FET | `Device:Q_PMOS_GDS` | Check pin order matches |
-| NPN/PNP | `Device:Q_NPN_BCE` / `Device:Q_PNP_BCE` | Check pin order |
-| Generic IC | Search KiCad library by MPN | If not in library, create custom symbol |
-| Connector | `Connector_Generic:Conn_01xNN` or specific | Match pin count and type |
-| Crystal | `Device:Crystal` | Two-pin or four-pin (with ground) |
-| TVS diode | `Device:D_TVS` or `Device:D_TVS_bidir` | Uni vs bidirectional |
-| Ferrite bead | `Device:FerriteBead` | Value in ohms at 100MHz |
+| 电阻（矩形或锯齿） | `Device:R` | 加 MPN、值、封装 |
+| 电容（两条线） | `Device:C` 或 `Device:C_Polarized` | 电解/钽电容用有极性的 |
+| 电感（线圈） | `Device:L` | 看是否需要屏蔽型 |
+| 二极管（三角形） | `Device:D`、`Device:D_Schottky` 或 `Device:D_Zener` | 类型与功能匹配 |
+| LED | `Device:LED` | 记下颜色以确定正确的 VF |
+| N 沟道 MOS | `Device:Q_NMOS_GDS` | 核对引脚顺序一致 |
+| P 沟道 MOS | `Device:Q_PMOS_GDS` | 核对引脚顺序一致 |
+| NPN/PNP | `Device:Q_NPN_BCE` / `Device:Q_PNP_BCE` | 核对引脚顺序 |
+| 一般 IC | 按 MPN 搜 KiCad 库 | 库里没有就建自定义符号 |
+| 连接器 | `Connector_Generic:Conn_01xNN` 或专用符号 | 匹配引脚数和类型 |
+| 晶振 | `Device:Crystal` | 两脚或四脚（带地） |
+| TVS 二极管 | `Device:D_TVS` 或 `Device:D_TVS_bidir` | 单向/双向（注意 `Device:D_TVS` 只表示双向，单向器件见 symbol-and-peripheral-contracts.md） |
+| 磁珠 | `Device:FerriteBead` | 值为 100MHz 下的欧姆数 |
 
-### Symbol not in KiCad library?
+### KiCad 库里没有这个符号？
 
-If the IC from the PDF isn't in KiCad's default libraries:
-1. **Check manufacturer libraries** — many vendors provide KiCad symbols (TI, STMicro, Espressif, etc.)
-2. **Search online** — SnapEDA, Ultra Librarian, Component Search Engine offer free KiCad symbols
-3. **Create a custom symbol** — use the pin descriptions from the IC datasheet to create a new symbol in KiCad's Symbol Editor
+PDF 里的 IC 不在 KiCad 默认库中时：
+1. **查厂家的库**：很多厂家提供 KiCad 符号（TI、ST、Espressif 等）
+2. **在线搜索**：SnapEDA、Ultra Librarian、Component Search Engine 提供免费的 KiCad 符号
+3. **建自定义符号**：用 IC 数据手册的引脚说明在 KiCad 符号编辑器中新建符号
 
-### Recreating the schematic
+### 重建原理图
 
-1. **Place ICs first** — the main active components anchor the layout
-2. **Add passive components** — resistors, caps, inductors connected to each IC
-3. **Add power symbols** — VCC, GND, named power nets
-4. **Wire everything** — follow the PDF's connectivity
-5. **Add net labels** — for connections between subcircuits or across pages
-6. **Annotate** — set reference designators (can reuse PDF's or use KiCad's auto-annotate)
-7. **Fill in symbol properties** — Value, Footprint, MPN, Datasheet URL
-8. **Run ERC** — KiCad's Electrical Rules Check catches basic wiring errors
+1. **先放 IC**：主要有源器件作为布局的锚点
+2. **加无源器件**：接到每颗 IC 的电阻、电容、电感
+3. **加电源符号**：VCC、GND、有名字的电源网络
+4. **连线**：按 PDF 的连接
+5. **加网络标签**：用于子电路之间或跨页的连接
+6. **标注**：设位号（可沿用 PDF 的，也可用 KiCad 自动标注）
+7. **填符号属性**：Value、Footprint、MPN、Datasheet URL
+8. **运行 ERC**：KiCad 的电气规则检查能发现基本的连线错误
 
-### Organizing multi-sheet schematics
+（在 ASG 中，第 4–8 项按 SKILL.md 任务 3.2 用 recipes 画，并按任务 4.1 运行自动检查。）
 
-If the PDF has multiple pages, consider mirroring that structure in KiCad with hierarchical sheets:
-- One sheet per functional block (Power, MCU, Connectivity, IO)
-- Use hierarchical labels for inter-sheet connections
-- Keep power rails as global power symbols (they connect across all sheets automatically)
+### 组织多页原理图
 
----
-
-## Validation Against Datasheets
-
-Never blindly trust a PDF schematic. Always cross-reference against datasheets.
-
-### Why PDF schematics can be wrong
-
-- **Errata not applied** — the PDF may predate a silicon revision or app note correction
-- **Transcription errors** — someone redrew the schematic and made mistakes
-- **Version mismatch** — the PDF shows rev A but the datasheet has been updated for rev C
-- **Board-specific workarounds** — the reference design may include bodge fixes that aren't appropriate for your design
-- **Different operating conditions** — the reference design may target conditions different from yours (temperature, voltage range, load)
-
-### Validation steps
-
-1. **Get the current datasheet** for every IC — don't rely on the PDF's embedded info
-2. **Compare pin connections** — verify every pin in the PDF matches the datasheet's pin table
-3. **Check the "Typical Application" circuit** in the datasheet — compare against the PDF
-4. **Verify component values** against datasheet recommendations (main workflow step 2)
-5. **Check for errata** — look for errata documents or app notes that supersede the reference design
-6. **Verify footprints** — the PDF's component packages may not match what's currently available
-
-### Red flags in PDF schematics
-
-- Component values that seem unusual (e.g., a 47nF where you'd expect 100nF)
-- Pins connected that the datasheet says should be left floating (or vice versa)
-- Missing decoupling caps on IC power pins
-- Net labels that don't match the IC datasheet pin names
-- Annotations like "TBD", "check", "verify" — the design may not be finalized
-- Very old revision dates — circuit may predate important errata
+PDF 有多页时，可以考虑在 KiCad 中用层次页沿用这个结构：
+- 每个功能块一页（电源、MCU、通信、IO）
+- 页间连接用层次标签
+- 电源轨用全局电源符号（它们自动跨所有页连接）
 
 ---
 
-## Common Pitfalls
+## 对照数据手册核对
 
-### Pin numbering differences
+从不盲目相信 PDF 原理图。始终对照数据手册交叉核对。
 
-Different schematic tools number pins differently. A PDF from Altium, OrCAD, or Eagle may show pin numbers or names that don't match KiCad's symbol. Always cross-reference against the IC datasheet — the datasheet is the authority on pin numbering.
+### PDF 原理图为什么会错
 
-### Passive component notation
+- **没有应用勘误**：PDF 可能早于某次芯片改版或应用笔记的更正
+- **转绘错误**：有人重画原理图时出了错
+- **版本不一致**：PDF 是 rev A，而数据手册已为 rev C 更新
+- **板子专用的临时修补**：参考设计可能含有不适合你的设计的飞线修补
+- **工作条件不同**：参考设计针对的条件（温度、电压范围、负载）可能与你的不同
 
-PDF schematics may use inconsistent notation. On the same page you might see "100n", "0.1uF", and "100nF" — these are all the same value. Normalize when entering into KiCad (pick one convention: "100nF" is clearest).
+### 核对步骤
 
-### Ground symbol variants
+1. **拿到每颗 IC 的当前数据手册**：不依赖 PDF 中附带的信息
+2. **比较引脚连接**：核对 PDF 中每个引脚都与数据手册的引脚表一致
+3. **查数据手册的 "Typical Application" 电路**：与 PDF 比较
+4. **核对器件值**是否符合数据手册的推荐（主流程任务 2.1–2.2）
+5. **查勘误**：找取代该参考设计的勘误文档或应用笔记
+6. **核对封装**：PDF 中的器件封装可能与当前可买到的不一致
 
-PDFs may use multiple ground symbols (chassis ground, digital ground, analog ground, signal ground). Understand which are connected and which are separate in the original design. In KiCad, each distinct ground net needs its own power symbol.
+### PDF 原理图中的危险信号
 
-### Copied circuits need adaptation
+- 看起来不寻常的器件值（例如本应 100nF 的地方是 47nF）
+- 数据手册说应悬空的引脚被连上了（或反过来）
+- IC 电源引脚缺去耦电容
+- 网络标签与 IC 数据手册的引脚名对不上
+- "TBD"、"check"、"verify" 之类的标注：设计可能尚未定型
+- 很老的版本日期：电路可能早于重要的勘误
 
-The reference design's operating conditions may differ from yours:
-- Different input voltage → recalculate feedback dividers, check voltage ratings
-- Different load current → verify regulator capacity, adjust inductor sizing
-- Different temperature range → check component ratings
-- Different PCB stackup → impedance-controlled traces may need different widths
+---
 
-### Don't copy what you don't understand
+## 常见陷阱
 
-If you can't explain why a component is there and what value it should be, research it before including it. Copying cargo-cult components from reference designs is a common source of problems — you'll have mysterious parts on your board that you can't debug because you don't know their purpose.
+### 引脚编号的差异
+
+不同的原理图工具给引脚编号的方式不同。来自 Altium、OrCAD 或 Eagle 的 PDF 显示的引脚号或引脚名可能与 KiCad 符号不一致。
+始终对照 IC 数据手册：引脚编号以数据手册为准。
+
+### 无源器件的记法
+
+PDF 原理图的记法可能不统一。同一页上可能同时有 "100n"、"0.1uF" 和 "100nF"，它们是同一个值。录入 KiCad 时统一（选一种记法："100nF" 最清楚）。
+
+### 地符号的变体
+
+PDF 可能用多种地符号（机壳地、数字地、模拟地、信号地）。弄清原设计中哪些相连、哪些分开。在 KiCad 中每个不同的地网络都需要自己的电源符号。
+
+### 照搬的电路需要改造
+
+参考设计的工作条件可能与你的不同：
+- 输入电压不同 → 重新计算反馈分压，核对耐压
+- 负载电流不同 → 核对稳压器能力，调整电感规格
+- 温度范围不同 → 核对器件额定
+- PCB 叠层不同 → 阻抗控制走线可能需要不同的线宽
+
+### 不懂的不要照抄
+
+说不清某个器件为什么在那里、应该取什么值时，先查清楚再加。从参考设计里照抄不明所以的器件是常见的问题来源：板上会有你调试不了的神秘器件，因为你不知道它们的用途。

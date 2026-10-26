@@ -1,128 +1,67 @@
-# Finite native geometry context
+# 有限的 KiCad 导出几何上下文
 
-`verify_schematic.py` enables a fresh finite native SVG geometry job for a
-hierarchical root. A standalone page can request the same channel with
-`--native-geometry`. In-memory `Sheet.build()` and the default standalone
-geometry CLI keep their existing estimate/contact behavior. The native channel
-does not change names, font sizes, electrical sources or native ERC/XML/PDF.
+`verify_schematic.py` 对层次根图启用一次全新的、有限的 KiCad SVG 几何任务。单独的页面可以用 `--native-geometry`
+请求同一通道。内存中的 `Sheet.build()` 和默认的单页几何 CLI 保持原有的估算/接触行为。这个通道不改变名字、字号、
+电气来源或 KiCad 的 ERC/XML/PDF。
 
-**Scope is frozen (2026-10-23).** The native channel is not extended to new
-object profiles. An object outside the supported profiles stays an INSUFFICIENT
-gap and is covered by the render review (step 7) on the KiCad PDF; a new gap is
-not a reason to add a profile. Changes here are limited to fixing a wrong
-result on a supported profile, with a test that reproduces it.
+**范围已冻结（2026-10-23）。** 这个通道不再扩展到新的对象类型。支持类型之外的对象保持 INSUFFICIENT 缺口，
+由 KiCad PDF 上的图面审阅（任务 4.2）覆盖；出现新缺口不是增加类型的理由。这里的改动限于修正已支持类型上的错误结果，
+并附复现它的测试。
 
-The job copies reachable native source files, project configuration and local
-library context to fresh output folders. It uses KiCad 10.0.6 full-project SVG
-exports with drawing sheets excluded. A baseline and replica must agree in
-all visible primitives and complete hidden SVG text companions. One added
-source-specific annotation establishes the exported page/source identity; no
-nearest-coordinate, filename or same-string matching supplies ownership.
+任务把可达的 KiCad 源文件、工程配置和本地库上下文复制到全新的输出目录。它用 KiCad 10.0.6 的整工程 SVG 导出，
+不含图框。基线和副本的所有可见图元及完整的隐藏 SVG 文字配套必须一致。加一条针对源文件的注释即可确立导出页/源文件的身份；
+不靠最近坐标、文件名或同字符串匹配来认定归属。
 
-Each sheet-field visibility, frame-width/fill, or unique cache pin-name
-intervention changes exactly one source span in a render-only clone. All other
-source bytes and non-target exported objects/pages must remain unchanged.
-The job records actual commands, return codes, timing, source/tool/configuration
-hashes and raw export hashes. Fontconfig warnings are retained and are not a
-qualification by themselves; reproducibility and complete differences determine
-the supported finite profile. Unknown source font faces, variables, filled or
-curved glyphs, visible transforms and other unsupported profiles remain gaps.
-The source-edit subset is UTF-8/LF; non-LF schematics remain INS rather than
-normalize bytes outside a target span. Extra structural display flags, including
-DNP, are unsupported; their added ink cannot be covered by a borrowed rectangle.
+每次对页字段可见性、图框线宽/填充或唯一缓存引脚名的干预，只在仅用于渲染的克隆里改变恰好一段源文件。
+其余源字节和非目标的导出对象/页面必须不变。任务记录实际命令、返回码、耗时、源文件/工具/配置哈希和原始导出哈希。
+Fontconfig 警告保留，它本身不构成合格；可复现性和完整的差异决定支持的有限类型。未知的源字体、变量、填充或曲线字形、
+可见的变换和其他不支持的类型保持缺口。源文件编辑子集限于 UTF-8/LF；非 LF 的原理图保持 INS，不规范化目标段之外的字节。
+额外的结构显示标志（包括 DNP）不支持；它们增加的墨迹不能借一个矩形覆盖。
 
-Supported structural graphics are axis-aligned unfilled rectangles, including
-transparent rectangular sheets without sheet pins. Native/source coordinates
-must agree within the native SVG serialization precision; collision uses the
-actual native stroke, not that matching tolerance. A width probe that also
-changes sheet-field pens is rejected. A fill-only fallback is accepted only
-when it causally deletes one complete original frame outline and introduces
-one rectangle of identical geometry, with all other primitives/text unchanged.
-Zero deleted outlines cannot borrow a foreign matching perimeter. Duplicate
-outlines and overlapping sheets remain collision candidates.
+支持的结构图形是轴对齐、无填充的矩形，包括没有页引脚的透明矩形页。KiCad 坐标与源坐标必须在 KiCad SVG 序列化精度内一致；
+碰撞按 KiCad 实际的线宽算，而不是那个匹配容差。同时改变页字段笔宽的线宽探测会被拒绝。只改填充的回退只在它因果地删去一个
+完整的原图框轮廓、并引入一个几何完全相同的矩形、其余图元/文字都不变时才接受。删去零个轮廓的不能借用别处匹配的周长。
+重复的轮廓和重叠的页仍是碰撞候选。
 
-Sheetname and Sheetfile use the entire causally removed glyph union and complete
-native shown literal, including the actual localized file prefix. Their checked
-envelope unions native ink with the existing estimate of that complete literal;
-it never shrinks text or uses a decoded-name shortcut. Architecture annotation
-inside a sheet frame is legal; native edge collisions and foreign electrical
-wires through sheet structure remain defects. Fields, outlines and page/title
-region extents are checked separately. Sheet pins, normalized anchors and their
-text/outlines remain explicit unsupported coverage in this implementation.
+Sheetname 和 Sheetfile 用因果删除的全部字形并集和 KiCad 显示的完整字面文字，包括实际本地化的文件前缀。
+它们的检查范围把 KiCad 墨迹与该完整字面的现有估算取并；从不缩小文字，也不用解码名字的捷径。页框内的架构注释是合法的；
+KiCad 边缘碰撞和穿过页结构的外来电气导线仍是缺陷。字段、轮廓和页面/标题区域范围分开检查。
+页引脚、规范化锚点及其文字/轮廓在本实现中仍明确列为不支持的覆盖。
 
-The limited pin-name channel binds one placed symbol, used unit/convert, unique
-physical pin and original cache source span. It requires a unique active cache
-instance and an exclusive raw-name-empty render difference. Reused definitions,
-multiunit/convert variations, inheritance, hidden/empty names, power-symbol
-behavior and formatting are not qualified. **Pin numbers are never changed**; their
-geometry remains native-review coverage rather than a falsely qualified channel.
-Pin text the library hides (`pin_numbers`/`pin_names` hide, hidden or empty
-`~` names) draws no ink and is not listed. Visible pin text this channel cannot
-qualify goes to `render_review_items`, not to gaps: the page report already
-requires native render review of pin names/numbers, so listing it as a gap only
-made every page with a symbol INSUFFICIENT. The render review must cover those
-items. Library caches and hidden properties (e.g. KiCad's `${INTERSHEET_REFS}`)
-are not checked for text variables; a visible `${...}` remains a gap.
-Different pin names, foreign fields/wires/bodies, and qualified actual symbol
-foreground outlines protect collisions. Own rectangular background fill can
-legitimately contain pin names; that does not exempt foreground strokes or other
-pins. Unknown foreground shapes keep a gap. Errors take precedence over gaps.
+有限的引脚名通道绑定一个已放置的符号、所用的单元/变体、唯一的物理引脚和原缓存源文件段。它要求唯一的活动缓存实例和
+一个独占的、原始名置空后的渲染差异。复用的定义、多单元/变体、继承、隐藏/空名、电源符号行为和格式不在合格范围内。
+**引脚号从不改动**；它们的几何仍归 KiCad 图面审阅，而不是一个虚假合格的通道。库里隐藏的引脚文字
+（`pin_numbers`/`pin_names` hide、隐藏或空的 `~` 名）不画墨迹，不列出。这个通道不能判定合格的可见引脚文字列入
+`render_review_items`（图面待审对象），不列为缺口：页面报告本来就要求在 KiCad 渲染上审阅引脚名/引脚号，
+列为缺口只会让每个有符号的页都成为 INSUFFICIENT。图面审阅必须覆盖这些对象。库缓存和隐藏属性（如 KiCad 的
+`${INTERSHEET_REFS}`）不检查文字变量；可见的 `${...}` 仍是缺口。不同的引脚名、外来的字段/导线/本体以及合格的实际符号前景轮廓
+都受碰撞保护。符号自己的矩形背景填充可以合法地包含引脚名；这不豁免前景线条或其他引脚。未知的前景形状保持缺口。错误优先于缺口。
 
-The native path channel additionally accepts a finite circular `A` profile:
-absolute, unrotated, unfilled round strokes, equal positive radii and distinct
-endpoints whose **exact** fixed-decimal chord is at most one diameter. Centre
-side and extent follow SVG F.6.5: the large flag selects the minor or major
-arc and sweep its direction; an exact diameter is a half circle for either
-large flag. A **filled** path in this same profile (opaque solid fill, round or
-no stroke, not a glyph), such as the half discs in KiCad's USB-C receptacle
-symbol, is covered by its bounding box: the boundary is qualified like a
-stroked arc with its envelope, and the fill lies inside the boundary's convex
-hull, hence inside that box. Its ink is one capsule containing the box, and the
-wire-contact refinement uses the same box; both over-cover and never under-cover.
-Ellipses, relative commands, chords beyond a diameter (SVG radius correction),
-curved glyphs, translucent fills and unknown paint/effects remain unsupported.
-In the fresh geometry job such an arc does not abort the board: it stays in
-primitive equality, its own page records `native arc ink unsupported`, and any
-consumer that needs its ink still rejects it.
-Coordinates/radii are bounded to 10000 mm, at most ten decimal places; an arc
-path has a 4096-segment budget. This is limited coverage, not general SVG.
+KiCad 路径通道另外接受一种有限的圆弧 `A` 类型：绝对坐标、无旋转、无填充的圆头线条，正的等半径，端点不同且**精确**定点小数的弦长
+不超过一个直径。圆心所在侧和范围按 SVG F.6.5：large 标志选劣弧或优弧，sweep 选方向；恰好等于直径时无论 large 标志都是半圆。
+同一类型中的**填充**路径（不透明实色填充，圆头或无线条，不是字形），例如 KiCad USB-C 插座符号里的半圆盘，用它的外框覆盖：
+边界按带包络的描边圆弧判定合格，填充位于边界的凸包内，因而在外框内。它的墨迹是一个包含外框的胶囊，导线接触的细化也用同一个外框；
+两者都只会多覆盖，不会少覆盖。椭圆、相对命令、超过直径的弦（SVG 半径修正）、曲线字形、半透明填充和未知的着色/效果仍不支持。
+在全新的几何任务中这样的圆弧不会中止整板：它留在图元一致性比较里，所在页记录 `native arc ink unsupported`，
+任何需要它墨迹的使用方仍拒绝它。坐标/半径限于 10000 mm、最多十位小数；一条圆弧路径的分段预算为 4096 段。
+这是有限的覆盖，不是通用 SVG。
 
-Arc ink is represented by a union of chord capsules. Each capsule includes the
-actual stroke radius, its own sagitta upper bound, a native serialization
-envelope and a numerical margin. The envelope propagates 0.0002 mm per-axis
-endpoint/radius uncertainty through the centre-height bound (plus chord-normal
-rotation times the centre height for non-semicircles);
-centre displacement can grow as the square root of radius times uncertainty,
-so a fixed diameter-matching tolerance alone is insufficient. Midpoint, radius,
-axis and sweep-endpoint extension are conservatively included in every chord's
-effective width. Exact fixed-decimal chord<=diameter eligibility is a separate check.
-Bounds and every ink-distance
-consumer use these inflated segments, including foreign foreground in passive
-ring contact checks; neither endpoint chords alone nor a box perimeter covers
-arc interior ink. Finite foreign dash patterns are protected as continuous
-stroke upper bounds, without authorizing passage through dash gaps. Native
-glyph qualification remains MLZ. Source/native wire identity and physical pin
-leg/zero-cap attribution still require strict MLZ, never approximate arcs.
-Existing unknown sheet-object gaps and measured findings remain protected;
-parsing a native arc alone does not grant page PASS or an ERC exception.
+圆弧墨迹表示为弦胶囊的并集。每个胶囊包含实际线条半径、它自己的弓高上界、KiCad 序列化包络和数值裕量。
+包络把每轴 0.0002 mm 的端点/半径不确定度传播到圆心高度上界（非半圆还加上弦法向旋转乘以圆心高度）；
+圆心位移可按半径乘不确定度的平方根增长，所以只用固定的直径匹配容差不够。中点、半径、轴和 sweep 端点的延伸都保守地计入
+每条弦的有效宽度。精确定点小数弦长 ≤ 直径的资格是单独的检查。边界和每个墨迹距离的使用方都用这些膨胀后的线段，
+包括无源环接触检查里的外来前景；单靠端点弦或外框周长都不能覆盖圆弧内部墨迹。有限的外来虚线图案按连续线条的上界保护，
+不授权从虚线间隙穿过。KiCad 字形合格仍是 MLZ。源/KiCad 导线身份和物理引脚引线/零长端帽归属仍需严格的 MLZ，从不用近似圆弧。
+已有的未知页对象缺口和实测发现仍受保护；单是解析出 KiCad 圆弧不给页面 PASS，也不给 ERC 例外。
 
-The serialized `native-geometry/context.json` is **audit evidence only**;
-`check_schematic_geometry.py` takes no serialized context. The official runner consumes
-only its own unchanged live fresh-job return value and rechecks input, producer,
-environment, tool, configuration and raw output bindings before geometry.
-Editing arrays/gaps or replaying a self-declared PASS JSON cannot authorize PASS.
+序列化的 `native-geometry/context.json` **只是审计证据**；`check_schematic_geometry.py` 不接受序列化的上下文。
+官方运行器只消费它自己未改动的、本次全新任务的返回值，并在几何检查前重新核对输入、产生方、环境、工具、配置和原始输出的绑定。
+编辑数组/缺口或重放一份自称 PASS 的 JSON 都不能授权 PASS。
 
-The live object is a receipt of a **trusted internal controller**, not a security
-boundary against Python code running in that same process. Its private mutable
-seal is an integrity check for the official runner's unchanged return value,
-not an authentication token: a caller that deliberately overwrites the private
-seal can re-seal modified arrays. Such privileged same-process rewriting is
-outside this API's qualification contract and must never be presented as a
-protected input path. External serialized contexts remain audit-only and the
-official CLI does not accept caller-supplied live objects.
+内存中的对象是**受信任的内部控制器**的回执，不是防范同一进程内 Python 代码的安全边界。它私有的可变封印是对官方运行器
+未改动返回值的完整性检查，不是认证令牌：故意改写私有封印的调用方可以重新封印改过的数组。这类有特权的同进程改写
+不在本 API 的合格约定之内，绝不能当作受保护的输入路径。外部序列化的上下文仍只用于审计，官方 CLI 不接受调用方提供的内存对象。
 
-This is a finite geometry gate, not full font/renderer coverage, electrical GO,
-or human render review. An unsupported page remains INSUFFICIENT; a captured
-actual collision is FAIL even when another category is unknown. Baseline bench
-labels/counts must not be changed to accommodate new coverage. A missing finding
-caused only by overall INS/UNMAPPED is not a G1 improvement.
+这是有限的几何检查项，不是完整的字体/渲染器覆盖、电气放行或人工图面审阅。不支持的页保持 INSUFFICIENT；
+捕获到的实际碰撞即使另一类未知也是 FAIL。基线测试集的标签/计数不得为适应新覆盖而修改。只因整体 INS/UNMAPPED
+而缺少的发现不算 G1 改进。

@@ -1,89 +1,76 @@
-# Reference-driven board generation
+# 参考设计驱动的整板设计
 
-Use this workflow when a generated board has incomplete IC peripherals or an unreadable multi-page layout. A datasheet URL, a pinout table, or an ERC pass does not establish application-circuit completeness.
+生成的板子 IC 外围不完整或多页布图难读时使用。数据手册 URL、引脚表或 ERC 通过都不能确立应用电路的完整性。
 
-## Mandatory first page: System_block
+## 必需的第一页：System_block
 
-Every board-level schematic begins with an architecture cover titled exactly
-`System_block`, ordered as page 1 in the native project and exported PDF. A list
-of sheet links alone does not meet this requirement. Reuse the root sheet when
-appropriate so project filenames, hierarchy UUIDs and existing page numbers
-need not change.
+每张板级原理图以标题恰好为 `System_block` 的架构封面开始，在 KiCad 工程和导出 PDF 中排为第 1 页。
+只有页链接列表不满足这项要求。合适时复用根图，这样工程文件名、层次 UUID 和已有页码都不必改。
 
-Show physical boards, core devices, power sources/rails and direction, major
-signal interfaces, connectors, ground/PE and isolation boundaries, external
-loads and the relevant detail-page IDs. Trace the blocks against the current
-native schematic and confirmed requirements. Mark absent circuitry, interface
-reserves and optional/DNP implementations explicitly; do not turn a requirement
-or unselected module into a supposedly completed circuit. Keep a block-to-page
-and requirement mapping with the project.
+画出物理板、核心器件、电源来源/电源轨及其方向、主要信号接口、连接器、地/PE 与隔离边界、外部负载以及相关的详细页 ID。
+按当前 KiCad 原理图和已确认的需求逐块核对。缺失的电路、预留接口和可选/DNP 的实现要明确标出；
+不要把一条需求或未选定的模块画成看似已完成的电路。随工程保留功能块到页面以及到需求的对应关系。
 
-Use native editable graphics/text for functional arrows; they must not create
-electrical wires or merge separate board netlists. Concretely, and checked by
-`scripts/audit_system_block.py` (run inside `verify_schematic.py` as the
-`system_block` gate whenever the root holds sheet blocks):
+功能箭头用 KiCad 可编辑的图形/文字；它们不得产生电气导线或合并分开的板网表。具体要求如下，由
+`scripts/audit_system_block.py` 核对（根图含页块时，作为 `system_block` 检查项在 `verify_schematic.py` 中运行）：
 
-- Every flow line carries a text within 6 mm naming what it stands for: the
-  rail (RECT, BULK, VRAW, VBUS) or the signals (FB/FAULT optocouplers,
-  PFC_EN_N, FLY_DRV). An arrow between two boxes without a name explains nothing.
-- Both ends of a flow line land on a block edge, an arrowhead or another
-  flow line (within one grid step). A line that stops in the void is a defect.
-- The isolation boundary is a straight line (one bend at most) with a text
-  containing 隔离 next to it; primary blocks sit on one side, secondary on the
-  other, and the line crosses no block. Arrange the blocks so that it can be
-  straight; do not snake it around a block placed on the wrong side.
-- No flow line runs through a block, and every block is reached by at least
-  one flow line.
-- Keep energy flow and control links visually distinct (stroke width or
-  direction), and use the title block's own fields: page title in `title`, the
-  project name in `company`; do not put requirement notes there. Show the physical harness
-pin mapping and control direction separately, including direct hardware fault
-paths that must not appear to depend on MCU software. Keep hierarchy navigation
-links usable. Check the final page title/order, complete page coverage, exact
-native netlist/ERC delta, frame/text geometry and rendered readability after
-applying the cover to the actual project. This page supports architecture
-review; it does not certify requirement compliance or production readiness.
+- 每条流向线在 6 mm 内有一段文字写出它代表什么：电源轨（RECT、BULK、VRAW、VBUS）或信号（FB/FAULT 光耦、PFC_EN_N、FLY_DRV）。
+  两个框之间没有名字的箭头什么也没说明。
+- 流向线两端都落在页块边、箭头或另一条流向线上（一格以内）。停在空白处的线是缺陷。
+- 隔离边界是一条直线（最多一个拐弯），旁边有含“隔离”的文字；一次侧页块在一边，二次侧在另一边，线不穿过任何页块。
+  安排页块让它能走直；不要让它绕过放错一侧的页块蜿蜒而行。
+- 没有流向线穿过页块，每个页块至少有一条流向线到达。
+- 能量流和控制链在视觉上区分（线宽或方向），并使用标题栏自己的字段：页标题写在 `title`，工程名写在 `company`；
+  不要把需求说明放在那里。
 
-## Establish a reference contract before placing the IC
+物理线束的引脚对应和控制方向另外画出，包括不能看起来依赖 MCU 软件的直接硬件故障路径。保持层次导航链接可用。
+封面用到实际工程后，核对最终的页标题/顺序、完整的页面覆盖、确切的 KiCad 网表/ERC 增量、图框/文字几何和渲染后的可读性。
+这一页支持架构审查；它不认证需求符合性或可投产。
 
-Use [symbol-and-peripheral-contracts.md](symbol-and-peripheral-contracts.md)
-for active-page core coverage, exact package pin/type maps, source hashes,
-functional stage boundaries, native topology checks and mutation tests. It also
-provides the executable contract format and generation entrypoint option.
+## 放置 IC 之前先建立外围电路核对表
 
-For each exact IC/package/operating mode, record the manufacturer document revision, file hash, pages/figures actually read, and these circuits where applicable:
+当前页核心器件的覆盖、确切封装的引脚/类型映射、来源哈希、功能级边界、KiCad 拓扑检查和变异测试，见
+[symbol-and-peripheral-contracts.md](symbol-and-peripheral-contracts.md)。它还给出可执行的核对表格式和生成入口选项。
 
-- Every supply domain, exposed pad, internal regulator output, local bypass/filter and return.
-- Clock source, load/ESR/drive assumptions, reset timing, boot/address/mode straps and host behavior during reset.
-- The complete functional path: feedback and energy storage for converters; divider/burden/filter and bias for measurement; magnetics/termination/protection for interfaces.
-- Required, conditional, optional/DNP and inapplicable branches. Explain every departure from the reference and verify its coupled constraints.
-- Real reference and pin numbers, values, tolerances, voltage/current/power limits, assembly state and component-selection unknowns.
+对每个确切的 IC/封装/工作模式，记录厂家文档版本、文件哈希、实际读过的页/图，并在适用时记录这些电路：
 
-Store a machine-checkable contract beside the electrical intent. Test it against the native exported netlist, then deliberately remove a required capacitor, move a return to another ground, fit a DNP or change a resistor value. The check must reject these mutations. A contract only establishes the explicitly listed facts; uncovered ICs, timing, physical margins and silicon behavior remain unverified.
+- 每个供电域、裸焊盘、内部稳压输出、局部去耦/滤波和回流路径。
+- 时钟源、负载/ESR/驱动假设、复位时序、启动/地址/模式配置脚以及复位期间主机的行为。
+- 完整的功能路径：变换器的反馈和储能；测量的分压/负载电阻/滤波和偏置；接口的磁件/端接/保护。
+- 必需、有条件、可选/DNP 和不适用的支路。说明每处与参考设计的偏离，并核对与之耦合的约束。
+- 真实的位号和引脚号、值、容差、电压/电流/功率限值、装配状态和选型未知项。
 
-`examples/controller_reference/verify_peripherals.py` demonstrates narrowly scoped KSZ8081RNA power/pull-up/strap/clock/magnetics checks. It is not a general electronics approval engine.
+在设计网表旁保存一份可机器核对的外围电路核对表。用 KiCad 导出网表测试它，然后故意删掉一只必需的电容、把回流路径移到另一个地、
+装上一只 DNP 或改一只电阻的值。检查必须拒绝这些变异。核对表只确立明确列出的事实；未覆盖的 IC、时序、物理裕量和芯片行为仍未核实。
 
-## Learn engineering composition from actual PDF images
+`examples/controller_reference/verify_peripherals.py` 演示了范围很窄的 KSZ8081RNA 电源/上拉/配置脚/时钟/磁件检查。它不是通用的电子设计审批引擎。
 
-Inventory the actual PDF page count and titleblock identity. Render a contact sheet of all pages, then inspect full-size power, MCU/configuration, memory, interface/protection and repeated-channel examples. Do not substitute text extraction for visual inspection. If a PDF's drawing occupies only part of its MediaBox, measure the drawing frame, not the blank page margin.
+## 从实际 PDF 图面学习工程构图
 
-Record project-local source/page evidence; keep proprietary PDFs and screenshots out of a public skill bundle. Transfer these presentation rules, not another IC's circuit values:
+清点 PDF 的实际页数和标题栏身份。把所有页渲染成一张缩略图总览，再全尺寸查看电源、MCU/配置、存储器、接口/保护和重复通道的例子。
+不要用文本提取代替目视检查。PDF 的图只占 MediaBox 的一部分时，量图框，而不是空白页边。
 
-- Place a complete functional circuit as a block. Power flows toward the load; feedback returns visibly to the correct input. Put local bypass banks beside the associated rail and join them with visible rail/return wires.
-- Keep clock, reset, bias, strap and protection branches by their associated pins or in a clearly labelled adjacent configuration block. A board is not a shelf of IC boxes followed by a shelf of resistors.
-- Choose standard functional symbols first. Preserve every physical pin. Shared drawn tips are allowed only within one symbol, with equal geometry and the same connected net. Hidden passive copies remain in the native pin ledger; conflicting assignments must fail.
-- Bus and cross-page labels are appropriate. Explicitly plan them. Do not silently turn a failed local route into a label connection.
-- Organize pages by function, isolation/voltage boundaries, readable drawing area and cross-page dependencies. Equal component counts are not the objective. Merge sparse related complete blocks; split dense memory/power units along actual domains.
-- Keep a repeated circuit's orientation, local passive pattern and field style consistent. Do not separate every NC unit into large independent pages.
-- Inspect entire rendered pages and dense regions. Zero text/body collisions does not prove sensible composition, short loops, readable pin grouping or balanced pagination.
+在本地工程中记录来源/页面证据；专有的 PDF 和截图不放进公开的技能包。迁移的是下面这些图面规则，不是别的 IC 的电路值：
 
-## Recover a rejected board
+- 把一个完整的功能电路作为一块放置。能量流向负载；反馈可见地回到正确的输入。局部去耦电容组放在相关电源轨旁，
+  用可见的电源轨/地网络导线连起来。
+- 时钟、复位、偏置、配置脚和保护支路放在相关引脚旁，或放在一个标注清楚的相邻配置块里。一块板不是一排 IC 框后面跟一排电阻。
+- 优先选标准的功能符号。保留每个物理引脚。共用画出的端点只允许在同一符号内、几何相同且接同一网络。隐藏的无源副本留在 KiCad 引脚清单里；
+  冲突的分配必须 FAIL。
+- 总线和跨页标签是合适的。要明确规划。不要把失败的局部走线悄悄变成标签连接。
+- 按功能、隔离/电压边界、可读的绘图面积和跨页依赖分页。各页器件数相等不是目标。合并稀疏的相关完整功能块；
+  沿实际的域拆分密集的存储器/电源单元。
+- 重复电路的朝向、局部无源件画法和字段样式保持一致。不要把每个 NC 单元都拆成大的独立页面。
+- 检查完整的渲染页和密集区域。零文字/本体碰撞不能证明构图合理、环路短、引脚分组可读或分页均衡。
 
-For an authorized layout-only improvement of an existing hierarchy, use
-[existing-project-redraw.md](existing-project-redraw.md). Its baseline/delta
-checks preserve the circuit; they do not close missing datasheet or peripheral
-evidence. Do not mix a drawing change with unrecorded electrical repairs.
+## 挽救被否决的板子
 
-Preserve the rejected baseline and record why it was rejected. First repair and render representative power, precision analog and digital interface pages using the skill's real generation APIs. Publish their scope and unresolved ERC/pin/MPN issues honestly. Do not describe a few improved samples as a repaired full board. Apply accepted templates to the rest of the hierarchy only with per-page electrical contracts, render evidence, requirement coverage and exact native netlist comparison.
+对已有层次工程做获授权的只改布图的改进，用 [existing-project-redraw.md](existing-project-redraw.md)。它的基线/增量检查保持电路不变；
+它们不能补上缺失的数据手册或外围电路证据。不要把绘图改动和未记录的电气修复混在一起。
 
-A regulator with a complete ten-part application circuit need not acquire more parts merely because another design has more. Conversely, an input header connected straight to an ADC is not a complete sensor interface: burden, common-mode, protection, filtering and range require evidence.
+保留被否决的基线并记录被否决的原因。先用技能真实的生成 API 修好并渲染有代表性的电源、精密模拟和数字接口页面。
+如实写明它们的范围以及未解决的 ERC/引脚/MPN 问题。不要把几张改好的样页说成整块板已修好。
+只有在有逐页的电气核对、渲染证据、需求覆盖和确切的 KiCad 网表比较时，才把认可的模板用到层次的其余部分。
+
+带完整十件应用电路的稳压器，不必只因别的设计器件更多就加器件。反过来，直接接到 ADC 的输入排针不是完整的传感器接口：
+负载电阻、共模、保护、滤波和量程都需要证据。

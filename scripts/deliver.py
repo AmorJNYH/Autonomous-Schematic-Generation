@@ -183,9 +183,9 @@ def deliver(root, log=print):
         subprocess.run(skill('verify_schematic.py', root / config['root'], '--intent', intent, '--out', gates, *declared,
                              *fill(config.get('verify') or [], root, work / 'verify')), cwd=root, capture_output=True)
         if not (gates / 'summary.json').is_file():
-            raise StepFailed('一键验证：没有生成 summary.json')
+            raise StepFailed('自动检查：没有生成 summary.json')
         written += copy_gates(gates, root)
-        step('一键验证', status_of(gates / 'summary.json'))
+        step('自动检查', status_of(gates / 'summary.json'))
 
         if preflight.is_file() and contract.is_file():
             written.append(preflight_check('交付预检', record / 'preflight-delivery.json'))

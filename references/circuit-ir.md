@@ -1,6 +1,6 @@
 # 结构化电路与自动布局（Circuit IR v2）
 
-用于从已确认电路创建新图。`build_circuit.py` 将模块化电路编译为逐脚设计要求表，
+用于从已确认电路创建新图。`build_circuit.py` 将模块化电路编译为逐脚设计网表，
 按真实符号、引脚出线区和字段尺寸自动放置，再调用避障布线和 KiCad 验证。
 运行时只需 Python 3.10+、KiCad CLI 与符号库；不依赖上游仓库或在线服务。
 
@@ -50,7 +50,7 @@ SKiDL 对象桥读取已建立的真实对象；circuit-synth JSON 不区分局�
   例如 `filter_a__OUT` 和 `filter_b__OUT`。同名并非同一网络；限定名碰撞直接失败。
 - 模块 `parameters` 定义允许的参数及默认值。值通过 `{"param":"resistance"}`
   引用；只做数据替换，不执行表达式、不推算电气参数，未知参数报错。
-- `pins` 使用本模块的 `component_id.真实脚号`。也可使用
+- `pins` 使用本模块的 `component_id.真实引脚号`。也可使用
   `{"component":"amp","pin_name":"V+"}`，按真实库解析；重名脚必须改用
   实际号码或明确 `"all":true`。编译记录保留选择器到物理引脚的映射。
 - 每个真实物理引脚必须恰好在一个网络或 `no_connect` 中。遗漏不会补 NC，
@@ -147,7 +147,7 @@ python3 scripts/import_circuit_synth.py exported.json --design-id imported \
 ```
 
 只支持已核实的 `nets[name]=[connection]` 和 `nets[name]={nodes:[connection],...}`。
-缺 lib_id/真实脚号拒绝导入；遗漏 NC 在编译时仍失败。重复名字须声明 shared
+缺 lib_id/真实引脚号拒绝导入；遗漏 NC 在编译时仍失败。重复名字须声明 shared
 或 local，混合共享范围应编辑 IR 的显式端口对应。原坐标、注释和其他源数据
 保存在 `import-audit.json`，不冒充已采用的布局或已验证的电气约束。
 

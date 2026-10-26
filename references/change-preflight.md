@@ -46,7 +46,7 @@ python3 scripts/verify_design_change.py baseline.xml candidate.xml design-change
   --preflight design-preflight.json --artifact-root <工程根目录> --out change-verification.json
 ```
 
-电气改版交付必须使用带 `--preflight` 的组合验证；旧 CLI 无此参数仍可用于单独 KiCad 网表差异审计，
+电气改版交付必须使用带 `--preflight` 的自动检查；旧 CLI 无此参数仍可用于单独的导出网表差异审计，
 不能声称完成电气改版预检查。保留原 ERC、物理脚/器件身份、几何及完整项目 PDF 检查。
 输出记录实际产物 SHA256。若 preflight 为 CONDITIONAL，组合结果也不会是 PASS。
 

@@ -31,7 +31,7 @@ CONSEQUENCE_WORDS = {'safety': '安全', 'damage': '器件损坏', 'function': '
 OCCURRENCE_WORDS = {'normal': '正常工作', 'condition': '特定工况', 'fault': '仅故障时'}
 GATES = OrderedDict([
     ('erc', 'KiCad 电气规则检查（ERC）'),
-    ('intent_netlist', '网表与设计要求表逐脚对照'),
+    ('intent_netlist', '导出网表与设计网表逐脚对照'),
     ('hierarchy', '图纸层次与页数'),
     ('system_block', '系统框图（箭头标注、隔离边界、无悬空线）'),
     ('symbol_integrity', '符号引脚完整'),
@@ -251,11 +251,11 @@ def check_page_plan(plan, intent, visual, lessons=None, patterns_dir=PATTERNS_DI
         for block, refs in blocks.items():
             for ref in refs:
                 if ref not in known:
-                    errors.append('%s：功能块“%s”里的 %s 不在设计要求表里' % (name, block, ref))
+                    errors.append('%s：功能块“%s”里的 %s 不在设计网表里' % (name, block, ref))
                 elif ref in placed:
                     errors.append('%s：%s 同时在功能块“%s”和“%s”里' % (name, ref, placed[ref], block))
                 placed[ref] = block
-        cover = index == 0 and len(plan['pages']) > 1          # the first page is the System_block cover (SKILL.md step 1)
+        cover = index == 0 and len(plan['pages']) > 1          # the first page is the System_block cover (SKILL.md task 3.3)
         if not cover and 'system_block' not in name.lower():
             errors += check_block_patterns(name, blocks, page.get('patterns'), approaches, lessons)
         missing = sorted(on_page.get(Path(name).stem, set()) - set(placed))
@@ -302,7 +302,7 @@ def check_visual_items(root, visual, summary=None):
             continue
         sch = root / '原理图' / str(name)
         if not text(name) or not sch.is_file():
-            errors.append('第 %s 页：有待看图对象但找不到原理图/%s' % (page.get('page'), name))
+            errors.append('第 %s 页：有图面待审对象但找不到原理图/%s' % (page.get('page'), name))
             continue
         try:
             refs = symbol_refs(sch)
@@ -320,7 +320,7 @@ def check_visual_items(root, visual, summary=None):
     for name, keys in listed.items():
         left = [k for k in keys if k not in done.get(name, set())]
         if left:
-            errors.append('%s：%d 个待看图对象在 visual-review.json 里没有处置（如 %s）' % (name, len(left), left[0][:48]))
+            errors.append('%s：%d 个图面待审对象在 visual-review.json 里没有处置（如 %s）' % (name, len(left), left[0][:48]))
     return list(OrderedDict.fromkeys(errors))
 
 
@@ -398,7 +398,7 @@ def check_options(name, role, selected):
     chosen = next((o for o in options if o.get('name') == decision.get('option')), None)
     if not chosen or not (isinstance(decision.get('source'), str) and USER_SOURCE.match(decision['source'])):
         problems.append('选型角色“%s”还没有你的决定：decision 要写 {option: 方案名, source: user:<日期>}，'
-                        '定下来之前不进入设计要求表' % name)
+                        '定下来之前不进入设计网表' % name)
     elif norm_mpn(selected.get('mpn', '')) not in {norm_mpn(p) for p in chosen.get('parts') or [] if text(p)}:
         problems.append('选型角色“%s”选定的 %s 不在你选的方案“%s”里' % (name, selected.get('mpn'), chosen['name']))
     return problems
@@ -455,7 +455,7 @@ def check_selection(data, intent, root):
         for ref in refs:
             covered.add(ref)
             if ref not in comps:
-                problems.append('选型角色“%s”的位号 %s 不在设计要求表里' % (name, ref))
+                problems.append('选型角色“%s”的位号 %s 不在设计网表里' % (name, ref))
             elif len(selected) == 1:
                 mpn = selected[0].get('mpn') if text(selected[0].get('mpn')) else ''
                 fields = [str(comps[ref][k]) for k in ('value', 'mpn') if text(comps[ref].get(k))]
@@ -725,7 +725,7 @@ def render(root, notes=None, title=None):
     for f in ordering['flagged']:
         if not text(f['reason']):
             problems.append('位号 %s 的料号 %s 在手册 %s 里列在“%s”下（停产或不推荐新设计）：换在售料号，'
-                            '或在设计要求表该器件写 lifecycle_reason 说明为什么保留' % (f['ref'], f['mpn'], f['datasheet'], f['marker']))
+                            '或在设计网表该器件写 lifecycle_reason 说明为什么保留' % (f['ref'], f['mpn'], f['datasheet'], f['marker']))
     cite_problems, cite_review, cite_unchecked = check_citations(selection, data['lessons.json'], root)
     problems += cite_problems
     cite_review = list((audit.get('citations') or {}).get('review') or []) + cite_review
@@ -797,7 +797,7 @@ def render(root, notes=None, title=None):
         missing.append('%d 项图纸自动检查没通过：%s' % (len(failed), '、'.join(failed)))
     if short:
         missing.append('%d 项图纸自动检查资料不足或未执行：%s' % (len(short), '、'.join(short)))
-    # Step 2 checks every core part's peripherals against its datasheet; not doing it leaves the design unfinished.
+    # Task 2.1 checks every core part's peripherals against its datasheet; not doing it leaves the design unfinished.
     reference_skipped = summary.get('reference_contract') == 'NOT_CHECKED'
     if reference_skipped:
         missing.append('外围电路按手册核对：未执行')
@@ -1071,7 +1071,7 @@ def render(root, notes=None, title=None):
             '| 已关闭的待办 | %d |' % sum(v for (s, st), v in stage_status.items() if st == 'closed'), '']
     out += ['## 详细记录', '',
             '原理图在 `原理图/`（KiCad 工程、PDF、网表、BOM）。`record/` 里是生成这份报告用的记录：'
-            '`electrical-intent.json` 是设计要求表，`design-closure.json` 是需求、待办和计算的处理情况，'
+            '`electrical-intent.json` 是设计网表，`design-closure.json` 是需求、待办和计算的处理情况，'
             '`summary.json` 是自动检查结果，`visual-review.json` 是图面审阅记录，`manifest.json` 记录用到的需求、'
             '原厂资料和前一版设计的位置与校验码。', '']
     return '\n'.join(out), problems

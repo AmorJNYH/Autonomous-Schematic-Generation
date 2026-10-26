@@ -1,47 +1,40 @@
-# Human-readable schematic routing
+# 人能读懂的原理图走线
 
-Apply when creating or redrawing circuits, before fixing coordinates. These are
-presentation requirements, not changes to the electrical circuit. Electrical
-identity, geometry clearance and readability are separate acceptance dimensions.
+新建或重画电路时、确定坐标之前使用。这些是图面要求，不改变电路。电气身份、几何间距和可读性是三个独立的验收维度。
 
-## 1. Define the reading path before the route
+## 1. 先定阅读路径，再走线
 
-For each functional circuit, record a short presentation plan with:
+每个功能电路记录一份简短的分页方案，包括：
 
-- The reader's task: follow energy flow, understand feedback, trace a protected
-  interface, or identify an IC's required support circuit.
-- Actual references/pins belonging to that task, including support components.
-- The visible main path and local branches that must remain directly connected.
-- Return domains, isolation boundaries, and intentional label-connected endpoints.
-- A drawing recipe: straight spine with shunts, controller with local support,
-  repeated interface lanes, parallel bank, or another justified arrangement.
+- 读者任务：跟随能量流、看懂反馈、追一个受保护的接口，或找出一颗 IC 必需的支持电路。
+- 属于这项任务的实际位号/引脚，包括支持器件。
+- 可见的主路径，以及必须保持直接相连的局部支路。
+- 地域、隔离边界和有意用标签连接的端点。
+- 画法：带并联支路的直主干、带局部支持器件的控制器、重复的接口通道、并联组，或其他有理由的排列。
 
-A functional block is defined by the relationship it explains. It is not whatever
-set of components happens to fit a placement box. Do not declare an IC and each
-of its support networks separate blocks solely to permit label-only connections.
-Templates describe electrical relationships and pin roles, not fixed reference
-numbers or a memorized screenshot. Resolve roles to the actual netlist first.
+功能块由它说明的关系定义。它不是恰好放得进一个摆放框的任意一组器件。不要只为允许纯标签连接，就把一颗 IC 和它的每个支持网络
+声明成各自独立的功能块。模板描述的是电气关系和引脚角色，不是固定的位号或记住的截图。先把角色对应到实际网表。
 
-This plan can be a Markdown table in the project. It is **not** an implemented
-extension to Circuit IR or the generator JSON schema.
+这份方案在工程里可以是一张 Markdown 表（ASG 中保存为 `record/page-plan.json`，见 SKILL.md 任务 3.1）。
+它**不是** Circuit IR 或生成器 JSON 格式的已实现扩展。
 
-## 2. Construct the layout from these rules
+## 2. 按这些规则构图
 
-| ID | Rule and repair action |
+| 编号 | 规则与修复做法 |
 | --- | --- |
-| HR-01 | Keep a local functional relationship visible. Put an IC's divider, timing, compensation, current-sense filter and associated drive network near the relevant pins and draw their connections. An intentionally separate power unit, dense pin bank, or remote sensing endpoint can use labels when the presentation plan explains the boundary. Do not accept arbitrary label islands as local wiring. |
-| HR-02 | Establish the main path first. Use a consistent energy/signal direction within the block; place branches perpendicular to that path where practical. Draw a converter's actual switch/inductor/transformer relationships recognizably. Do not disconnect its central stage into scattered labeled fragments merely to avoid routing. |
-| HR-03 | Give parallel elements shared straight rails. Capacitor banks and parallel resistors use aligned terminal rows and regular branch pitch. Reposition or rotate the exceptional component instead of extending the rail into a hook to reach it. Preserve its polarity, value and connectivity. |
-| HR-04 | Choose a return representation explicitly. A compact power loop may use a visible return rail; repeated independent shunts may use local, domain-correct ground symbols or short named return connections. Avoid large perimeter ground rectangles and staircase chains through successive channels. Never merge primary, secondary, chassis, signal or Kelvin returns for appearance. |
-| HR-05 | Repeat interface lanes consistently. Keep series elements on the lane and shunt protection perpendicular to it. Use the same series/shunt placement pattern in each lane; align repeated devices and order lanes to reduce crossings at the connector. Preserve the real connector pin assignments and any existing paired contacts. |
-| HR-06 | Reserve short, direct local paths before routing long inter-block nets. Identify those paths by function (for example drive, sense, feedback and support branches), not alphabetical net order. Visual proximity communicates association; it does not prove short PCB routing or SI/PI performance. |
-| HR-07 | Use labels for intentional abstraction, with one role each. **Global label (1.27 mm)** only where a net leaves the sheet. **Power symbol** for rails and returns, its Value being the exact net name; never a generic GND on an isolated return. **Small local name (1.0 mm)** on the visible wire of *selected* page-local nets: by default nets touching a part with three or more pins (controller/transistor function nodes, see `select_local_names`), minus names the design never had, plus documented additions. It names a wire; it never replaces one. **Local join label** only at a declared block boundary with the reason recorded. All other local nets stay unnamed (native auto names). Select scope from actual connectivity; changing global to local is not automatically safe. |
-| HR-08 | Place symbols and fields together with their exit corridors. If text forces a simple branch into a detour, move the text within a clear ownership area, adjust the component, or change the block arrangement. Never trade text readability for a shorter wire. Expand the block only when the local arrangement actually needs room. |
-| HR-09 | Prefer a few clear bends to wire weaving. Remove avoidable tiny jogs, reversals, enclosing loops and excursions across unrelated blocks. When avoiding one obstacle makes a path obscure, revisit placement or the chosen recipe instead of accepting the first legal route. Do not impose a universal bend count on all topologies. |
-| HR-10 | Make connection state unambiguous. Prefer a T branch with a visible junction for a connection; keep nonconnecting orthogonal crossings away from bends, pins and junctions. Rearrange repeated lanes before adding crossings. Do not ban every crossing if the alternative is a worse maze; verify both native connectivity and the rendered distinction. |
-| HR-11 | Fit the page to the circuit. Keep a functional group compact enough to read together at the intended viewing/print scale, with whitespace between groups and text large enough to read. Do not spread a small circuit across an A3 page to remove collisions or achieve a page-fill target. |
+| HR-01 | 局部的功能关系保持可见。把 IC 的分压、定时、补偿、电流检测滤波和相关驱动网络放在相应引脚附近，并画出它们的连接。有意分开的电源单元、密集的引脚组或远端检测端点可以用标签，前提是分页方案说明了边界。不接受任意的标签孤岛充当局部连线。 |
+| HR-02 | 先确立主路径。块内用一致的能量/信号方向；可行时支路垂直于主路径放置。变换器实际的开关/电感/变压器关系要画得能认出来。不要只为避免走线，就把它的核心级拆成散落的带标签碎片。 |
+| HR-03 | 并联元件共用笔直的轨。电容组和并联电阻用对齐的端子行和规整的支路间距。重新摆放或旋转那个例外的器件，而不是把轨延长成钩子去够它。保持它的极性、值和连接。 |
+| HR-04 | 明确选择地网络的画法。紧凑的功率环路可以用可见的地网络轨；重复的独立并联支路可以用局部的、地域正确的地符号或短的有名字的地网络连接。避免大的环绕地框，以及穿过一个个通道的阶梯链。从不为好看而合并一次侧、二次侧、机壳、信号或 Kelvin 地网络。 |
+| HR-05 | 重复的接口通道画得一致。串联元件在通道上，并联保护垂直于通道。每条通道用相同的串联/并联摆放方式；对齐重复的器件，并排好通道顺序以减少连接器处的交叉。保持真实的连接器引脚分配和已有的成对触点。 |
+| HR-06 | 走长的块间网络之前，先预留短而直接的局部路径。按功能（如驱动、检测、反馈和支持支路）识别这些路径，而不是按网络名的字母顺序。视觉上的靠近表达归属；它不证明 PCB 走线短或 SI/PI 性能。 |
+| HR-07 | 标签用于有意的抽象，每种只有一个角色。**全局标签（1.27 mm）** 只用于网络离开本页处。**电源符号**用于电源轨和地网络，Value 恰好是网络名；隔离的地网络从不用通用 GND。**小的局部网络名（1.0 mm）** 标在*选定的*页内局部网络的可见导线上：默认是接到三脚及以上器件的网络（控制器/晶体管的功能节点，见 `select_local_names`），去掉设计里从未有过的名字，加上有记录的补充。它给导线命名，从不代替导线。**局部连接标签**只用于声明的功能块边界，并记录理由。其他局部网络不命名（KiCad 自动名）。按实际连接选择范围；把全局改成局部并不自动安全。 |
+| HR-08 | 符号、字段和它们的出线通道一起摆放。文字迫使简单的支路绕行时，在清楚的归属区内移动文字、调整器件或改变块的排列。从不用文字可读性换更短的导线。只在局部排列确实需要空间时才扩大功能块。 |
+| HR-09 | 宁要少数清楚的拐弯，不要导线来回穿插。去掉可避免的小折、回头、包围环和穿过无关功能块的绕行。为避开一个障碍让路径变得难懂时，回头修改摆放或所选的画法，而不是接受第一条合法的走线。不给所有拓扑强加统一的拐弯数。 |
+| HR-10 | 连接状态要明确。连接优先用带可见交汇点的 T 形分支；不连接的正交交叉远离拐弯、引脚和交汇点。加交叉之前先重排重复的通道。如果替代方案是更糟的迷宫，不要禁止所有交叉；同时核对 KiCad 连接和渲染上的区分。 |
+| HR-11 | 页面适配电路。功能组紧凑到能在预定的查看/打印比例下一起读，组间有留白，文字大到能读。不要为消除碰撞或达到填满页面的目标而把小电路摊在 A3 上。 |
 
-For a repeated protected interface, the intended pattern is conceptually:
+对重复的受保护接口，预期的画法在概念上是：
 
 ```text
 signal A -- R --+---------- connector A
@@ -57,206 +50,131 @@ signal B -- R --+---------- connector B
           correct return
 ```
 
-This is a presentation example, not a protection design. The actual circuit
-determines device type, polarity, shared package pins and return topology. A
-straight common return rail is also valid when it is clearer and accurately
-represents the circuit. A shared multi-channel package may need a different
-recipe; do not invent units or split physical pins to imitate this drawing.
+这是图面例子，不是保护设计。器件类型、极性、共用的封装引脚和回流拓扑由实际电路决定。更清楚且准确表示电路时，
+一条笔直的公共地网络轨也是有效的。共用的多通道封装可能需要不同的画法；不要为模仿这张图而编造单元或拆分物理引脚。
 
-### Placement and basic wiring conventions
+### 摆放与基本连线约定
 
-Apply the following as construction rules, before obstacle routing. **Hard**
-constraints preserve connectivity or prevent ambiguous/illegible graphics.
-**Defaults** are preferred presentation patterns; adapt them to actual topology,
-pin orientation and package structure. Explain exceptions where they impair a
-declared reading task. These are schematic conventions, not PCB placement rules.
+下面这些作为构图规则，在避障走线之前使用。**硬性**约束保持连接或防止含糊/难读的图形。**默认**是优先的图面样式；
+按实际拓扑、引脚朝向和封装结构调整。损害声明的读者任务时说明例外。这些是原理图约定，不是 PCB 摆放规则。
 
-| Subject | Construction rule | Strength |
+| 对象 | 构图规则 | 强度 |
 | --- | --- | --- |
-| IC orientation | Prefer signal inputs on the left, outputs on the right, supply above and return below when the actual symbol supports it. Choose the orientation that clarifies the main function; do not rotate an entire IC merely to shorten one peripheral wire. Bidirectional ports and feedback need their real functional arrangement. | Default |
-| IC pin representation | Never change pin numbers, electrical types, mappings or polarity for appearance. A custom symbol may group pins by function only with a separately verified physical pin map; retain units, hidden/stacked pins and identity. | Hard |
-| Local support | Place each support network on the side of its associated pin or pin group. A series resistor belongs between the pin and its destination; a shunt capacitor branches off that node to the correct return. Avoid wrapping a local branch around the IC to reach a remote component. | Default |
-| Series chains | Align connected terminal centers on one horizontal or vertical axis; place R/L/diodes in the order encountered along the actual path. On a horizontal path, prefer horizontal series elements. Component polarity follows the circuit. | Default |
-| Shunts | Prefer vertical capacitors, pull-downs and protection branches below a horizontal path. Put pull-ups toward their supply; show a common node with a short perpendicular branch. Do not turn a shunt into a large decorative loop. | Default |
-| Divider/feedback | Stack the upper and lower divider elements vertically, take the midpoint sideways toward the sense/FB pin, and align the lower return. Keep compensation with its actual control nodes; a feedback path may naturally run against the main signal direction. | Default |
-| Decoupling | Put the capacitor visibly between the relevant supply and return near the IC's supply group. Multiple capacitors use a compact aligned bank. Large ICs with separate power units can use an explicitly identified decoupling group; do not imply PCB distance from drawing distance. | Default |
-| Parallel banks | Align equivalent terminals on common straight rails; keep polarity/orientation and branch spacing consistent. Align terminal centers, not arbitrary body edges. Accommodate different symbol sizes and field widths. | Default |
-| Repeated channels | Reuse the same arrangement and spacing. Choose channel order to suit destination pins before routing; never swap electrical pin assignments to reduce crossings. Keep paired signals visually associated. | Default plus hard pin preservation |
-| Pin escapes | Leave each pin along its outward direction before the first bend. Reserve a straight exit segment; do not turn at the symbol outline, graze neighboring pin tips, or run over pin names/numbers. | Hard clearance; default escape length |
-| Branches and crossings | Use clean T branches with dots for connections. Prefer staggered T branches to an ambiguous four-way intersection. An intentional four-way junction must be unambiguous; a nonconnecting crossing is orthogonal, undotted and separated from endpoints, corners and junctions. Normalize actual branch attachments. | Hard connectivity; default T pattern |
-| Route shape | Try straight, L, then Z-shaped connections within the planned corridor. If they fail, reconsider component orientation, row/column position and fields before using more complex paths. These shapes are preferred candidates, not a universal maximum-bend rule. | Default |
-| Fields and alignment | Use consistent Reference/Value placement for like-oriented parts: commonly above horizontal parts and beside vertical parts. Reserve their measured extents. Move fields or the block to resolve conflict; never shrink text or allow overlap merely to fit a route. | Hard legibility; default field side |
+| IC 朝向 | 实际符号支持时，优先信号输入在左、输出在右、电源在上、地在下。选能讲清主要功能的朝向；不要只为缩短一根外围导线而旋转整颗 IC。双向端口和反馈按它们真实的功能排列。 | 默认 |
+| IC 引脚表示 | 从不为外观改变引脚号、电气类型、映射或极性。自定义符号只有在另有核实过的物理引脚映射时才可以按功能分组引脚；保留单元、隐藏/堆叠引脚和身份。 | 硬性 |
+| 局部支持器件 | 每个支持网络放在其相关引脚或引脚组的一侧。串联电阻位于引脚和其目的地之间；并联电容从该节点分支到正确的地网络。避免让局部支路绕着 IC 去够远处的器件。 | 默认 |
+| 串联链 | 相连端子的中心对齐在一条水平或竖直轴上；R/L/二极管按实际路径上遇到的顺序放置。水平路径上优先用水平的串联元件。器件极性随电路。 | 默认 |
+| 并联支路 | 电容、下拉和保护支路优先竖放在水平路径下方。上拉朝向其电源；公共节点用短的垂直支路表示。不要把并联支路画成大的装饰性环。 | 默认 |
+| 分压/反馈 | 上下分压元件竖直叠放，中点向侧面引到检测/FB 引脚，下端的地网络对齐。补偿与其实际的控制节点放在一起；反馈路径可以自然地逆着主信号方向。 | 默认 |
+| 去耦 | 电容可见地画在 IC 电源组附近的相关电源与地网络之间。多只电容用紧凑对齐的组。有独立电源单元的大 IC 可以用明确标识的去耦组；不要用图上的距离暗示 PCB 距离。 | 默认 |
+| 并联组 | 等效端子对齐在公共的直轨上；极性/朝向和支路间距保持一致。对齐端子中心，而不是任意的本体边。兼顾不同的符号尺寸和字段宽度。 | 默认 |
+| 重复通道 | 复用同样的排列和间距。走线前按目的引脚选通道顺序；从不为减少交叉而交换电气引脚分配。成对的信号在视觉上保持关联。 | 默认，引脚保持为硬性 |
+| 引脚出线 | 每个引脚先沿其向外方向出线再拐弯。预留一段直的出线；不在符号外框处拐弯，不擦过相邻引脚端点，不压过引脚名/引脚号。 | 间距硬性；出线长度默认 |
+| 分支与交叉 | 连接用干净的带点 T 形分支。优先错开的 T 形分支，不用含糊的四线交汇。有意的四线交汇必须明确；不连接的交叉是正交、不打点的，并远离端点、拐角和交汇点。规范化实际的分支连接点。 | 连接硬性；T 形默认 |
+| 走线形状 | 在规划的通道内依次试直线、L 形、Z 形连接。都不行时，先重新考虑器件朝向、行/列位置和字段，再用更复杂的路径。这些形状是优先的候选，不是通用的最大拐弯数规则。 | 默认 |
+| 字段与对齐 | 同朝向的器件用一致的 Reference/Value 位置：通常水平器件在上方，竖直器件在旁边。预留它们实测的范围。用移动字段或功能块解决冲突；从不为凑一条走线而缩小文字或允许重叠。 | 可读性硬性；字段侧默认 |
 
-#### A practical spacing profile
+#### 一套实用的间距设置
 
-Use a compatible electrical grid `g` (commonly 1.27 mm; 0.635 mm where required
-by real pin coordinates). The following is an **initial project drawing profile**,
-not an industry standard or implemented generator setting:
+用兼容的电气栅格 `g`（通常 1.27 mm；实际引脚坐标需要时用 0.635 mm）。下面是**初始的工程绘图设置**，不是行业标准，也不是已实现的生成器设定：
 
-- Preferred pin escape before a bend: at least `2g` where the symbol permits.
-- Preferred separation of unrelated parallel wire centerlines: at least `2g`.
-  Dense native pin fanout may require tighter spacing; inspect it at readable scale.
-- For repeated branches, measure the full symbol-plus-field envelope and leave
-  about `2g` clear space before the next envelope. Use the widest lane to set a
-  consistent pitch, rather than forcing all parts into a fixed body-only pitch.
-- Keep functional-group whitespace visibly larger than ordinary intra-group
-  spacing; begin with twice the chosen intra-group gap, then adjust to the page.
-- Start with the project's readable field size (commonly 1.27 mm); retain that
-  scale when comparing layout candidates. Do not derive text clearance from
-  grid spacing alone: measure rendered field extents.
+- 拐弯前的引脚出线：符号允许时至少 `2g`。
+- 无关的平行导线中心线间距：至少 `2g`。KiCad 中密集的引脚扇出可能需要更紧的间距；在可读的比例下检查。
+- 重复支路要量完整的符号加字段包络，到下一个包络之间留约 `2g` 的空隙。用最宽的通道定一致的间距，而不是把所有器件硬塞进只按本体算的固定间距。
+- 功能组之间的留白明显大于组内的普通间距；从所选组内间隙的两倍开始，再按页面调整。
+- 从工程的可读字号开始（通常 1.27 mm）；比较布图候选时保持这个比例。不要只从栅格间距推出文字间距：量渲染出的字段范围。
 
-These preferred spacings are adjustable; actual no-contact/no-overlap constraints
-remain mandatory. Do not snap real terminals off-grid or increase wire length
-through unnecessary detours solely to meet a preferred distance.
+这些优先间距可以调整；实际的不接触/不重叠约束仍是强制的。不要把真实端子吸到栅格外，也不要只为达到优先距离而通过不必要的绕行加长导线。
 
-#### Turn the recipe into explicit relationships
+#### 把画法变成显式的关系
 
-Before assigning final coordinates, record relations such as:
+确定最终坐标前，记录这样的关系：
 
-- **Alignment:** series pin endpoints share an axis; bank endpoints share rails.
-- **Ordering:** source, series component, branch node and destination follow the
-  actual circuit; repeated lanes preserve their chosen order.
-- **Association:** a support network occupies the region beside its controlling
-  pin group, with a reserved direct connection corridor.
-- **Spacing:** repeated pitch includes symbol, field and wire clearances.
-- **Routing:** selected nets have fixed spines/branch directions; permitted label
-  endpoints and nonconnecting crossings are explicit.
+- **对齐**：串联的引脚端点共用一条轴；组的端点共用轨。
+- **顺序**：来源、串联器件、分支节点和目的地按实际电路排列；重复通道保持所选的顺序。
+- **归属**：支持网络占据其控制引脚组旁边的区域，并预留直接连接的通道。
+- **间距**：重复间距包括符号、字段和导线的间隙。
+- **走线**：选定的网络有固定的主干/分支方向；允许的标签端点和不连接的交叉是显式的。
 
-For example, a divider recipe binds `upper resistor`, `lower resistor`, `sense
-pin`, `source` and `return` to real parts/pins, then applies vertical alignment
-and a sideways midpoint branch. It does not start by assigning unrelated x/y
-coordinates and asking A* to discover the divider's shape.
+例如分压画法把 `upper resistor`、`lower resistor`、`sense pin`、`source` 和 `return` 绑定到真实的器件/引脚，再施加竖直对齐和侧向的中点分支。
+它不是先分配无关的 x/y 坐标，再让 A* 去发现分压的形状。
 
-`schematic_layout.recipes.Sheet` implements these relations as construction
-primitives (`series`, `shunt`, `bank`, `divider`, `stub`, `connect`, `power`,
-`label`, `name`); see [drawing-recipes.md](drawing-recipes.md). It is not a
-solver: the agent still chooses the recipe, anchors and directions, guided by
-the outline rules O1-O8 and the proposed roles in `sheet.plan`; the build
-report audits the chosen recipes and label roles, and a deviation needs a reason. Relations
-it cannot express go into the same page script as explicit pin-relative wires.
-A flag saying a template was used is insufficient; the built sheet is checked.
+`schematic_layout.recipes.Sheet` 把这些关系实现为构图原语（`series`、`shunt`、`bank`、`divider`、`stub`、`connect`、`power`、`label`、`name`）；
+见 [drawing-recipes.md](drawing-recipes.md)。它不是求解器：画法、锚点和方向仍由 agent 按绘图纲要 O1–O8 和 `sheet.plan` 中建议的角色选择；
+构建报告审计所选的画法和标签角色，偏离需要理由。它表达不了的关系写进同一个图页脚本，作为相对引脚的显式导线。
+只有一个说明用了模板的标志不够；检查的是构建出的页。
 
 
-## 3. Route within a planned structure
+## 3. 在规划好的结构内走线
 
-Use this construction order:
+按这个顺序构图：
 
-1. Resolve the recipe to real pins and plan permitted label boundaries.
-2. Orient/place the main devices, local support and repeated lanes; reserve
-   branch rails, wire corridors and readable fields together.
-3. Establish the main spine/rails and important local branches.
-4. Route remaining connections within those corridors.
-5. Inspect the result. If it breaks the recipe, revise placement/fields/grouping
-   and route again. Growing a maze or replacing the failed wire with a label
-   does not repair the presentation.
+1. 把画法对应到真实引脚，并规划允许的标签边界。
+2. 确定主要器件、局部支持器件和重复通道的朝向/位置；同时预留分支轨、导线通道和可读的字段。
+3. 建立主干/轨和重要的局部支路。
+4. 在这些通道内走剩下的连接。
+5. 检查结果。破坏了画法就修改摆放/字段/分组再走线。长出迷宫或用标签代替失败的导线都不能修好图面。
 
-MST pairing minimizes a graph-distance objective; it does not decide which net
-should be a rail, which branch should be local, or which path a reader follows.
-A* is useful for the remaining constrained paths. Neither algorithm's success
-is evidence that the chosen visual topology is good.
+MST 配对最小化图距离目标；它不决定哪个网络应该是轨、哪条支路应该是局部的、读者沿哪条路径读。A* 适合剩下的受约束路径。
+两种算法的成功都不能证明所选的视觉拓扑好。
 
-Prefer candidates in this order: preserve electrical intent and eliminate
-ambiguity/collisions; satisfy the planned reading relationships; reduce unrelated
-crossings and unnecessary label searches; then simplify bends, length and page
-packing. A shorter total wire length must not override a clearer circuit.
+候选按这个顺序取舍：保持设计网表并消除含糊/碰撞；满足规划的阅读关系；减少无关的交叉和不必要的标签查找；
+然后简化拐弯、长度和页面排布。更短的总导线长度不得压过更清楚的电路。
 
-### Current implementation boundary
+### 当前实现的边界
 
-Readable pages are drawn with the recipe builder above: it places supporting
-parts from real pins, writes explicit wires, power symbols and labels, rejects
-different-net contact, wires through bodies and disconnected unnamed pieces,
-places fields last, and reports the readability metrics. The low-level
-MST/A* generator below still expects supplied placements and does not choose a
-layout from the reading recipe. It supports explicit net groups and the
-following route controls:
+可读的页面用上面的画法构建器画：它从真实引脚放置支持器件，写出显式的导线、电源符号和标签，拒绝异网接触、
+穿过本体的导线和断开的无名片段，最后放字段，并报告可读性指标。下面的低层 MST/A* 生成器仍需要提供摆放，
+不会从阅读画法中选择布图。它支持显式的网络组和下面的走线控制：
 
-- Net policy: `mode` (`wire`, `labels`, or `power`), `rail_y`, `label`,
-  `priority`, `symbol` (for power-symbol mode), `label_kind` (`local` or
-  `global`), `label_font_mm`, `label_at`, and `label_hint`.
-- Group policy: `pins`, `mode`, `rail_y`, `priority`, and `label_at`.
-- `label_at` binds a label terminal to an explicit grid point, outward unit
-  direction, and outline side. `label_hint` guides placement of a local label.
-- `power` mode requires a real `power:<symbol>` library ID; the native symbol
-  carries the net name, and its body and Value field are included as obstacles.
+- 网络策略：`mode`（`wire`、`labels` 或 `power`）、`rail_y`、`label`、`priority`、`symbol`（电源符号模式）、
+  `label_kind`（`local` 或 `global`）、`label_font_mm`、`label_at` 和 `label_hint`。
+- 组策略：`pins`、`mode`、`rail_y`、`priority` 和 `label_at`。
+- `label_at` 把标签端子绑定到显式的栅格点、向外的单位方向和外框侧。`label_hint` 引导局部标签的摆放。
+- `power` 模式需要真实的 `power:<symbol>` 库 ID；KiCad 符号携带网络名，其本体和 Value 字段计为障碍。
 
-Unspecified wire groups use Manhattan MST; A* considers obstacles and bends.
-These route primitives do not automatically enforce HR-01 through HR-11,
-recognize the recipes above, or retry a component placement. The readability
-checker is mandatory for every generated or redrawn sheet (section 4), but it
-measures geometry only; a human still traces the required reading paths in the
-rendered drawing. Use supported parameters
-or a scoped writer and inspect the serialized output. Do not claim a readability
-pass from the router succeeding.
+未指定的导线组用曼哈顿 MST；A* 考虑障碍和拐弯。这些走线原语不自动执行 HR-01 到 HR-11，不识别上面的画法，也不重试器件摆放。
+每张生成或重画的页都必须通过可读性检查器（第 4 节），但它只测几何；仍由人在渲染图上追必需的阅读路径。
+使用支持的参数或限定范围的写出脚本，并检查序列化的输出。不能凭走线器成功声称可读性通过。
 
-Future automation should compile functional recipes into placement and route
-constraints, support retrying placement as well as routes, and inspect the
-serialized result independently. A route log is not that independent inspection.
+将来的自动化应把功能画法编译成摆放和走线约束，支持重试摆放和走线，并独立检查序列化的结果。走线日志不是那种独立检查。
 
-## 4. Accept by tracing the circuit, not by counting artifacts
+## 4. 靠追电路验收，而不是数图元
 
-Read the native-rendered full page and useful detail crops. For every block:
+读 KiCad 渲染的整页和有用的局部截图。每个功能块：
 
-- Follow the declared main path from its real origin to destination.
-- For a controller, locate each required local support network and trace its
-  connection to the relevant pin and correct return.
-- For a bank or repeated interface, compare branch structure and follow one
-  lane without confusing it with its neighbor.
-- Identify every return domain and isolation crossing, and follow intentional
-  label links without ambiguous names or missing destinations.
-- Read each reference/value pair as belonging to the nearest body. Two parallel
-  parts whose labels sit side by side between them (R6 redraw: R602/R603 on the
-  CS+/CS− legs) are misattributed; stagger the parts so each label sits beside
-  its own body, then rebuild. `Sheet.build()` rejects a pair whose blocks read
-  as well swapped as in place (`field_placer.swapped_label_pairs`); a block
-  near a part that has its own label nearer still is left to this review.
+- 沿声明的主路径从真实起点追到终点。
+- 对控制器，找到每个必需的局部支持网络，追它到相关引脚和正确的地网络的连接。
+- 对组或重复接口，比较支路结构，并追一条通道而不与相邻通道混淆。
+- 认出每个地域和隔离跨越，沿有意的标签连接追下去，不遇到含糊的名字或缺失的目的地。
+- 把每对位号/值读作属于最近的本体。两只平行器件的标签并排夹在它们之间时（R6 重画：CS+/CS− 两条支路上的 R602/R603）会读错归属；
+  错开器件让每个标签挨着自己的本体，然后重建。`Sheet.build()` 拒绝标签块换过来读与原位读一样合理的一对器件
+  （`field_placer.swapped_label_pairs`）；一个标签块靠近另一只器件、而那只器件自己的标签更近时，留给本审阅判断。
 
-Record sheet/block, references, the path traced, applicable rule findings and
-image/source identity. A checkbox saying "viewed all pages" is insufficient,
-and so is "pixel-identical to a PDF reviewed earlier". In `visual-review.json`
-every page carries `file`, at least one `paths` entry per reader task of
-`page-plan.json`, and one disposition per `render_review_items` entry that
-names the symbol and says what was seen (pin numbers outside the pin, pin
-name clear of the wire); one sentence copied onto several symbols is rejected
-by `render_design_report.py`.
-Record electrical results separately; neither ERC nor hash freshness establishes
-readability. A layout can be electrically unchanged and still fail this review.
+记录页/功能块、位号、追过的路径、适用规则的发现和图片/来源身份。写着“看过所有页”的勾选不够，“与之前审阅过的 PDF 像素一致”也不够。
+在 `visual-review.json` 里每页写 `file`、`page-plan.json` 的每个读者任务至少一条 `paths`，以及每个 `render_review_items`（图面待审对象）
+一条处置，处置点名符号并写出看到了什么（引脚号在引脚外侧、引脚名未被导线压住）；同一句话抄到多个符号上会被 `render_design_report.py` 拒绝。
+电气结果另外记录；ERC 和哈希是否最新都不能确立可读性。布图电气不变仍可能通不过这项审阅。
 
-Use these **manual review states**, not fabricated tool results:
+使用这些**人工审阅状态**，不编造工具结果：
 
-- `REWORK_REQUIRED`: an applicable rule is violated and the reading task is
-  obstructed. Name the path and repair; do not average it away with a score.
-- `REVIEW_PENDING`: rendering, object support or path evidence is incomplete.
-- `REVIEWED`: all declared reading tasks were inspected without unresolved
-  readability findings. This is a bounded reviewer conclusion, not user approval
-  or electrical qualification. Later user rejection reopens it.
+- `REWORK_REQUIRED`（待返工）：违反了适用的规则，读者任务受阻。写出路径和修复；不要用评分把它平均掉。
+- `REVIEW_PENDING`（待图面审阅）：渲染、对象支持或路径证据不完整。
+- `REVIEWED`（已完成图面审阅）：所有声明的读者任务都检查过，没有未解决的可读性发现。这是有边界的审阅结论，不是用户认可或电气合格。
+  之后用户否决会重新打开它。
 
-Run `scripts/check_schematic_readability.py` first. It is a hard gate: zero
-different-net wire crossings, zero two-terminal connections with three or
-more bends, each reported with its location, and no sheet whose content fits
-a smaller standard paper (`oversized_paper`, HR-11). Content includes symbols,
-fields, wires, labels, graphic lines and sheet frames; the fit compares outline
-size with the 5 mm margin only, not the title-block reserve. Redraw rather than waive;
-a waiver file entry must give the sheet, the allowed count (or
-`oversized_paper: true`) and the reason. Label count, bends, wire length,
-`cell_coverage`, `part_groups` and `longest_segment_mm` remain diagnostics
-without universal thresholds: a labeled MCU bank and a visible power stage have
-different needs. Read them against the page plan: more part groups than
-declared blocks means the page shows islands, not paths; coverage near a
-quarter of the page with one block means the page should be merged or shrunk. When comparing variants, keep electrical
-identity, symbol scale, font size and viewing scale comparable. Do not improve
-one metric by hiding relationships or shrinking text.
+先运行 `scripts/check_schematic_readability.py`。它是硬性的检查项：零异网导线交叉、零三折及以上的两端连接，每处都报告位置；
+没有内容放得进更小标准纸张的页（`oversized_paper`，HR-11）。内容包括符号、字段、导线、标签、图形线条和页框；
+适配只按外框尺寸和 5 mm 边距比较，不算标题栏的预留。宁可重画也不豁免；豁免文件条目必须给出页、允许的计数
+（或 `oversized_paper: true`）和理由。标签数、拐弯、导线长度、`cell_coverage`、`part_groups` 和 `longest_segment_mm` 仍是没有通用阈值的诊断：
+带标签的 MCU 组和可见的功率级需求不同。对照分页方案读它们：器件组多于声明的功能块，说明这页画的是孤岛而不是路径；
+只有一个功能块而覆盖率接近四分之一页，说明这页该并页或缩小。比较变体时，保持电气身份、符号比例、字号和查看比例可比。
+不要靠隐藏关系或缩小文字改善某个指标。
 
-## 5. Ground future implementation in positive and negative examples
+## 5. 将来的实现以正反例为依据
 
-For each recipe being automated, retain an electrically equivalent bad/good
-pair with real native schematics and readable renders. The first pair is
-`tests/fixtures/drawing/recipe_board.py` (`draw()` / `draw(bad=True)`): the bad
-drawing reproduces the support-net crossing (R410 pattern) and the two-terminal
-U-turn (J101.2 -> L101.3 pattern) of a 100 W charger redraw, and
-`tests/test_drawing_recipes.py` requires identical native partitions, a gate
-failure naming both locations for the bad drawing and a pass for the good one. Include both the original
-failure and a legitimate exception, such as a dense labeled interface or a
-necessary crossing. Check native pin partitions and trace the same reading task
-in both candidates. Extend to other pin arrangements and component counts before
-calling the recipe general. A Markdown rule, successful parser, or collision-free
-toy circuit alone does not demonstrate better drawing behavior.
+每个要自动化的画法，保留一对电气等价的坏/好例子，有真实的 KiCad 原理图和可读的渲染。第一对是
+`tests/fixtures/drawing/recipe_board.py`（`draw()` / `draw(bad=True)`）：坏图复现了一次 100 W 充电器重画中的支持网络交叉（R410 样式）
+和两端 U 形回头（J101.2 -> L101.3 样式），`tests/test_drawing_recipes.py` 要求 KiCad 分区完全相同、坏图的检查失败并点名两处位置、好图通过。
+既要包括原来的失败，也要包括合理的例外，如密集的带标签接口或必要的交叉。核对 KiCad 引脚分区，并在两个候选上追同一个读者任务。
+称画法通用之前，扩展到其他引脚排列和器件数量。只有一条 Markdown 规则、解析器成功或无碰撞的玩具电路，都不能证明绘图行为更好。

@@ -1,73 +1,38 @@
-# Worst-case bounds and source conditions
+# 最坏情况边界与源表条件
 
-Use this engineering guidance with [calculation-preflight.md](calculation-preflight.md).
-It adds no calculation schema fields or automatic acceptance rule. The preflight
-checks declared conditions and finite arithmetic; a replay of the same equation
-and assumptions does not prove that its chosen point is an upper or lower bound.
+与 [calculation-preflight.md](calculation-preflight.md) 配合使用的工程指引。它不增加计算记录字段，也不增加自动通过规则。
+预检核对声明的条件和有限的算术；用同一算式和假设重放，不能证明所选的点是上界或下界。
 
-## Bound the quantity over its actual domain
+## 在实际取值范围内求边界
 
-State the quantity being bounded, the allowed variable intervals and constraints,
-and which direction is adverse. For a nonlinear quantity, evaluate every interval
-endpoint, every admissible internal stationary point, and the constraint or
-piecewise-model boundaries. Compare the resulting candidate extrema; do not
-assume that the largest voltage or current produces the largest dissipation.
-For example, a term proportional to `v * (supply - v)` can attain its maximum
-inside the interval. This is a synthetic model example, not a device guarantee.
+写明要求边界的量、各变量允许的区间和约束，以及哪个方向不利。非线性量要计算每个区间端点、每个可行的内部驻点，
+以及约束或分段模型的边界，再比较这些候选极值；不能假定最大电压或电流就产生最大功耗。
+例如正比于 `v * (supply - v)` 的项可以在区间内部取最大值。这是合成的模型例子，不是器件保证。
 
-Retain dependencies: voltage, bias current, clamp voltage, temperature and a
-state-dependent resistance may constrain one another. Independently selecting
-each apparently adverse endpoint can form an impossible operating point, or
-miss a feasible worse point. Analyze the joint feasible domain, including its
-boundaries. In several dimensions, examine admissible interior stationary points
-and lower-dimensional boundary extrema. If analytic or rigorous interval bounds
-are unavailable, label a sampled sweep as sampling evidence, state its remaining
-bound uncertainty, and keep the claim conditional. A coarse grid is not an
-exhaustive extremum proof.
+保留变量之间的依赖：电压、偏置电流、钳位电压、温度和随状态变化的电阻可能互相约束。各自独立地取看似不利的端点，
+可能拼出不可能的工作点，也可能漏掉可行的更差点。分析联合可行域及其边界。多维时检查可行的内部驻点和低维边界上的极值。
+拿不到解析或严格的区间边界时，把采样扫描标为采样证据，写明剩余的边界不确定性，结论保持有条件。粗网格不是穷尽的极值证明。
 
-Keep the derivation and its source/model scope separate from arithmetic replay.
-A second execution of the same conditional formula checks its arithmetic; it
-does not independently justify monotonicity, the model, a derivative sign or
-the claimed extremum. Use the existing DERIVED_BOUND derivation or located
-external derivation to record the justified range and adverse direction.
+推导及其来源/模型适用范围与算术重放分开记录。同一个有条件公式再算一次只核对算术；它不能独立证明单调性、模型、
+导数符号或声称的极值。用已有的 DERIVED_BOUND 推导或有定位的外部推导记录有依据的范围和不利方向。
 
-## Match the source table to the operating conditions
+## 源表条件与工作条件匹配
 
-Before using a limit, bind its exact part/variant, table row, revision, units and
-all relevant test conditions to the actual design: voltage, temperature, current,
-load, timing, measurement method and stated thermal/board conditions. A limit at
-one supply voltage is not automatically a guarantee at another. A typical curve,
-absolute maximum or value from a different row must not be substituted for the
-required guaranteed operating limit.
+使用一个限值前，把它的确切料号/变体、表格行、版本、单位和全部相关测试条件对应到实际设计：电压、温度、电流、负载、
+时序、测量方法以及写明的散热/电路板条件。某一供电电压下的限值不自动适用于另一电压。典型曲线、绝对最大额定或其他行的值，
+都不能代替所需的保证工作限值。
 
-Record each numeric limit used in a peripheral contract as a source-bound claim,
-even when it is not an input to the arithmetic preflight. Include the exact
-variant, revision, page/table/parameter row, units, MIN/TYP/MAX column, footnotes
-and applicable operating conditions. Check the table headings and column position
-against the actual source; text extraction can lose column alignment. A value in
-TYP is an estimate, and a blank or dash in the needed limit column means that bound
-remains unknown. Preserve the unknown in both the contract and dependent
-calculations. Equation replay, a nominal budget or correct units cannot turn a
-typical value into a maximum. For a load limit, distinguish the source-defined
-quantity from additional board contributions that remain budgets or handoff
-obligations. Retain independently established rating limits when a separate
-stability or functional parameter remains unknown; that supported subset does not
-close a criterion that also requires the unknown parameter. If the manufacturer
-requires a nominal selection, preserve that requirement instead of inventing a
-minimum effective value or a MIN/MAX requirement it did not specify.
+外围电路要求中用到的每个数值限值都按有来源的结论记录，即使它不是算术预检的输入。写明确切变体、版本、页/表/参数行、
+单位、MIN/TYP/MAX 列、脚注和适用的工作条件。按实际原文核对表头和列位置；文本提取可能丢失列对齐。
+TYP 列的值是估计；所需限值列的空白或破折号表示该边界仍未知。在外围电路要求和依赖它的计算中都保留这个未知。
+重放算式、名义预算或单位正确，都不能把典型值变成最大值。对负载限值，区分手册定义的量和板上额外的贡献，
+后者仍是预算或技术转交义务。另一个稳定性或功能参数仍未知时，保留已独立确立的额定限值；但这部分成立的结论
+不能关闭同样需要那个未知参数的判据。厂家只要求名义选值时，保留这个要求，不编造它没规定的最小有效值或 MIN/MAX 要求。
 
-Use interpolation as a guarantee only where the manufacturer explicitly permits
-that method, within the specified conditions and endpoints, and for the stated
-parameter. Record that permission and its scope. Otherwise, interpolation or
-extrapolation is an engineering estimate with assumptions and a closure boundary;
-it cannot be promoted to GUARANTEED or a supported bound by repeating its formula.
-Even permitted voltage interpolation does not authorize temperature/current
-interpolation or a different test condition.
+只有厂家明确允许某种插值方法时，才能在规定的条件和端点内、对写明的参数把插值当作保证。记录这项许可及其范围。
+否则插值或外推是带假设和关闭边界的工程估计；重复它的公式不能把它升为 GUARANTEED 或有依据的边界。
+即使允许按电压插值，也不授权按温度/电流插值或换用其他测试条件。
 
-Separate axes that the available evidence can bound from axes that remain truly
-unknown. Complete the calculable bounds, disclose the remaining uncertainty, and
-define its closure evidence. Missing guarantees on one axis do not excuse an
-endpoint, stationary-point or source-condition contradiction on a known axis.
-Conversely, a valid bound on one axis does not close all operating states or
-temperatures. Apply the existing SUPPORTED/FAIL/CONDITIONAL claim rules; this
-guidance creates no new automatic gate or historical downgrade.
+区分现有证据能界定的轴和确实未知的轴。完成可计算的边界，披露剩余的不确定性，并写明关闭它所需的证据。
+一个轴缺少保证，不能成为已知轴上端点、驻点或源表条件矛盾的借口。反过来，一个轴上有效的边界也不能关闭所有工作状态或温度。
+按已有的 SUPPORTED/FAIL/CONDITIONAL 结论规则处理；本指引不新增自动检查项，也不追溯降级历史结论。

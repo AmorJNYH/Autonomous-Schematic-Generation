@@ -1,36 +1,23 @@
-# Evidence-bound discrete supply review
+# 有证据的分立供电复核
 
-A rectifier, transformer, diode feed, or discrete pass stage may have only passive
-symbol terminals. Keep their manufacturer pin types. A marker represents a
-reviewed supply origin, not another component and not a proof of ratings.
+整流器、变压器、二极管馈电或分立调整级的符号可能只有 passive 引脚。保持厂家的引脚类型不变。
+标记代表一个经复核的供电来源，它不是另一个器件，也不证明额定值。
 
-Before declaring a source, inspect the source data and independent intent. Record
-energy input, return path, polarity, conducting/startup states, disabled/fault
-states and supply-load limits. Do not use this mechanism on feedback, threshold,
-reference measurement, or other signal nets. A power role alone is not evidence.
+声明来源前，先看源数据和独立写出的设计网表。记录能量输入、回流路径、极性、导通/启动状态、禁用/故障状态
+和供电负载限值。反馈、阈值、基准测量或其他信号网络不能用这个机制。只有 power 角色不算证据。
 
-`reviewed_circuit_supply` entries have exactly `net`, output `pin`, `refs`,
-`reason`, `binding_sha256` and `evidence: {path, sha256, locator}`. `refs` lists
-all relevant source-path components, at least two. The evidence is a readable
-review document within the artifact root (`verify_schematic.py --artifact-root`, normally
-the delivery folder so the review can sit in `record/evidence/`; default is the root
-schematic's folder); its hash and exact locator must match.
-Compute the binding with `schematic_layout.circuit_supply.binding(intent, refs)`
-after the review is written. It binds component identities, values, fields,
-complete participating net partitions and NC declarations. Do not refresh the
-binding after an electrical change without reopening the review.
+`reviewed_circuit_supply` 每条恰好有 `net`、输出 `pin`、`refs`、`reason`、`binding_sha256` 和
+`evidence: {path, sha256, locator}`。`refs` 列出来源路径上所有相关器件，至少两个。证据是 artifact root
+（`verify_schematic.py --artifact-root`，通常是交付目录，复核文档可放在 `record/evidence/`；默认是根图所在目录）
+内一份可读的复核文档，哈希和确切定位必须对得上。
+复核写完后用 `schematic_layout.circuit_supply.binding(intent, refs)` 计算绑定值。它绑定器件身份、值、字段、
+参与网络的完整分区和 NC 声明。电气改动后不重新打开复核，就不能刷新绑定值。
 
-The board declares the net role as power or return. Put exactly one
-`Sheet.power_flag()` at the reviewed output. `page_intents` carries the declaration
-to its output-pin page. The full-board native audit checks that the reviewed parts are
-fitted, absence of a conflicting native power output, marker
-count, output net name, current source document and circuit binding. Missing,
-stale, disconnected, signal or unreviewed declarations fail. The check does not
-parse the engineering argument or prove it correct; the design basis must argue
-source semantics and operating limits separately. Report that distinction explicitly.
-Part identity and pin connectivity are the `intent_netlist` gate's.
+设计网表把该网的角色声明为 power 或 return。在复核过的输出端恰好放一个 `Sheet.power_flag()`。
+`page_intents` 把声明带到输出引脚所在的页。整板的导出审计核对：复核过的器件已装配、没有冲突的 KiCad 电源输出脚、
+标记数量、输出网络名、当前的来源文档和电路绑定。缺失、过期、未连接、信号网络或未复核的声明都 FAIL。
+这项检查不解析工程论证，也不证明它正确；设计依据要另外论证来源语义和工作限值。报告里明确写出这个区别。
+器件身份和引脚连接归 `intent_netlist` 检查项。
 
-Use this only when supply semantics are actually known. A controller's uncertain
-voltage margin can remain conditional; a path of unknown polarity or an unproved
-energy source cannot be qualified. No broad waivers, ERC exclusions or fake
-power-output pin types are allowed.
+只在供电语义确实已知时使用。控制器不确定的电压裕量可以保持有条件；极性未知的路径或未证实的能量来源不能获得资格。
+不允许宽泛豁免、ERC 排除项或伪造的 power-output 引脚类型。

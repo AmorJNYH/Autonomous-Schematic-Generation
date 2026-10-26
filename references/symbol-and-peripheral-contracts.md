@@ -1,122 +1,73 @@
-# Symbol integrity and source-bound circuit contracts
+# 符号完整性与有来源的外围电路要求
 
-Read this before selecting or repairing symbols, authoring IC peripherals, or
-closing a generated board. Keep independent gates for physical pin identity,
-symbol artwork, footprint pads, native connectivity, reference peripherals,
-functional completeness and operating margins. Passing one cannot close another.
+选择或修复符号、写 IC 外围电路、或收尾一块生成的板子之前阅读。物理引脚身份、符号图形、封装焊盘、KiCad 连接、
+参考外围电路、功能完整性和工作裕量各自是独立的检查项。通过一项不能关闭另一项。
 
-## Establish the active scope and design boundary
+## 确定当前范围和设计边界
 
-Use `audit_project.py` to inventory reachable sheet **instances**, physical
-references and selected units. Do not scan historical `.kicad_sch` files as if
-they all belonged to the current project. Freeze root/project identity, hashes,
-native XML, raw ERC and page list. Inventory every core IC, regulator, op-amp,
-comparator, FET/driver and protection device on every active page. Repeated
-instances still need package, mode, supply, population and load checks before
-reusing a proven part contract.
+用 `audit_project.py` 清点可达的页**实例**、物理位号和选定的单元。不要把历史 `.kicad_sch` 文件都当作当前工程扫描。
+冻结根图/工程身份、哈希、KiCad XML、原始 ERC 和页清单。清点每张活动页上的每颗核心 IC、稳压器、运放、比较器、
+MOS/驱动器和保护器件。重复的实例在复用已核实的器件核对表之前，仍需检查封装、模式、供电、装配和负载。
 
-Derive each feature's boundary from requirements. If discrete AC/DC circuitry
-was requested, show the applicable rectification, conversion, magnetics,
-sensing, feedback and protection circuits with engineering constraints. If a
-qualified module is permitted, its internal circuitry need not be recreated;
-required external circuits and integration evidence still apply. More parts or
-pages do not by themselves make a design complete. Ordinary IC internal
-transistors are not a missing board-level circuit.
+每项功能的边界从需求推出。要求分立 AC/DC 电路时，画出适用的整流、变换、磁件、检测、反馈和保护电路及其工程约束。
+允许使用合格模块时，不必重建其内部电路；但必需的外部电路和集成证据仍然适用。器件或页面更多本身不让设计完整。
+普通 IC 内部的晶体管不是缺失的板级电路。
 
-Map each required function from source to load with real references, physical
-pin endpoints, page locations, assembly states and evidence. Include applicable
-sensor/bias/filter, driver/load connector/flyback, RF/matching/antenna, or
-energy-storage/conversion/load stages. A named ADC input, MCU GPIO, bus header,
-load switch or sheet title cannot stand in for an absent stage. State external
-module/load boundaries explicitly. Retaining a logic rail does not prove an
-actuator can operate: carry load, energy, time and voltage constraints to the
-actual load. Unknown load is not zero load.
+把每项必需的功能从来源到负载映射到真实的位号、物理引脚端点、页面位置、装配状态和证据。包括适用的传感器/偏置/滤波、
+驱动器/负载连接器/续流、射频/匹配/天线或储能/变换/负载级。有名字的 ADC 输入、MCU GPIO、总线排针、负载开关或页标题
+都不能代替缺失的级。外部模块/负载的边界要明确写出。保留一条逻辑电源轨不能证明执行器能工作：把负载、能量、时间和电压约束
+带到实际负载。未知负载不是零负载。
 
-## Establish physical pin and source truth
+## 确立物理引脚和来源的事实
 
-For each exact manufacturer part/package, retain the primary document URL,
-revision, file hash and pages/figures actually read. A nearby part's datasheet,
-matching filename or available URL does not establish identity. Keep exact MPN
-separate from display value and library symbol name.
+每个确切的厂家料号/封装，保留一手文档 URL、版本、文件哈希和实际读过的页/图。相近器件的数据手册、匹配的文件名或可用的 URL
+都不能确立身份。确切 MPN 与显示的值和库符号名分开保存。
 
-Map **every physical pin**, including EP/NC and all units, to documented functions.
-Check electrical type separately from number/name: a reset output's open-drain
-behavior is not proved by a correct pin number. Use explicit reviewed aliases
-tied to that part/package; do not strip suffixes or punctuation globally to make
-comparisons pass. The XML `+no_connect` marker is separate from electrical type.
-Manufacturer function, library type and native wiring are distinct evidence.
+把**每个物理引脚**（包括 EP/NC 和所有单元）映射到文档写明的功能。电气类型与引脚号/引脚名分开核对：复位输出的开漏行为
+不能由正确的引脚号证明。使用与该料号/封装绑定、经复核的显式别名；不要全局去掉后缀或标点来让比较通过。
+XML 的 `+no_connect` 标记与电气类型是两回事。厂家功能、库类型和 KiCad 连线是不同的证据。
 
-Generic family names do not fix a pinout. Before authoring or reusing a symbol for a
-discrete part, read the pinning table of the exact orderable MPN: for example the KiCad
-library `BCX56` (SOT-89) numbers pins 1=B 2=C 3=E, while Nexperia BCX56-16TX (BCX56T
-series) is 1=E 2=C 3=B, so the generic symbol would swap base and emitter. Record the
-MPN-bound pin table in the device contract before placing the part.
+通用的系列名不能确定引脚定义。为分立器件写或复用符号前，读确切订货 MPN 的引脚表：例如 KiCad 库的 `BCX56`（SOT-89）
+引脚为 1=B 2=C 3=E，而 Nexperia BCX56-16TX（BCX56T 系列）是 1=E 2=C 3=B，通用符号会把基极和发射极接反。
+放置器件前，在器件核对表里记下与 MPN 绑定的引脚表。
 
-The symbol's **meaning** must match the part, not only its pin numbers. Choose
-the symbol from the exact part's datasheet: unidirectional or bidirectional
-TVS/ESD diode, Zener vs TVS, N- or P-channel MOSFET, NPN or PNP, Schottky vs
-standard rectifier. Pin names follow the datasheet (`K`/`A`, not `A1`/`A2`, for a
-polarized diode). KiCad `Device:D_TVS` is **bidirectional only** (description
-"Bidirectional transient-voltage-suppression diode", pins A1/A2); a
-unidirectional TVS such as PESD5V0L1UA (1=K, 2=A) or SMBJ24A ("A" suffix; "CA" is
-bidirectional) needs a unidirectional symbol: a `Diode` library TVS with K/A
-pins (e.g. the SMAJxxA family, after checking 1=K 2=A) or a project symbol.
-Do not pick a symbol by part category name alone in a project script.
-`verify_schematic.py` runs `discrete_semantics`: it compares each placed
-symbol's cached description/pin names with the datasheet's first pages and
-standard TVS MPN suffixes, and fails on a contradiction. Project symbols
-without a description are not classified, so give custom discrete symbols a
-`Description` that states the polarity/channel/type.
+符号的**含义**必须与器件一致，不只是引脚号。按确切料号的数据手册选符号：单向或双向 TVS/ESD 二极管、稳压管还是 TVS、
+N 沟道或 P 沟道 MOS、NPN 或 PNP、肖特基还是普通整流管。引脚名按数据手册（有极性的二极管用 `K`/`A`，不用 `A1`/`A2`）。
+KiCad `Device:D_TVS` **只表示双向**（描述为 "Bidirectional transient-voltage-suppression diode"，引脚 A1/A2）；
+单向 TVS，如 PESD5V0L1UA（1=K, 2=A）或 SMBJ24A（"A" 后缀；"CA" 是双向），需要单向符号：`Diode` 库中带 K/A 引脚的 TVS
+（如 SMAJxxA 系列，先核对 1=K 2=A）或项目符号。在工程脚本里不要只按器件类别名选符号。
+`verify_schematic.py` 运行 `discrete_semantics`：它把每个放置符号的缓存描述/引脚名与数据手册前几页及标准 TVS MPN 后缀比较，
+有矛盾就 FAIL。没有描述的项目符号不分类，所以自定义分立符号要写一段说明极性/沟道/类型的 `Description`。
 
-When footprints are assigned, check footprint pad-number sets, then
-independently check manufacturer package drawing, pitch, exposed pad, pad
-dimensions and orientation. Matching pad-number sets do not validate mechanical
-footprints. At the schematic stage footprints may stay empty; the pin map of the
-exact MPN is still required. Missing MPNs, unresolved library paths or
-unavailable package drawings remain explicit gaps.
+分配了封装时，核对封装的焊盘编号集合，再独立核对厂家的封装图、间距、裸焊盘、焊盘尺寸和方向。焊盘编号集合一致不能证明机械封装正确。
+原理图阶段封装可以留空；确切 MPN 的引脚映射仍然必需。缺少 MPN、未解析的库路径或拿不到封装图都保持为明确的缺口。
 
-## Detect internal pin-leg faults without moving electrical endpoints
+## 发现符号内部的引脚引线缺陷，不移动电气端点
 
 ```sh
 python3 scripts/audit_symbol_integrity.py path/to/board.kicad_sch \
   --netlist path/to/native.xml --out output/symbol-integrity.json
 ```
 
-If strict native XML parsing fails, the report retains the source pin, artwork,
-hierarchy and coverage diagnostics alongside a failed native axis and XML hash.
-Those retained rows do not establish native coverage or qualify a zero-pin
-object. Resolve the recorded native error before acceptance.
+严格的 KiCad XML 解析失败时，报告在失败的 KiCad 轴和 XML 哈希旁保留源引脚、图形、层次和覆盖诊断。
+这些保留的行不能确立 KiCad 覆盖，也不能使零引脚对象合格。验收前解决记录的 KiCad 错误。
 
-The command follows actual hierarchy annotations, selects active/common units
-and body styles, and compares full physical pin sets with native XML in both
-directions. It measures the **inner** end of visible pins against rectangle,
-polyline, circle and nondegenerate three-point arc strokes, including half the
-stroke width. A body bounding box cannot detect a leg stopping inside a triangle
-or outside a sloped edge. Ignoring stroke width falsely flags some normal
-capacitor plates. Arc distance follows its sweep, not a full circle.
+这条命令跟随实际的层次标注，选择活动/公共单元和本体样式，并与 KiCad XML 双向比较完整的物理引脚集合。
+它测量可见引脚的**内**端到矩形、折线、圆和非退化三点圆弧线条的距离，计入半个线宽。本体外框发现不了停在三角形内部
+或斜边外侧的引线。忽略线宽会把一些正常的电容极板误判。圆弧距离按其扫过的范围算，不按整圆。
 
-`CANDIDATE` blocks the graphics gate pending correction or justified disposition;
-it does not assert an electrical open. The report records local/sheet tips,
-inner coordinates, library hash, unit/style, type, DNP and distance. Hidden pins,
-zero-length pins and recognized separate bodyless supply units are
-`NOT_APPLICABLE`, with a reason; physical pins still require native coverage.
-A single-unit device missing artwork is not a recognized supply unit. Unresolved
-inheritance, unsupported artwork preventing attachment determination and
-malformed/degenerate geometry are never silently passed. Text/Bezier artwork is
-not proof; a pin touching a supported stroke can be checked even when other
-unsupported primitives exist. This is not complete raster/text-layout analysis.
-The default distance tolerance is 0.16 mm; it does not establish wire connectivity.
+`CANDIDATE` 在修正或有依据的处置之前阻挡图形检查项；它不断言电气开路。报告记录局部/页上的端点、内端坐标、库哈希、
+单元/样式、类型、DNP 和距离。隐藏引脚、零长引脚和识别出的独立无本体供电单元为 `NOT_APPLICABLE` 并附理由；
+物理引脚仍需 KiCad 覆盖。缺图形的单单元器件不是识别出的供电单元。未解析的继承、妨碍判定连接的不支持图形以及
+格式错误/退化的几何从不悄悄放过。文字/贝塞尔图形不算证明；引脚接触到支持的线条时，即使存在其他不支持的图元也可以检查。
+这不是完整的光栅/文字排版分析。默认距离容差为 0.16 mm；它不确立导线连接。
 
-The separate `hidden_power` axis rejects physical hidden `power_in`/`power_out`
-pins lacking a visible coincident supply anchor with matching type/name and
-native connectivity. Graphics `NOT_APPLICABLE` does not close that axis.
-Coincident hidden supply copies remain `INSUFFICIENT` under the current bounded
-generation contract, even when native XML connects them; do not infer approval
-from a shared name or net. Virtual `#` power symbols, visible zero-length pins,
-visible separate supply units and hidden passive copies retain their existing
-coverage rules. Pin-artwork exceptions cannot bypass this power-visibility check.
+单独的 `hidden_power` 轴拒绝缺少可见重合供电锚点（类型/名称匹配且有 KiCad 连接）的物理隐藏 `power_in`/`power_out` 引脚。
+图形的 `NOT_APPLICABLE` 不关闭这条轴。在当前有界的生成约定下，重合的隐藏供电副本即使 KiCad XML 把它们连上了，
+仍为 `INSUFFICIENT`；不要从共用的名字或网络推断认可。虚拟 `#` 电源符号、可见的零长引脚、可见的独立供电单元和
+隐藏的无源副本保留原有的覆盖规则。引脚图形例外不能绕过这项电源可见性检查。
 
-For an intentional isolated terminal, retain an explicit disposition:
+有意隔离的端子要保留明确的处置：
 
 ```json
 {"schema_version": 1, "exceptions": [{
@@ -127,53 +78,36 @@ For an intentional isolated terminal, retain an explicit disposition:
 }]}
 ```
 
-Pass its file with `--exceptions`. There is no blanket NC exemption. An unused
-exception, changed library hash or no-longer-applicable candidate fails. An
-exception only dispositions a candidate; it cannot close unsupported geometry
-or electrical gaps. Generation has no automatic exception bypass: correct the
-symbol or use a separately reviewed workflow, retaining failed generation evidence.
+用 `--exceptions` 传入这个文件。没有笼统的 NC 豁免。未用到的例外、改变的库哈希或不再适用的候选都 FAIL。
+例外只处置一个候选；它不能关闭不支持的几何或电气缺口。生成没有自动的例外绕过：修正符号或使用另行复核的做法，并保留失败的生成证据。
 
-For an artwork-only repair, preserve pin **tips**, numbers/types, units,
-reference/value/footprint, population and native pin partitions. Change the
-internal leg or intended artwork, then re-export and compare. Audit every
-instance/cache/project-library copy affected by a shared definition. Refresh
-and inspect native detail and full-page views. Do not change wiring or add
-power flags merely to clear graphics/ERC candidates.
+只修图形时，保持引脚**端点**、引脚号/类型、单元、位号/值/封装、装配和 KiCad 引脚分区不变。改内部引线或预期的图形，
+然后重新导出并比较。审计共享定义影响到的每个实例/缓存/项目库副本。刷新并检查 KiCad 细节视图和整页视图。
+不为清除图形/ERC 候选而改连线或加电源旗标。
 
-## Author peripheral expectations independently of the candidate
+## 独立于候选图写出外围电路要求
 
-`verify_reference_contract.py` provides a small explicit format. The complete
-[synthetic contract](../tests/fixtures/reference_contract/contract.json) uses a
-fictional part/specification solely for testing. It is not a usable circuit.
-Author project expectations from requirements and manufacturer sources before
-changing/generating the candidate. Copying current connections or pin types into
-expected results does not establish correctness.
+`verify_reference_contract.py` 提供一种小而显式的格式。完整的 [合成核对表](../tests/fixtures/reference_contract/contract.json)
+用一个虚构的器件/规格，只用于测试。它不是可用的电路。在改动/生成候选图之前，从需求和原厂资料写出工程的预期。
+把当前连接或引脚类型抄进预期结果不能确立正确性。
 
-| Section | Meaning and gate |
+| 节 | 含义与检查 |
 | --- | --- |
-| `scope.core_refs`, `scope.feature_ids` | Independent lists to cover. Empty scopes are rejected; missing mappings/features are INSUFFICIENT. Reconcile with page inventory and requirements: the tool cannot discover every required function. |
-| `sources` | ID maps to `path`, SHA256, primary `url`, `document`, `revision`. Paths resolve relative to the contract, or can be absolute. Changed bytes FAIL; absent files are INSUFFICIENT. Authority and source interpretation still require review. |
-| `pin_maps` | Reference maps to exact `identity` (`value`, `mpn`, `footprint`, `lib_id`), source/locator, and complete numbered `pins` with explicit `names`/`types` alias lists. `footprint` may be the empty string at schematic stage, meaning explicitly unassigned; it must still match the native field exactly and is never a wildcard for an assigned footprint. Other identity fields remain nonempty. Uses nonempty native MPN field, otherwise exact native Value; a generic Value is not an MPN substitute. |
+| `scope.core_refs`、`scope.feature_ids` | 要覆盖的独立清单。空范围被拒绝；缺少映射/功能为 INSUFFICIENT。要与页面清单和需求对照：工具发现不了每项必需的功能。 |
+| `sources` | ID 映射到 `path`、SHA256、一手 `url`、`document`、`revision`。路径相对于核对表解析，也可以是绝对路径。字节改变 FAIL；文件缺失 INSUFFICIENT。来源的权威性和解读仍需复核。 |
+| `pin_maps` | 位号映射到确切的 `identity`（`value`、`mpn`、`footprint`、`lib_id`）、来源/定位，以及完整编号的 `pins` 及显式的 `names`/`types` 别名列表。原理图阶段 `footprint` 可以是空字符串，表示明确未分配；它仍须与 KiCad 字段完全一致，从不作为已分配封装的通配。其他身份字段不得为空。优先用非空的 KiCad MPN 字段，否则用确切的 KiCad Value；通用 Value 不能代替 MPN。 |
+| `checks` | 唯一的 `id`、`kind`、来源/定位。`component` 断言确切的值/封装/库/DNP。`same_net` 和 `distinct_nets` 对照 KiCad 分区断言至少两个不同的 `位号.引脚` 端点。 |
+| `features` | 唯一 ID、边界、来源/定位和非空的 stages。每个 stage 需要 ID、角色、真实已装配的位号和检查 ID。必需的位号缺失或为 DNP 时 FAIL。还要复核列出的位号和检查是否真的实现了所写的角色。 |
 
-Native pin names/types come from the component's exact `libsource` → unique
-`libparts/libpart` → unique physical pin number. A node's `pinfunction` can be a
-generated identifier such as `STAT_1`; do not strip its suffix or treat it as the
-manufacturer pin name. Genuine names such as `Pin_1` remain exact. Missing or
-ambiguous library pin metadata is INSUFFICIENT; mismatched names/types and
-contradictory native node electrical types remain FAIL. A missing component
-identity can independently FAIL even when its metadata has a coverage gap.
-Every library physical pin, including unused units, NC and EP, must be in the
-contract; omission from both the nodes and contract cannot hide a library pin.
-Library pins without a physical number remain a metadata coverage gap.
+KiCad 的引脚名/类型来自器件确切的 `libsource` → 唯一的 `libparts/libpart` → 唯一的物理引脚号。节点的 `pinfunction` 可能是
+生成的标识，如 `STAT_1`；不要去掉它的后缀，也不要把它当作厂家的引脚名。`Pin_1` 这样的真实名字保持原样。
+缺失或有歧义的库引脚元数据为 INSUFFICIENT；名字/类型不符和矛盾的 KiCad 节点电气类型仍为 FAIL。
+缺少器件身份时即使其元数据有覆盖缺口，也可独立 FAIL。每个库物理引脚（包括未用的单元、NC 和 EP）都必须在核对表里；
+节点和核对表都省略一个库引脚并不能把它藏起来。没有物理编号的库引脚仍是元数据覆盖缺口。
 
-An unqualified zero-pin object still makes whole-native qualification FAIL.
-The reference report retains source-bound pin/identity/topology diagnostics for
-the structurally parsed remainder so an unrelated object cannot hide a local
-pin defect. Check `native_qualification` and top-level `errors`: local PASS
-entries never qualify a failed input. Malformed XML and duplicate physical
-assignments remain hard rejections.
-| `checks` | Unique `id`, `kind`, source/locator. `component` asserts exact value/footprint/library/DNP. `same_net` and `distinct_nets` assert at least two unique `reference.pin` endpoints against native partitions. |
-| `features` | Unique ID, boundary, source/locator and nonempty stages. Each stage needs ID, role, real fitted references and check IDs. Missing/DNP required references fail. Review whether the listed references and checks actually implement the stated role. |
+未合格的零引脚对象仍使整体 KiCad 资格 FAIL。外围电路报告对结构上解析出的其余部分保留有来源的引脚/身份/拓扑诊断，
+无关的对象不能掩盖局部的引脚缺陷。检查 `native_qualification` 和顶层的 `errors`：局部的 PASS 条目从不使失败的输入合格。
+格式错误的 XML 和重复的物理分配仍是硬拒绝。
 
 ```sh
 python3 scripts/verify_reference_contract.py path/to/native.xml \
@@ -182,131 +116,68 @@ python3 scripts/build_circuit.py circuit.json presentation.json \
   --reference-contract path/to/reference-contract.json --output-dir output/new-run
 ```
 
-The same option exists on `generate_schematic.py`. Symbol integrity automatically
-runs inside native verification for both entrypoints and existing reference
-builders. A supplied contract must PASS for automated acceptance. Without one,
-no source/peripheral claim is made; `datasheet_review: PENDING` remains. For a
-board-level IC design, the skill workflow requires a project contract or explicit
-uncovered/unsupported findings before calling reference circuits checked.
+`generate_schematic.py` 也有同样的选项。两个入口和已有的参考生成器都在 KiCad 检查内自动运行符号完整性。
+提供的核对表必须 PASS 才能自动验收。不提供时不做任何来源/外围电路结论；`datasheet_review: PENDING` 保留。
+板级 IC 设计在称参考电路已核对之前，技能流程要求有工程的外围电路核对表，或明确的未覆盖/不支持发现。
 
-For a required bypass, check exact capacitor/population, `same_net` for **each**
-terminal and intended IC supply/return pin, and `distinct_nets` for supply/return.
-Checking only presence, a net name or one terminal misses wrong returns/shorts.
-Use physical pin identities; local/hierarchical aliases cannot substitute for
-actual connectivity. Numeric values are exact strings in this checker: author
-intentional notation or update it explicitly, not silent unit guesses.
+对必需的去耦电容，核对确切的电容/装配、**每个**端子与预期 IC 电源/地引脚的 `same_net`，以及电源/地之间的 `distinct_nets`。
+只核对存在、网络名或一个端子会漏掉接错的地和短路。使用物理引脚身份；局部/层次别名不能代替实际连接。
+这个检查器里数值是确切字符串：写成有意的记法或显式更新，不悄悄猜单位。
 
-Connectivity assertions concern **fitted endpoints on direct native nets**.
-The checker does not merge zero-ohm links, traverse internal IC paths, model FET
-current flow or validate alternate assemblies. Preserve the all-pads netlist,
-then separately audit the fitted DNP/zero-ohm graph and mutually exclusive
-configurations. Optional branch wiring and component NC are not IC NC. Record
-mode, polarity, default state and active-level reference rails. Qualify
-tolerance, effective capacitance, common-mode range, timing, startup/fault/backup
-states, thermal and load margins separately.
+连接断言针对**直接 KiCad 网络上已装配的端点**。检查器不并合零欧跳接，不遍历 IC 内部路径，不模拟 MOS 电流，
+也不验证替代装配。保留全焊盘网表，再另外审计已装配的 DNP/零欧连接图和互斥配置。可选支路的连线和器件 NC 不是 IC NC。
+记录模式、极性、默认状态和有效电平参考的电源轨。容差、有效电容、共模范围、时序、启动/故障/备份状态、热和负载裕量另外判定。
 
-For every mandatory external selection parameter, record its recommended
-MIN/MAX window and applicable table/footnote, then bound the populated part's
-tolerance and temperature drift over the required operating range. Nominal
-value, absolute rating and an application figure do not close that window.
-A supported allowed corner outside the required window fails the guarantee;
-missing conditions remain OPEN. This is a peripheral-contract obligation, not
-proof that every physical unit fails or that an arithmetic tool is defective.
+每个必需的外部选值参数，记录其推荐的 MIN/MAX 窗口和适用的表/脚注，再在所需工作范围内界定所装器件的容差和温漂。
+名义值、绝对额定和应用图都不能关闭这个窗口。有依据的允许角点落在所需窗口外时保证不成立；缺少条件的保持 OPEN。
+这是外围电路要求的义务，不证明每个实物都失效，也不证明算术工具有缺陷。
 
-For each numerical source, retain the actual page/table, parameter row,
-MIN/TYP/MAX column, value/unit, test conditions and footnotes. Independently
-compare those conditions with the design's supply, temperature, load and other
-applicable operating ranges. A parameter name containing "Max" does not make
-a number in its TYP column a guaranteed MAX limit. Use the existing calculation
-basis `TYPICAL` for a typical value, never `GUARANTEED` merely because the
-nominal arithmetic passes; retain its conditions and explicit closure.
+每个数值来源，保留实际的页/表、参数行、MIN/TYP/MAX 列、值/单位、测试条件和脚注。独立比较这些条件与设计的供电、温度、
+负载和其他适用的工作范围。参数名里含 "Max" 并不让 TYP 列中的数成为有保证的 MAX 限值。典型值用已有的计算依据 `TYPICAL`，
+从不因名义算术通过就写 `GUARANTEED`；保留它的条件和明确的关闭方式。
 
-Interpret the physical acceptance goal before using a load-capacitance value.
-For an analog amplifier or control loop, a typical capacitive-load stability
-value does not guarantee absence of sustained oscillation. Bound total CL,
-including pin/board parasitics, connected loads and measurement probes, then
-check the applicable supply-voltage, temperature and load corners. Being below
-the TYP number alone cannot close stability. Where source guarantees are
-insufficient, retain targeted measurement closure that confirms **no sustained
-self-oscillation** under the required conditions. Oscillator startup and
-continued normal oscillation are separate physical goals for an actual
-oscillator design; do not impose them on an amplifier stability check.
+使用负载电容值前，先弄清物理上的验收目标。对模拟放大器或控制环路，典型的容性负载稳定值不保证不发生持续振荡。
+界定总 CL（包括引脚/板寄生、所接负载和测量探头），再核对适用的供电电压、温度和负载角点。仅低于 TYP 值不能关闭稳定性。
+来源保证不足时，保留有针对性的实测关闭方式，在所需条件下确认**没有持续自激振荡**。振荡器起振和持续正常振荡是
+实际振荡器设计的两个不同物理目标；不要把它们套到放大器的稳定性检查上。
 
-Derive calculation summaries from the actual unique calculation IDs and their
-preflight result rows. List each ID, actual status, source/condition bounds and
-OPEN closure; disclose duplicate IDs, missing results and unmatched rows.
-Compute counts from that reconciled set, not a manually stated calculation
-count. Arithmetic-check completion does not establish a guaranteed design.
+计算摘要从实际唯一的计算 ID 及其预检结果行推出。列出每个 ID、实际状态、来源/条件边界和 OPEN 的关闭方式；
+披露重复的 ID、缺失的结果和对不上的行。计数从这套核对过的集合算出，不用手写的计算条数。算术检查完成不确立有保证的设计。
 
-Independently derive each expression's physical dimensions and unit scale from
-its declared inputs before comparing it with an acceptance boundary. Record
-the resulting physical quantity, output dimensions, unit conversions and the
-meaning of the acceptance metric. Addition/subtraction needs compatible
-quantities with explicit scale conversion; multiplication/division combines
-dimensions. Numeric constants must not hide an undeclared component parameter
-or voltage threshold. Matching `output_unit` and `acceptance.unit` strings in
-the arithmetic preflight does not validate the expression's dimensions.
+在与验收边界比较之前，从声明的输入独立推出每个表达式的物理量纲和单位比例。记录得到的物理量、输出量纲、单位换算和验收指标的含义。
+加减需要量纲兼容并显式换算比例；乘除组合量纲。数值常数不得藏起未声明的器件参数或电压阈值。
+算术预检中 `output_unit` 与 `acceptance.unit` 字符串相同，不能验证表达式的量纲。
 
-For example, resistance times capacitance (`ohm * F`) gives a time constant in
-seconds. It cannot be relabelled `s/V` and directly compared with an input
-transition-rate limit. A threshold-interval metric such as delta-time divided
-by delta-voltage needs the actual voltage thresholds and an applicable response
-model or measured waveform; missing inputs remain OPEN/INSUFFICIENT. Likewise,
-dimension compatibility alone does not prove the model or its worst case.
-Unknown units, model definitions or unsupported derivations retain an explicit
-coverage gap. This is an ASG engineering-review obligation, not an extension
-of the shared calculation schema/runtime.
+例如电阻乘电容（`ohm * F`）得到以秒为单位的时间常数。它不能改标为 `s/V` 直接与输入转换速率限值比较。
+阈值区间指标（如时间差除以电压差）需要实际的电压阈值和适用的响应模型或实测波形；缺少输入时保持 OPEN/INSUFFICIENT。
+同样，量纲兼容本身不能证明模型或其最坏情况。未知的单位、模型定义或不支持的推导保留明确的覆盖缺口。
+这是 ASG 工程复核的义务，不是对共享计算格式/运行时的扩展。
 
-For a series limiter, isolation element or feedback support branch, bind the
-fitted part/value and **each** terminal to its intended physical endpoints with
-`component` and `same_net` checks. Declare `distinct_nets` for the nodes that
-must remain separated by that element in the direct native netlist. Preserve
-a short/bypass mutation: correct same-net endpoint checks can still PASS when
-both terminals have been merged, whereas the required distinct-net check must
-FAIL. Select the distinct nodes from the real topology, rather than requiring
-all feedback pins to be mutually distinct. These checks prove declared direct
-net partitions only; current flow, component behavior, feedback stability and
-alternative fitted paths still need independent engineering evidence.
+串联限流件、隔离元件或反馈支持支路，用 `component` 和 `same_net` 检查把已装配的器件/值及其**每个**端子绑定到预期的物理端点。
+对必须由该元件在直接 KiCad 网表中隔开的节点声明 `distinct_nets`。保留一个短路/旁路的变异：两端被并合时正确的同网端点检查
+仍可能 PASS，而必需的异网检查必须 FAIL。从真实拓扑中选异网节点，不要求所有反馈引脚两两不同。
+这些检查只证明声明的直接网络分区；电流、器件行为、反馈稳定性和替代装配路径仍需独立的工程证据。
 
-Build the state table from each real supply source, assembly, switch and
-independently powered counterpart. Trace persistent sources into each unpowered
-pin, including non-failsafe inputs, injection and backfeed paths, with applicable
-pin limits and isolation evidence. Common ground, equal nominal logic voltage
-and startup high-impedance do not establish a shared physical supply or OFF-state
-isolation. Bind each page's state paths and required peripherals to contract
-check IDs and OPEN closure conditions; native netlist agreement closes only
-the connection assertions.
+从每个真实的供电来源、装配、开关和独立供电的对端建状态表。追踪持续存在的来源进入每个未上电的引脚，包括非失效安全的输入、
+注入和倒灌路径，并核对适用的引脚限值和隔离证据。共地、相同的名义逻辑电压和启动时高阻都不能确立共享的物理供电或关断状态下的隔离。
+把每页的状态路径和必需的外围电路绑定到核对表的检查 ID 和 OPEN 关闭条件；KiCad 网表一致只关闭连接断言。
 
-## Close with negative tests and independent evidence
+## 用反例测试和独立证据收尾
 
-### Intentional pinless native objects
+### 有意没有引脚的 KiCad 对象
 
-A mechanical or documentation object (mounting hole, logo, note marker) may have
-no pins. Give the symbol a `ComponentRole` property of `mechanical` or
-`documentation`; KiCad exports it as a field. A part with that role and no pin in
-any cached unit, and a native libpart with no pins, is listed as a pinless object
-with integrity `NA`, not a part or manufacturing qualification. Every other part
-without exported pins still fails, and so does a declared role on a part with a
-pin in any unit. The role is never inferred from a reference prefix, library name,
-BOM flag or an empty XML pin list. The intent netlist check compares the field
-like any other, so a role the intent does not declare is a mismatch.
+机械或文档对象（安装孔、标志、注释标记）可以没有引脚。给符号一个值为 `mechanical` 或 `documentation` 的 `ComponentRole` 属性；
+KiCad 把它作为字段导出。有这个角色、任何缓存单元都没有引脚、且 KiCad libpart 也没有引脚的器件，列为无引脚对象，
+完整性为 `NA`，不是器件或制造资格。其他没有导出引脚的器件仍 FAIL；任何单元有引脚却声明了这个角色的器件也 FAIL。
+角色从不由位号前缀、库名、BOM 标志或空的 XML 引脚列表推断。设计网表检查（`intent_netlist`）像其他字段一样比较这个字段，所以设计网表没声明的角色算不一致。
 
-Remove a required part, change a value/package, make it DNP, move a return, short
-distinct rails and remove a declared stage. Each affected check must reject the
-mutation. A source-hash change and wrong pin type must fail even with unchanged
-connectivity. Preserve neutral regression cases without proprietary schematics
-or manufacturer PDFs in the public skill.
+删掉一个必需的器件、改一个值/封装、设为 DNP、移动回流路径、短接不同的电源轨、删掉一个声明的级。每个受影响的检查都必须拒绝这个变异。
+连接不变时，来源哈希改变和错误的引脚类型也必须 FAIL。在公开的技能中保留中性的回归用例，不放专有原理图或厂家 PDF。
 
-Use native XML as connectivity reference. Before trusting an auxiliary
-analyzer's nets, compare complete physical pin partitions, including singleton
-and NC pins and assembly state. Resolve divergent aliases/splits or isolate
-them as tool gaps. Retain raw ERC/geometry candidates and evidence-based
-dispositions. An empty lint report or filtered count is not electrical proof.
-Do not merge grounds or add PWR_FLAG to quiet a detector.
+以 KiCad XML 为连接的参照。信任辅助分析器的网络之前，比较完整的物理引脚分区，包括单脚和 NC 引脚以及装配状态。
+分歧的别名/拆分要么解决，要么作为工具缺口隔离。保留原始的 ERC/几何候选和有证据的处置。空的 lint 报告或过滤后的计数不是电气证明。
+不要为了让检测器安静而合并地或加 PWR_FLAG。
 
-Report the gates separately: hierarchy/pages, pin identity/type, artwork,
-footprint identity/mechanics, native netlist/ERC, declared peripheral facts,
-required functional chains, population variants, calculations and physical
-validation. A checker PASS closes only enumerated facts. Missing evidence stays
-INSUFFICIENT. Record exact hashes, sources, findings and remaining conditions in
-the delivery; generation does not sign production release.
+各检查项分开报告：层次/页面、引脚身份/类型、图形、封装身份/机械、KiCad 网表/ERC、声明的外围电路事实、必需的功能链、
+装配变体、计算和实物验证。检查器的 PASS 只关闭列举的事实。缺少的证据保持 INSUFFICIENT。在交付中记录确切的哈希、来源、
+发现和剩余条件；生成不签署生产放行。

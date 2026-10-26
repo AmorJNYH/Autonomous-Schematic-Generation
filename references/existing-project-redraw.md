@@ -1,120 +1,74 @@
-# Redraw an existing hierarchical project
+# 重画已有的层次工程
 
-Use this workflow when the user asks to improve placement and visible wiring
-in an existing multi-page KiCad project. It is a procedure for a project-specific
-writer and verification, not an automatic multi-page feature of
-`build_circuit.py`. For new electrical design or peripheral repairs, also use
-[reference-driven-board-design.md](reference-driven-board-design.md) and
-[electrical-redesign.md](electrical-redesign.md). Executable hierarchy/intent
-checks are documented in [project-verification.md](project-verification.md).
+用户要求改进已有多页 KiCad 工程的摆放和可见连线时使用。这是一套为具体工程写专用写出脚本并检查的做法，
+不是 `build_circuit.py` 的自动多页功能。新的电气设计或外围修复，另见
+[reference-driven-board-design.md](reference-driven-board-design.md) 和 [electrical-redesign.md](electrical-redesign.md)。
+可执行的层次/设计网表检查见 [project-verification.md](project-verification.md)。
 
-## Freeze the actual baseline
+## 冻结实际基线
 
-Save the current editor state before reading files. Inventory the root project,
-child sheets, sheet UUID paths, page identifiers, multi-unit instances and local
-symbol libraries. Page names need not form a continuous numeric sequence; do
-not create a missing number merely to fill a requested range.
+读文件前先保存编辑器当前状态。清点根工程、子页、页 UUID 路径、页标识、多单元实例和本地符号库。
+页名不必构成连续的数字序列；不要只为凑满要求的范围而补出缺失的编号。
 
-Copy the project to a new staging directory and record source hashes. Export
-the baseline **root** schematic through native KiCad to XML, raw ERC and PDF.
-Keep the complete physical `reference.pin` partitions, including intentional
-NC singleton pins, component properties and cross-page interface names. A
-per-sheet analyzer can miss hierarchy context and is not connectivity truth.
+把工程复制到新的暂存目录并记录源文件哈希。用 KiCad 把基线**根图**导出为 XML、原始 ERC 和 PDF。
+保留完整的物理 `位号.引脚` 分区（包括有意的单脚 NC）、器件属性和跨页接口名。逐页的分析器会丢失层次上下文，不是连接事实。
 
-Define the allowed presentation changes and protected sheets explicitly.
-References, component/unit UUIDs, hierarchy, values, MPNs, ratings, footprints,
-DNP state and physical pin identity remain unchanged unless the task includes
-a separately recorded electrical change. Check named-net dependencies in
-netclasses, PCB synchronization and downstream scripts before removing labels.
+显式定义允许的图面改动和受保护的页面。位号、器件/单元 UUID、层次、值、MPN、额定值、封装、DNP 状态和物理引脚身份保持不变，
+除非任务包含另行记录的电气改动。删除标签前，核对网络类、PCB 同步和下游脚本对有名字网络的依赖。
 
-## Plan complete local circuits
+## 规划完整的局部电路
 
-Study full rendered engineering pages and dense details. Record source pages
-locally; publish general methods without private PDFs or screenshots.
+研究完整渲染的工程页面和密集细节。原始页面在本地记录；公开通用做法，不公开私有 PDF 或截图。
 
-- Place protection and conditioning along the input-to-output signal path.
-  Keep feedback, clock, reset, bias and bypass branches adjacent to their IC
-  pins. Make local rail and return connections visible.
-- Use a consistent orientation, pitch, passive pattern and field position for
-  repeated channels. Keep isolation domains visually separate and identify
-  their actual grounds.
-- Choose paper size and block grouping by readable functional circuits and
-  domain boundaries. Equal component counts across pages are not a target.
-- Declare the cross-page and intentional remote labels before routing. Short
-  labels directly beside relevant pins are preferable to a detached label wall.
-  A failed local route stays a failed candidate; it must not become an implicit
-  label connection to pass geometry.
+- 保护和调理电路沿输入到输出的信号路径放置。反馈、时钟、复位、偏置和去耦支路紧挨各自的 IC 引脚。
+  局部的电源轨和地网络连接要可见。
+- 重复通道用一致的朝向、间距、无源件画法和字段位置。隔离的地域在视觉上分开，并标明各自实际的地。
+- 按可读的功能电路和地域边界选择纸张和分块。各页器件数相等不是目标。
+- 连线前先声明跨页标签和有意的远程标签。紧挨相关引脚的短标签优于脱离电路的一排标签。
+  局部走线失败的候选图仍是失败的；不能为通过几何检查而变成隐式的标签连接。
 
-If a presentation symbol is needed, retain a complete comparison of physical
-pin number, name, electrical type, hidden state and unit identity. Only drawing
-geometry changes. Keep the matching project library and cached symbol coherent;
-do not rename or remap physical pins for visual convenience. Coincident pads
-are restricted to the same symbol and same net, with each physical pin retained
-in the export. See [schematic-generation.md](schematic-generation.md) for the
-bounded generator's supported cases.
+需要表示用的符号时，保留物理引脚号、引脚名、电气类型、隐藏状态和单元身份的完整对照。只改绘图几何。
+保持对应的项目库和缓存符号一致；不为视觉方便重命名或重映射物理引脚。重合的焊盘限于同一符号、同一网络，
+且每个物理引脚在导出中保留。有界生成器支持的情况见 [schematic-generation.md](schematic-generation.md)。
 
-## Verify the staged candidate
+## 检查暂存的候选图
 
-When a scoped writer restores source UUIDs, cached definitions or property text
-after `Sheet.build()`, its serialized drawing is a new verification boundary.
-Preserve property text separately from field anchors, angle and justification;
-check those against the transformed **saved** symbol. A field position from a
-different cached shape, or a manually changed justification, need not render as
-the recipe model predicted. Keep visible values upright independently of a
-symbol's rotation, and inspect every repeated channel after such overrides.
-For rotated power symbols, recheck the actual wire endpoint and pin anchor;
-retained short tails can add an ERC endpoint warning without changing the
-physical net partition. Compare each added native ERC item, not just totals.
+专用写出脚本在 `Sheet.build()` 之后恢复源 UUID、缓存定义或属性文字时，它序列化出的图是新的检查边界。
+属性文字与字段锚点、角度和对齐方式分开保存；按变换后**保存下来的**符号核对它们。来自另一个缓存形状的字段位置，
+或手动改过的对齐方式，渲染结果不一定与 recipes 模型的预测一致。可见的值保持正立，不随符号旋转；
+做过这类覆盖后逐个检查每个重复通道。旋转过的电源符号要重新核对实际的导线端点和引脚锚点；
+保留的短尾线可能增加一条 ERC 端点警告，而物理网络分区不变。逐条比较新增的 KiCad ERC 项，不只看总数。
 
-If construction uses a temporary label representation, its successful build
-does not qualify the final label outlines or attachment geometry. Verify the
-actual serialized representation with native exports and retain any unsupported
-coverage or failed build separately. Do not substitute the temporary model's
-PASS for the saved candidate's result.
+构建时用了临时的标签表示，它构建成功不能证明最终标签的外框或连接几何合格。用 KiCad 导出核对实际序列化的表示，
+不支持的覆盖范围或失败的构建单独保留。不能用临时模型的 PASS 代替保存后候选图的结果。
 
-Keep separate results for these checks; no single PASS covers the others.
+下列检查各自保留结果；一个 PASS 不能代替其他。
 
-| Check | Required evidence |
+| 检查 | 所需证据 |
 | --- | --- |
-| Electrical connectivity | Root native XML has exactly the same physical pin partitions and NC treatment; no missing pins, shorts or splits. |
-| Identity and scope | Component properties, unit/UUID context and hierarchy match; protected sheet files are unchanged; library changes are accounted for. |
-| Network names | Cross-page names and endpoints remain stable. Preserve local names when they are an interface; if local names legitimately change, update the intent names first, record old/new names and the exact pin set and assess downstream dependencies; `verify_schematic.py` fails a drawn name that differs from the intent. |
-| Native ERC delta | Retain both raw reports. Compare violation type/severity and affected references/pins/messages, accounting for changed coordinates. Investigate each added violation; never rely only on total counts. |
-| Geometry and grid | Check serialized bodies, wires, pin legs, fields, labels, anchors, the actual drawing frame and titleblock. Validate connection tips on the native grid, normally 1.27 mm. |
-| Render review | Inspect every changed full page and crowded clock/divider/isolation/configuration region through native PDF output. Record each page's review and remaining defects. |
+| 电气连接 | 根图导出的 XML 与基线的物理引脚分区和 NC 处理完全相同；没有缺脚、短路或断开。 |
+| 身份与范围 | 器件属性、单元/UUID 上下文和层次一致；受保护的页面文件未变；库的改动都有说明。 |
+| 网络名 | 跨页的网络名和端点保持稳定。局部网络名作为接口时保留；局部网络名确实要改时，先改设计网表里的名字，记录新旧名字和确切的引脚集合，并评估下游依赖；图上画出的名字与设计网表不同时 `verify_schematic.py` 报 FAIL。 |
+| KiCad ERC 增量 | 保留两份原始报告。按违规类型/严重度和受影响的位号/引脚/消息比较，考虑坐标的变化。逐条调查新增违规；不能只看总数。 |
+| 几何与栅格 | 核对序列化后的器件本体、导线、引脚引线、字段、标签、锚点、实际图框和标题栏。连接端点按 KiCad 栅格（通常 1.27 mm）核对。 |
+| 渲染审阅 | 通过 KiCad 导出的 PDF 检查每个改动过的整页和拥挤的时钟/分压/隔离/配置区域。记录每页的审阅情况和剩余缺陷。 |
 
-Inherited ERC problems remain disclosed electrical issues. A drawing-only
-acceptance can show no new unreviewed ERC regressions while still being
-**NOT_RELEASED** as a hardware design. Do not add power flags, exclusions or
-change pin types just to lower the count. New-design automated acceptance keeps
-the stricter gate described in [schematic-generation.md](schematic-generation.md).
+继承的 ERC 问题仍是要披露的电气问题。只针对绘图的验收可以表明没有未复核的新增 ERC 退化，但作为硬件设计仍是
+**NOT_RELEASED**。不得为降低计数而加电源旗标、排除项或改引脚类型。新设计的自动验收保持
+[schematic-generation.md](schematic-generation.md) 中更严格的检查。
 
-A geometry pass on a 0.635 mm grid can coexist with native off-grid warnings.
-Likewise, a model's 4–5 mm page margin may allow content across a 10 mm native
-frame. Check the actual native settings and printed frame, including text
-outside the symbol body. Do not waive a native finding because a different
-geometric model passed.
+0.635 mm 栅格上的几何 PASS 可以与 KiCad 的离栅警告同时存在。同样，模型的 4–5 mm 页边距可能允许内容越过 KiCad 10 mm 的图框。
+核对实际的 KiCad 设置和打印图框，包括符号本体外的文字。不能因为另一个几何模型通过了就豁免 KiCad 的发现。
 
-Render review also catches defects outside collision rules: a reset capacitor
-that is electrically joined only through remote labels, a pull-up stem visually
-belonging to the previous repeated channel, or pin labels far from the circuit.
-Repair those local blocks, then repeat the dependent checks.
+渲染审阅还能发现碰撞规则之外的缺陷：只靠远程标签电气相连的复位电容、视觉上属于前一个重复通道的上拉线、远离电路的引脚标签。
+修好这些局部块，再重做依赖它们的检查。
 
-## Apply and verify the delivered project
+## 写回并检查交付的工程
 
-When the user has authorized modification of the original project, apply the
-reviewed candidate after checking that the original source hashes still match
-the saved baseline. If the user edited the original meanwhile, reconcile those
-changes first. Preserve a recoverable backup; do not replace unrelated sheets
-or editor state files indiscriminately.
+用户授权修改原工程时，先核对原工程的源文件哈希仍与保存的基线一致，再写入复核过的候选图。
+用户在此期间改过原工程的，先合并那些改动。保留可恢复的备份；不要不加区分地替换无关页面或编辑器状态文件。
 
-Re-export XML, ERC and PDF from the **final project path**. Verify the delivered
-files against the staged manifest and repeat connectivity, identity and ERC
-delta checks. Check that library references resolve from that final location.
-Where both paths should render identically, compare decoded image dimensions,
-mode and pixels; PNG compression or metadata can change file hashes without
-changing the drawing.
+从**最终工程路径**重新导出 XML、ERC 和 PDF。按暂存的清单核对交付文件，重做连接、身份和 ERC 增量检查。
+核对库引用能从最终位置解析。两处路径应渲染一致时，比较解码后图像的尺寸、模式和像素；PNG 压缩或元数据会改变文件哈希而不改变图面。
 
-Deliver the exact changed-page list, final project/PDF, evidence manifest and
-remaining electrical limitations. Improving representative pages is not proof
-that the whole board has been repaired or qualified for production.
+交付确切的改动页清单、最终工程/PDF、证据清单和剩余的电气限制。改进有代表性的页面不能证明整块板已修好或可以投产。

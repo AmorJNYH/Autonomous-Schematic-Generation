@@ -34,7 +34,7 @@ SKiDL 的 Git 稀疏检出配置仅用于缩小本地研究下载；隔离 `.ven
 | `tools/schematic.py` 字段写回/KiCad 验证 | 字段变更与输出分离，KiCad 检查不可省 | 新目录、文件哈希、local sym-lib-table、ERC/XML/PDF | 不引入大型 MCP server 及其部署/制造流程 |
 | SKiDL `Circuit/Part/Pin/Net/Node/Bus/Interface` | 对象图、模块接口、稳定 tag、层次实例、标量总线 | Circuit IR v2、模块编译、SKiDL 对象桥、稳定 UUID | 显式实库映射；不运行输入源码或隐式重编号 |
 | SKiDL `tools/kicad9/gen_schematic.py` | 分块布局、重试、可选 stubbing 与 ERC 循环 | 采用分块与有界重排，保留每次失败证据 | 不采用失败后标签化或通过改电气数据清理 ERC |
-| circuit-synth `core/netlist_exporter.py::to_dict` | 组件字典、递归子电路、list/nodes 两种网络连接及属性 | JSON 适配器、源数据审计、真实脚号编译 | 源码明确不区分 local/external net，跨块同名必须显式定范围 |
+| circuit-synth `core/netlist_exporter.py::to_dict` | 组件字典、递归子电路、list/nodes 两种网络连接及属性 | JSON 适配器、源数据审计、真实引脚号编译 | 源码明确不区分 local/external net，跨块同名必须显式定范围 |
 | `core/simple_pin_access.py` | 精确号码和名字查找；重名返回 PinGroup | 精确名字解析并要求显式 all:true | 不静默将多个 GND/电源脚选成一个或全部 |
 | `connection_aware_collision_manager.py` | 按连接安排邻近器件 | functional 遍历、真实总占用、模块拼排 | 未把简单邻接布局宣称成已解决全局最优/多页/任意非平面布线 |
 

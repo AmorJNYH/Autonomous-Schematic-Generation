@@ -1,54 +1,33 @@
-# Verify multi-page delivery and intentional electrical changes
+# 检查多页交付与有意的电气改动
 
-Both tools are read-only, emit JSON and exit nonzero for `FAIL` or `INSUFFICIENT`.
-They neither generate a hierarchy nor certify hardware.
-Choose a fresh `--out` path for every run. Existing files, symlinks and hardlink
-aliases are rejected before processing, and reports are created exclusively.
-This also protects malformed input files from being overwritten by error reports.
+两个工具都只读、输出 JSON，遇 `FAIL` 或 `INSUFFICIENT` 以非零退出。它们不生成层次，也不认证硬件。
+每次运行用一个新的 `--out` 路径。已存在的文件、符号链接和硬链接别名在处理前就被拒绝，报告以独占方式创建。
+这也防止格式错误的输入文件被错误报告覆盖。
 
-Geometry uses conservative source bounds by default. The saved-file geometry
-CLI additionally attempts a fresh native qualification when an existing
-`wire_body` finding involves a single-column background frame with one-to-one,
-zero-length passive ring terminals and hidden pin names/numbers. This is a
-local exact-pin exit, not an owner exemption. All other body, field, glyph,
-foreign graphic, wire and neighboring terminal protections remain active.
+几何默认用保守的源文件边界。已有的 `wire_body` 发现涉及单列背景框、一一对应的零长无源环端子和隐藏的引脚名/引脚号时，
+保存文件的几何 CLI 还会尝试一次全新的 KiCad 资格判定。这是局部的精确引脚出口，不是对所属器件的豁免。
+其余所有本体、字段、字形、外来图形、导线和相邻端子保护仍有效。
 
-The tool must find one same-directory project root and one active page instance,
-copy/hash all reachable inputs and project/library context, and run KiCad 10.0.6.
-Baseline/replica, a page marker, complete cache graphic masks, pin **leg-length**
-probes and a whole-page wire mask bind the actual foreground and wire strokes.
-Pin numbers, UUIDs, unit and anchors are never changed by these render probes.
-The SVG job explicitly omits page canvas paint (`--no-background-color`);
-source background fills and all foreign foreground remain in its proof.
-Unknown profiles or any extra native changes keep the original finding and
-coverage. Existing gaps or review-only warnings cannot turn a measured error
-into missing data after refinement. Native receipts are audit evidence;
-external JSON, even with a matching SHA, never authorizes geometry coverage.
+工具必须找到一个同目录的工程根和一个活动的页实例，复制并哈希所有可达的输入和工程/库上下文，运行 KiCad 10.0.6。
+基线/副本、页标记、完整的缓存图形掩码、引脚**引线长度**探测和整页导线掩码绑定实际的前景和导线线条。
+这些渲染探测从不改动引脚号、UUID、单元和锚点。SVG 任务明确不画页面底色（`--no-background-color`）；
+源文件的背景填充和所有外来前景仍在证明之内。未知类型或任何额外的 KiCad 改动保留原发现和覆盖范围。
+已有的缺口或只供审阅的警告不能在细化后把实测的错误变成缺数据。KiCad 回执是审计证据；外部 JSON 即使 SHA 匹配，
+也从不授权几何覆盖。
 
-Source spans preserve UTF-8 and CRLF/LF bytes. The ring channel's finite profile
-does not extend the sheet/pin-name channel's existing source/font/instance
-qualification. Typical jobs need baseline, replica, marker, one graphic and
-one leg probe per cache group, plus one wire mask; receipts include the actual
-commands, source/tool/config/producer hashes and time. Failures retain source
-bounds; they do not certify native readability or hardware.
+源文件段保留 UTF-8 和 CRLF/LF 字节。环通道的有限类型不扩展页/引脚名通道已有的源/字体/实例资格。
+典型任务需要基线、副本、标记、每个缓存组一次图形探测和一次引线探测，外加一次导线掩码；回执包括实际命令、
+源文件/工具/配置/产生方哈希和时间。失败时保留源文件边界；它们不认证 KiCad 可读性或硬件。
 
-Native SVG equality resolves inheritance before comparing finite
-`fill-opacity`, treating omitted default 1 and numeric 1.0000 equally. Actual
-nondefault transparency, opacity products, geometry, stroke, paint and unknown
-CSS/effects still differ or remain unsupported. This closes an exporter group
-ordering artifact without deleting genuine drawing changes.
-Finite positive dash arrays on foreign round-stroked foreground are protected
-by the complete continuous stroke envelope, including the gaps. They do not
-authorize a dash-gap crossing. Owned rings, frames, pin caps and causally
-attributed wires still require solid strokes; malformed/unknown dash paint
-retains the original finding.
+KiCad SVG 一致性比较在比较有限的 `fill-opacity` 前先解析继承，把省略的默认值 1 和数值 1.0000 视为相等。
+实际的非默认透明度、透明度乘积、几何、线条、着色和未知 CSS/效果仍算不同或不支持。这消除了导出器分组顺序造成的假差异，
+而不删掉真实的图面改动。外来圆头前景上有限的正虚线数组按完整连续线条的包络（包括间隙）保护，不授权从虚线间隙穿过。
+自有的环、框、引脚端帽和因果归属的导线仍要求实线；格式错误/未知的虚线着色保留原发现。
 
-For pin-to-body artwork, physical pin/type/source evidence and peripheral/stage
-contracts, also run the tools in
-[symbol-and-peripheral-contracts.md](symbol-and-peripheral-contracts.md).
-The hierarchy and change checks below do not replace those independent gates.
+引脚到本体的图形、物理引脚/类型/来源证据和外围电路/级间要求，还要运行
+[symbol-and-peripheral-contracts.md](symbol-and-peripheral-contracts.md) 中的工具。下面的层次和改动检查不代替那些独立检查项。
 
-## Hierarchy and complete PDF
+## 层次与完整 PDF
 
 ```sh
 python3 scripts/audit_project.py candidate/board.kicad_sch \
@@ -56,39 +35,30 @@ python3 scripts/audit_project.py candidate/board.kicad_sch \
   --baseline baseline/board.kicad_sch --out output/project-audit.json
 ```
 
-Use the actual expected count, or omit `--expected-pages`; 12 is an example.
-Optional Poppler `pdfinfo` reads the real PDF page count. Missing requested PDF
-coverage is `INSUFFICIENT`. Count equality does not prove page content/order:
-export the current root through KiCad, bind its hash, and review the PDF.
+用实际的预期页数，或省略 `--expected-pages`；12 只是例子。可选的 Poppler `pdfinfo` 读取 PDF 真实页数。
+请求了 PDF 覆盖却缺失时为 `INSUFFICIENT`。页数相等不能证明页面内容/顺序：用 KiCad 导出当前根图、绑定其哈希并审阅 PDF。
 
-The root directory is the delivery boundary. The tool follows `Sheetfile`,
-resolves `${KIPRJMOD}`, counts every instance (including reused child files),
-reports missing files/cycles and records file hashes. Nonportable paths and
-unresolved variables fail. Missing project annotation is a coverage gap; use
-`--project NAME` if the root filename differs from the annotation project name.
-Nonconsecutive page identifiers are legal; duplicate identifiers are reported.
+根目录是交付边界。工具跟随 `Sheetfile`，解析 `${KIPRJMOD}`，计入每个实例（包括复用的子文件），报告缺失文件/循环并记录文件哈希。
+不可移植的路径和未解析的变量 FAIL。缺少工程标注是覆盖缺口；根图文件名与标注的工程名不同时用 `--project NAME`。
+不连续的页标识合法；重复的标识会被报告。
 
-Reference/unit pairs use the selected instance context. Shared cached library
-IDs must agree; multi-unit references must share a complete consistent pin
-definition. Signatures cover unit/style, number/name/type/shape/hidden state
-independently of artwork. Unresolved symbol inheritance is insufficient. This
-also checks active unit pins and agreement with the instance annotation. It
-does not resolve `sym-lib-table`, check footprint pads or assess graphic layout.
+位号/单元对用选定的实例上下文。共用的缓存库 ID 必须一致；多单元位号必须共用一份完整一致的引脚定义。
+签名覆盖单元/样式、编号/名称/类型/形状/隐藏状态，与图形无关。未解析的符号继承算不足。这还核对活动单元的引脚
+以及与实例标注是否一致。它不解析 `sym-lib-table`，不核对封装焊盘，也不评估图形布局。
 
-With `--baseline`, file/instance/reference and pin-signature changes are reported.
-This delta is descriptive, not approval of removals or arbitrary changes. Bind
-the expected page list and protected files to the authorized scope.
+带 `--baseline` 时报告文件/实例/位号和引脚签名的变化。这个增量是描述性的，不是对删除或任意改动的批准。
+把预期页清单和受保护文件绑定到授权的范围。
 
-## Electrical-change contract
+## 电气改动核对表
 
-Export both root netlists as `kicadxml`, then run:
+把两份根图网表导出为 `kicadxml`，然后运行：
 
 ```sh
 python3 scripts/verify_design_change.py baseline.xml candidate.xml \
   change.json --out output/design-change.json
 ```
 
-A complete minimal contract for a resistor value change:
+电阻改值的一份完整最小核对表：
 
 ```json
 {
@@ -99,37 +69,30 @@ A complete minimal contract for a resistor value change:
 }
 ```
 
-Only that identity change is permitted; all physical partitions and other
-component properties must remain unchanged. Set `baseline_sha256` to the frozen
-XML hash for stored/reused contracts. Reports bind both actual XML hashes.
+只允许这一处身份改动；所有物理分区和其他器件属性必须不变。保存/复用的核对表把 `baseline_sha256` 设为冻结 XML 的哈希。
+报告绑定两份实际 XML 的哈希。
 
-| Optional field | Meaning |
+| 可选字段 | 含义 |
 | --- | --- |
-| `remove_components` | Unique list of baseline references; affected nets also need explicit replacement. |
-| `add_components` | New reference → `{ "identity": ..., "pins": ["1", "2"] }`; list all physical pin numbers. A reference also listed in `remove_components` is a replacement (symbol/package swap with renumbered or additional pins): its old pins are dropped and every new pin must appear in `replace_partitions`. |
-| `component_changes` | Existing reference → identity field → exact `before` / `after`; verify the baseline precondition. |
-| `replace_partitions` | List of `{ "before": [["J1.1", "R1.1"]], "after": [["J1.1"], ["R1.1"]] }`; each inner list is a complete physical net. Empty outer lists mean no nets, not empty nets. |
-| `named_nets` | Required exact candidate names → complete pin sets; declare interfaces whose names matter downstream. |
-| `same_net` | Lists of at least two known physical pins that must share a net. |
-| `distinct_net` | Lists of pins that must all be on separate nets; this does not prove galvanic isolation. |
+| `remove_components` | 基线位号的唯一列表；受影响的网络还需要显式的替换。 |
+| `add_components` | 新位号 → `{ "identity": ..., "pins": ["1", "2"] }`；列出所有物理引脚号。同时列在 `remove_components` 中的位号是替换（符号/封装更换，引脚重新编号或增加）：它的旧引脚被丢弃，每个新引脚都必须出现在 `replace_partitions` 中。 |
+| `component_changes` | 已有位号 → 身份字段 → 确切的 `before` / `after`；核对基线前提。 |
+| `replace_partitions` | `{ "before": [["J1.1", "R1.1"]], "after": [["J1.1"], ["R1.1"]] }` 的列表；每个内层列表是一个完整的物理网络。外层空列表表示没有网络，不是空网络。 |
+| `named_nets` | 要求的确切候选名 → 完整的引脚集合；声明名字对下游有意义的接口。 |
+| `same_net` | 至少两个已知物理引脚的列表，它们必须在同一网络。 |
+| `distinct_net` | 必须各在不同网络的引脚列表；这不证明电气隔离。 |
 
-An identity has exactly `value`, `footprint`, `datasheet`, `lib_id`, `dnp` and
-`fields`. Text values are strings, `dnp` is Boolean, `fields` is a string map.
-Example: `{ "value": "10k", "footprint": "", "datasheet": "", "lib_id":
-"Device:R", "dnp": true, "fields": {} }`. Blank fixture fields do not qualify
-a real BOM. Review presentation-driven library-ID changes explicitly.
+身份恰好有 `value`、`footprint`、`datasheet`、`lib_id`、`dnp` 和 `fields`。文字值是字符串，`dnp` 是布尔值，`fields` 是字符串映射。
+例：`{ "value": "10k", "footprint": "", "datasheet": "", "lib_id": "Device:R", "dnp": true, "fields": {} }`。
+测试样例里的空字段不能使真实 BOM 合格。为图面而改库 ID 要显式复核。
 
-Every replaced `before` partition must exist once. The final expected graph must
-retain every remaining baseline pin and all declared new pins exactly once.
-Unknown, duplicate, missing and invented pins fail. `#` references are virtual
-and excluded consistently; physical NC singleton nets remain significant. Local
-net names may change without changing partitions; use `named_nets` for important
-names. `verify_schematic.py` still requires drawn names to match the intent, so
-update the intent names in the same revision. Expected partitions must come from independent intent, not the candidate.
+每个被替换的 `before` 分区必须恰好存在一次。最终的预期连接图必须恰好保留每个剩余的基线引脚和所有声明的新引脚各一次。
+未知、重复、缺失和编造的引脚 FAIL。`#` 位号是虚拟的，一致地排除；物理 NC 的单脚网络仍然有意义。
+局部网络名可以在分区不变时改变；重要的名字用 `named_nets`。`verify_schematic.py` 仍要求画出的名字与设计网表一致，
+所以在同一版本里更新设计网表的名字。预期分区必须来自独立的设计网表，不能来自候选图。
 
-Native exported pins are not independent datasheet evidence. This tool does not
-check package mapping, unexported hidden pins, assembled DNP operation or analog
-performance. Keep source tables, footprint/population and performance checks.
+KiCad 导出的引脚不是独立的数据手册证据。这个工具不核对封装映射、未导出的隐藏引脚、装配后 DNP 的工作或模拟性能。
+源表、封装/装配和性能检查另外保留。
 
 ```sh
 python3 -m unittest discover -s tests -p 'test_project_audit.py' -v
@@ -137,38 +100,26 @@ python3 -m unittest discover -s tests -p 'test_design_change.py' -v
 ```
 
 
-## Electrical redesign preflight
+## 电气改版预检
 
-For electrical revisions also run the [change preflight](change-preflight.md) before
-writing the candidate and at final delivery. Include its status and unresolved
-assumptions alongside native/ERC/readability results. Artifact freshness alone does
-not detect a freshly generated stale note; facts bindings check declared current values.
+电气改版还要在写出候选图之前和最终交付时运行 [生成前预检](change-preflight.md)。把它的状态和未解决的假设与
+KiCad/ERC/可读性结果一起写出。只看产物是否最新发现不了新生成的过期说明；事实绑定核对声明的当前值。
 
-## ERC summary object binding
+## ERC 摘要对应到对象
 
-Keep the original native ERC report and bind each summarized violation through
-its actual UUID/object to the current source hierarchy instance, pin and native
-net before attributing it to a rail. References, display names and coordinates
-are useful locators, but their text alone does not establish the affected object
-or rail; reused sheets and renamed nets can make such guesses wrong. Include the
-source/report hashes and object locator used for the attribution in the review
-evidence. If an object cannot be resolved, retain the original violation and
-state the unresolved attribution rather than inventing a rail diagnosis or
-quieting it. This is a review instruction, not a new required schema field or a
-change to ERC thresholds, power flags or existing gates.
+保留原始的 KiCad ERC 报告，把每条摘要的违规通过它实际的 UUID/对象对应到当前源文件的层次实例、引脚和 KiCad 网络，
+再归因到电源轨。位号、显示名和坐标是有用的定位线索，但单凭它们的文字不能确定受影响的对象或电源轨；
+复用的页和改名的网络会让这种猜测出错。在审阅证据中写明归因所用的源文件/报告哈希和对象定位。
+对象无法对应时，保留原违规并写明归因未定，不编造电源轨诊断，也不把它压下去。这是审阅要求，
+不是新的必填字段，也不改变 ERC 阈值、电源旗标或已有的检查项。
 
-### Automatic names are not compared
+### 自动网络名不比对
 
-A name KiCad makes up for an unnamed net (`Net-(...)`, `unconnected-(...)`) is
-not compared with the intent name; the pin partition still is. Every net name
-the intent requires is drawn as an explicit label or rail and must match exactly.
-A hand-written label that only looks automatic is therefore not caught by name.
-# Finite hierarchy geometry
+KiCad 给无名网络起的名字（`Net-(...)`、`unconnected-(...)`）不与设计网表的网络名比较；引脚分区照样比较。
+设计网表要求的每个网络名都以显式标签或电源轨画出，且必须完全一致。因此只是看起来像自动名字的手写标签不会被按名字抓出来。
 
-The runner's fresh hierarchy SVG channel can qualify supported no-sheet-pin
-rectangular frames and complete shown sheet fields, and capture finite uniquely
-bound pin-name ink. Unknown rendering/instance/number/outline profiles retain
-coverage gaps; this does not make an incomplete page PASS. See
-[native geometry scope](native-geometry.md) for exact binding, reject rules and
-the audit-only serialized sidecar boundary. Ordinary in-memory build defaults
-are unchanged.
+# 有限的层次几何
+
+运行器全新的层次 SVG 通道可以判定支持的、没有页引脚的矩形图框和完整显示的页字段合格，并捕获有限的、唯一绑定的引脚名墨迹。
+未知的渲染/实例/编号/轮廓类型保留覆盖缺口；这不会让不完整的页面 PASS。确切的绑定、拒绝规则和只供审计的序列化附件边界见
+[KiCad 导出几何的范围](native-geometry.md)。普通的内存构建默认值不变。

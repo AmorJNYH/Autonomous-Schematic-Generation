@@ -2,11 +2,11 @@
 
 本文规定 ASG 怎样为每个**核心器件角色**找候选、比较并记录结论。核心器件指决定架构或固件/配置依赖的器件：
 控制器与协议 IC（PFC、反激、SR、PD、MCU）、功率开关、磁件、隔离与反馈器件；两脚通用件（电阻、电容、普通二极管）按计算直接定值，
-不走本流程。选型在第 1 步定架构之后、第 2 步核手册之前做：先定型号，再按 [symbol-and-peripheral-contracts.md](symbol-and-peripheral-contracts.md) 核对它的手册。
+不走本流程。选型在任务 1.2 定架构之后、任务 2.1 核数据手册之前做：先定型号，再按 [symbol-and-peripheral-contracts.md](symbol-and-peripheral-contracts.md) 核对它的手册。
 
 ## 1. 器件库在哪里
 
-器件资料不在本技能内，在本机知识库 `~/Documents/知识库/HardwareWiki`（环境变量 `HARDWARE_WIKI` 可改）：
+原厂资料不在本技能内，在本机知识库 `~/Documents/知识库/HardwareWiki`（环境变量 `HARDWARE_WIKI` 可改）：
 
 | 位置 | 内容 | 怎么找 |
 |---|---|---|
@@ -26,7 +26,7 @@
 3. 同拓扑参考设计的核心器件：`find_parts.py --designs <拓扑/功率/接口>`，打开板手册的 BOM，把它用的控制器、开关、磁件抄成候选，记下板名。
 4. 库内同类手册：按 part-roles.md 定二级类，`find_parts.py --category "<二级类>"` 列出全部，
    用决定性参数先筛掉明显不合的，剩下的打开手册首页核。
-5. 库里没有合适的类或候选不足两个时才外部检索（Digikey/JLCPCB MCP 工具或网页），下载的手册按 SKILL.md 第 2 步资料规则存入库里，
+5. 库里没有合适的类或候选不足两个时才外部检索（Digikey/JLCPCB MCP 工具或网页），下载的手册按 SKILL.md 任务 2.1 的资料规则存入库里，
    然后它就成了第 4 条的候选。记录里写明这一步做过。
 
 ## 3. 怎么比较
@@ -55,7 +55,7 @@
 
 **订货状态按手册订货表核。** 选定的确切料号要在手册订货表里查状态：列在 DISCONTINUED、OBSOLETE、
 NOT RECOMMENDED FOR NEW DESIGN、NRND、LAST TIME BUY 下的料号不用于新设计，改用同一手册里在售的料号
-（例如同系列不同包装的后缀）。这条不限核心器件：设计要求表里有 `mpn` 和 `datasheet` 的每个器件，
+（例如同系列不同包装的后缀）。这条不限核心器件：设计网表里有 `mpn` 和 `datasheet` 的每个器件，
 `render_design_report.py` 都读手册全文核对，列为停产的算记录问题；确需保留（用户指定、已有库存）时在该器件写
 `lifecycle_reason`，报告的“停产料号”一节列出。
 
@@ -65,7 +65,7 @@ NOT RECOMMENDED FOR NEW DESIGN、NRND、LAST TIME BUY 下的料号不用于新�
 
 **外部条件不确定时给出方案，先问再画。** 选定候选的 `external_dependencies` 不为空时，列出 2–3 个选型方案
 （例如“单芯片方案”“通用控制器 + MCU”“换一家资料公开的控制器”），比较各自的外部依赖、代价和优缺点，
-给出 ASG 的建议和理由，在第 2 步结束时交用户决定；用户定下来之前不进入第 3 步。用户的决定记在 `decision` 里，
+给出 ASG 的建议和理由，在任务 1.4 结束时交用户决定；用户定下来之前不进入步骤 ②。用户的决定记在 `decision` 里，
 选定候选必须属于用户选的方案。
 
 ## 4. 记录：`record/selection.json`
@@ -110,8 +110,8 @@ NOT RECOMMENDED FOR NEW DESIGN、NRND、LAST TIME BUY 下的料号不用于新�
 - 候选 ≥ 2，否则要有 `single_candidate_reason`；`status` 只能是 `selected`/`rejected`/`alternate`，恰好一个 `selected`。
 - 每个候选有 `mpn`、`reason`、`datasheet`；`datasheet` 是相对 `library_root` 的路径，文件必须存在（也可以是交付目录内 `设计资料/` 下的文件）。
   `values` 的每个 `page` 必须在该手册页数之内，否则算记录问题；数值在那一页的文字里找不到时列入报告“引用待人工核对”，不拦。
-- `selected` 的每个位号都在设计要求表里，且该器件的 `value` 或 `mpn` 含选定型号。
-- 设计要求表里每个 U/Q/T 开头的器件都属于某个角色；一个角色可以覆盖多个位号（例如两只并联 MOS）。
+- `selected` 的每个位号都在设计网表里，且该器件的 `value` 或 `mpn` 含选定型号。
+- 设计网表里每个 U/Q/T 开头的器件都属于某个角色；一个角色可以覆盖多个位号（例如两只并联 MOS）。
 - `selected` 候选写 `external_dependencies`（字符串列表，没有写空列表）。不为空时角色还要有：
   - `options`：2–3 个方案，每个 `{name, parts, external_dependencies, cost, pros, cons, recommended}`，
     `parts` 是涉及的型号列表，恰好一个 `recommended: true`，各方案的 `cons` 不能一字不差；

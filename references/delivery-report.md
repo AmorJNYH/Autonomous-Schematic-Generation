@@ -15,14 +15,14 @@
 
 | 文件 | 说明 |
 |---|---|
-| `electrical-intent.json` | 设计要求表（每个器件、网络应该怎样） |
+| `electrical-intent.json` | 设计网表（每个器件、网络应该怎样） |
 | `design-closure.json` | 需求、待办、计算的处理情况；证据路径相对交付目录，所引证据必须在本目录内；需求、原厂资料可留在 `--input` 登记的位置（按文件名找到并核对 SHA-256） |
 | `design-closure-audit.json` | `audit_design_closure.py` 的输出（`verify_schematic.py` 输出目录里的 `design-closure.json`，改名放入） |
 | `summary.json` | `verify_schematic.py` 的自动检查结果，原样复制 |
-| `page-plan.json` | 页面方案表：`{"schema_version": 1, "pages": [{"file", "reader_tasks": [...], "blocks": {块名: [位号]}, "patterns": {块名: "模式#做法"}}]}`；本页每个器件属于一个功能块，每块标注 `references/circuit-patterns/` 里的做法（第一页架构页免标） |
+| `page-plan.json` | 分页方案：`{"schema_version": 1, "pages": [{"file", "reader_tasks": [...], "blocks": {块名: [位号]}, "patterns": {块名: "模式#做法"}}]}`；本页每个器件属于一个功能块，每块标注 `references/circuit-patterns/` 里的做法（第一页架构页免标） |
 | `selection.json` | 核心器件选型：每个角色的位号、决定性条件、≥2 个候选（选中/淘汰理由、相对知识库的手册路径）；每个 U/Q/T 器件都要属于一个角色；选定候选写外部依赖，依赖未公开资料时附 2–3 个方案、建议和用户的决定，格式见 [核心器件选型](core-part-selection.md) |
 | `lessons.json` | 本版学到的东西：`{"schema_version": 1, "events": [{"source", "cause", "change" 或 "why_none", "why_not_rule"}]}`；来源只能是 `review:<审查目录>/<待办编号>`、`datasheet:<库内路径>#p<页>`、`test:<记录>`、`user:<日期>`；`datasheet:` 来源核对文件和页码；归因与改动位置的要求见 [处理审查意见](review-comments.md) |
-| `visual-review.json` | 图面审阅：`{"status": "REVIEWED/REVIEW_PENDING/REWORK_REQUIRED", "pdf_sha256", "pages": [{"page", "file", "paths", "problems", "render_review_items": [{"item", "disposition"}]}]}`；每页 `paths` 不少于读者任务数；`summary.json` 的 `geometry.render_review_items` 列出的每个待看图对象都要在对应页有非空处置，写出在本版 PDF 上看到了什么；没改动的页面也按本版 PDF 重新看，处置、路径和 `method` 不写“沿用”“同上一版”；`REVIEWED` 时 `pdf_sha256` 必须是本版 `原理图/schematic.pdf` 去掉导出时间后的 SHA-256（`render_design_report.py --pdf-sha256 原理图/schematic.pdf` 给出），PDF 图面变了就要重新审阅 |
+| `visual-review.json` | 图面审阅：`{"status": "REVIEWED/REVIEW_PENDING/REWORK_REQUIRED", "pdf_sha256", "pages": [{"page", "file", "paths", "problems", "render_review_items": [{"item", "disposition"}]}]}`；每页 `paths` 不少于读者任务数；`summary.json` 的 `geometry.render_review_items` 列出的每个图面待审对象都要在对应页有非空处置，写出在本版 PDF 上看到了什么；没改动的页面也按本版 PDF 重新看，处置、路径和 `method` 不写“沿用”“同上一版”；`REVIEWED` 时 `pdf_sha256` 必须是本版 `原理图/schematic.pdf` 去掉导出时间后的 SHA-256（`render_design_report.py --pdf-sha256 原理图/schematic.pdf` 给出），PDF 图面变了就要重新审阅 |
 | `delivery-evidence.json` | 导出后有没有再改过的核对记录 |
 | `review-responses.json` | 收到审查意见时必有，格式见 [处理审查意见](review-comments.md) |
 | `design-change.json` 等 | 改版时的改动核对与动手前检查 |
@@ -81,10 +81,10 @@ python3 <skill>/scripts/deliver.py <交付目录>
 `verify`（`verify_schematic.py` 的其余参数）、`inputs`（打包登记的需求、原厂资料、上一版）、`check_inputs`（可选，重放的输入核对命令）、
 `title`（可选）。格式见脚本说明。
 
-顺序固定：准备 → 待办审计 → 生成前预检 → 出图（替换 `原理图/` 里的 KiCad 工程，BOM 等其他文件保留）→ 一键验证
+顺序固定：准备 → 待办审计 → 生成前预检 → 出图（替换 `原理图/` 里的 KiCad 工程，BOM 等其他文件保留）→ 自动检查
 （KiCad 导出进 `原理图/`，自动检查结果进 `record/`，各页几何进 `record/evidence/geometry-*.json`）→ 交付预检 → 生成报告 →
 交付证据（本次运行写出的文件是输出，`原理图/`、`设计资料/`、`record/` 里其余文件是输入）→ 证据新鲜度 → 打包 → 输入核对。
-`inputs` 同时传给待办审计、一键验证和打包，三处按同一组资料目录找证据。预检在 `design-preflight.json` 和
+`inputs` 同时传给待办审计、自动检查和打包，三处按同一组资料目录找证据。预检在 `design-preflight.json` 和
 `change-contract.json` 都在时做，两个都没有时跳过，只有其中一个算 FAIL。每步的状态从它写出的结果读，不看退出码；
 只有 PASS、DONE、有条件通过、未完成、AUTOMATED_PASS、FRESH 继续往下，其余状态、没写出结果或命令出错都停下并说明是哪一步。
 下面的分步命令仍然可用。
@@ -96,11 +96,11 @@ python3 <skill>/scripts/pack_design.py <交付目录> --input requirements=<需�
   --input datasheets=<原厂资料目录> [--input previous=<前一版交付目录>]
 ```
 
-检查失败就修正后重跑，直到 PASS：给了 `previous` 时，标为“改图”的审查回复点名的位号必须与上一版设计要求表不同
+检查失败就修正后重跑，直到 PASS：给了 `previous` 时，标为“改图”的审查回复点名的位号必须与上一版设计网表不同
 （待办和需求状态不与上一版比较，只由本版设计确认）。顶层只能有上面四样；`原理图/` 和 `record/` 的必需文件齐全；
-`设计资料/` 里的表格（有位号列的 CSV）和装配文件（JSON 的 `ref`/`refs`/`fit`/`dnp`）提到的位号都在设计要求表里，
-表格给出的型号（mpn）和值（value）与设计要求表一致——说明文字里提到的位号和描述不在自动检查范围，改版时要人工清理；
+`设计资料/` 里的表格（有位号列的 CSV）和装配文件（JSON 的 `ref`/`refs`/`fit`/`dnp`）提到的位号都在设计网表里，
+表格给出的型号（mpn）和值（value）与设计网表一致——说明文字里提到的位号和描述不在自动检查范围，改版时要人工清理；
 `record/` 只有允许的子目录；没有日志和超大文件；`design-closure.json` 在交付目录内重新审核不出错；
 报告用到的记录没有问题——可读性或几何检查 FAIL 也算问题（画图问题要改图到 PASS），打包失败；
 `datasheets` 目录里的每个 PDF 都已在知识库 `~/Documents/知识库/HardwareWiki/raw/`（同哈希或同文件名，`find_parts.py --file <pdf>` 可查），
-没入库的列出来，按 SKILL.md 第 2 步资料规则入库后重跑。通过后写 `record/manifest.json`。
+没入库的列出来，按 SKILL.md 任务 2.1 的资料规则入库后重跑。通过后写 `record/manifest.json`。

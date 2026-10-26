@@ -20,7 +20,7 @@
 | `open_items` | 前一轮留下的待办 |
 | `output` | 本任务 result.json 的绝对路径 |
 
-需求文档保留原文与未决项。设计要求表（`electrical-intent.json`）由 ASG 从需求和手册独立写出，
+需求文档保留原文与未决项。设计网表（`electrical-intent.json`）由 ASG 从需求和手册独立写出，
 不从图中回抄，也不拿别人的记录改名代替。
 
 ## 输出：result.json
@@ -41,7 +41,7 @@
 ```
 
 - 路径相对于 result.json 的父目录；禁止绝对路径、`..`、符号链接和重复路径。角色引用的文件都必须在 files 中。
-- 交付内容就是 SKILL 第 8 步的交付目录（`设计报告.md`、`原理图/`、`设计资料/`、`record/`），先用
+- 交付内容就是 SKILL 任务 5.3 的交付目录（`设计报告.md`、`原理图/`、`设计资料/`、`record/`），先用
   `pack_design.py` 检查通过，再用流程提供的 `pack-result --roles roles.json --open-items open-items.json`
   生成 result.json；不手填哈希。
 - `DELIVERED` 只表示交付目录完整、可核对，不表示电路通过。缺需求、资料或方案输入时用 `NEEDS_INPUT`；
@@ -64,7 +64,7 @@
 | `report` | `设计报告.md` |
 | `schematic` | `原理图/` 下唯一的根 .kicad_sch；其他图页也在 files 中 |
 | `netlist`、`render`、`bom` | `原理图/netlist.xml`、`原理图/schematic.pdf`、`原理图/BOM.csv` |
-| `electrical_intent` | `record/electrical-intent.json`（设计要求表） |
+| `electrical_intent` | `record/electrical-intent.json`（设计网表） |
 | `design_closure` | `record/design-closure.json`（设计待办处理情况） |
 | `native_summary` | `record/summary.json`（verify_schematic.py 原样输出） |
 | `visual_review` | `record/visual-review.json`（图面审阅） |

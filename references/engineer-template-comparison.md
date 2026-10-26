@@ -1,61 +1,42 @@
-# Comparing an engineer reference and improving a generated schematic
+# 对照工程师参考图改进生成的原理图
 
-Use an engineer drawing as a presentation reference and a source of candidate
-circuit facts. It is not automatically an electrical acceptance certificate.
-Keep its image/native files unchanged, preserve the generated baseline, and
-make a new revision when values, connections or assembly options change.
+工程师画的图作为图面参考和候选电路事实的来源，它不自动成为电气验收证明。保持它的图片/KiCad 文件不变，
+保留生成的基线；值、连接或装配选项改变时出新版本。
 
-## Evidence and scope
+## 证据与范围
 
-Create an extraction ledger with image region, visible reference/value/package,
-connection confidence, and unresolved material identity. Distinguish a visible
-`330uF/4V` value from an inferred dielectric; neither a capacitor glyph nor a
-`C1210` annotation proves a polymer or MLCC part. A current written next to an
-inductor does not say whether it is Irms or an Isat rating at a particular drop.
-Do not copy pin numbering conventions for exposed pads without the package map.
-If only an image is available, do not claim exact source-netlist equivalence.
+建一份提取清单：图片区域、可见的位号/值/封装、连接的可信度、未确定的料号身份。区分可见的 `330uF/4V` 值和推测的介质；
+电容图形和 `C1210` 标注都不能证明是聚合物电容还是 MLCC。电感旁写的电流没说明是 Irms 还是某个跌落下的 Isat 额定。
+没有封装图时不照抄裸焊盘的引脚编号习惯。只有图片时，不声称与原网表完全等同。
 
-Compare separately:
+分开比较：
 
-- Placement: main energy path, local support groups, feedback loop, array pitch,
-  field orientation/association, whitespace, page boundaries and title block.
-- Circuit intent: input/output/load target, bias arrangement, enable sequencing,
-  mode, soft start, PG voltage, required control networks and assembly options.
-- Selection: actual MPN/package, inductance under current/temperature, DCR loss,
-  effective capacitance, ESR/ripple ratings, feedback tolerance and protection.
+- 摆放：主能量路径、局部支持器件组、反馈环路、阵列间距、字段朝向/归属、留白、页边界和标题栏。
+- 电路意图：输入/输出/负载目标、偏置方式、使能时序、模式、软启动、PG 电压、必需的控制网络和装配选项。
+- 选型：实际 MPN/封装、电流/温度下的电感量、DCR 损耗、有效电容、ESR/纹波额定、反馈精度和保护。
 
-Preserve reasonable differences. More capacitance or a smaller inductor is not
-inherently better. Compare benefit, cost and uncertainty before changing it.
-Load current and input-capacitor RMS ripple current are different quantities.
+保留合理的差异。电容更多或电感更小本身并不更好。改之前比较收益、代价和不确定性。
+负载电流和输入电容的 RMS 纹波电流是不同的量。
 
-## Compact synchronous Buck presentation
+## 紧凑的同步 Buck 图面
 
-The tested TPS53355 example uses an explicit recipe, not a universal automatic
-Buck recognizer: `examples/tps53355_compact/`. Its electrical values are a
-calculated comparison draft; do not reuse them as qualified defaults.
+经过测试的 TPS53355 例子用的是显式的画法，不是通用的 Buck 自动识别：`examples/tps53355_compact/`。
+它的电气值是计算出的对照草稿；不要当作合格的默认值复用。
 
-1. Put VIN and LL physical pin arrays opposite one another. Reorder their graphic
-   positions by function while preserving pin numbers, types and all terminals.
-2. Use a straight main rail from input to VIN, LL to L, and L to output. Give
-   capacitor groups a common power rail and return rail. Reserve pin buses.
-3. Place VDD/VREG decoupling beside their pins, configuration above/left, BOOT
-   above the LL-to-L segment, and injection/divider below. Keep the compensation
-   connections visible; use scoped labels only for explicit remote controls.
-4. A regular dense capacitor bank may use 90-degree Reference/Value fields.
-   Use consistent orientation and enough pitch for the measured text, body and
-   pin exits. Keep full ratings/MPNs as metadata; never delete tolerance merely
-   to shorten a visible value. Ordinary fields remain horizontal by default.
-5. Specify local group rails where straightness matters. An A* route can be
-   electrically valid but visually poor. Inspect native renders after routing,
-   including pin-name/number regions and page frame beyond simple AABB checks.
-6. Add useful debug provisions only with intent: test points, EN/PG interfaces,
-   and optional snubber/bleeder. DNP is an assembly state, not a no-connect pin.
-   Record mutually exclusive population rules and external signal requirements.
+1. VIN 和 LL 的物理引脚阵列相对放置。按功能重排它们的图形位置，保持引脚号、类型和全部端子不变。
+2. 主电源轨走直线：输入到 VIN、LL 到 L、L 到输出。电容组共用一条电源轨和一条地网络轨。为引脚总线留位置。
+3. VDD/VREG 去耦放在各自引脚旁，配置放在上方/左侧，BOOT 放在 LL 到 L 那段的上方，注入/分压放在下方。
+   补偿连接保持可见；只对明确的远程控制用限定范围的标签。
+4. 规整的密集电容组可以用 90° 的 Reference/Value 字段。朝向一致，间距要容得下实测的文字、本体和引脚出线。
+   完整的额定值/MPN 留作元数据；不为缩短可见值而删掉容差。普通字段默认保持水平。
+5. 需要走直的地方指定局部组的电源轨。A* 走线可能电气有效但视觉很差。走线后检查 KiCad 渲染，
+   包括引脚名/引脚号区域和图框，不只做简单的 AABB 检查。
+6. 有用的调试设施只按设计网表添加：测试点、EN/PG 接口、可选的缓冲/泄放电路。DNP 是装配状态，不是 NC 引脚。
+   记录互斥的装配规则和外部信号要求。
 
-## Explicit presentation APIs
+## 显式的图面 API
 
-`generate_schematic.py` and `make_root` accept visible field positions in the
-low-level placement JSON (world coordinates, angle 0 or 90, font at least 1 mm):
+`generate_schematic.py` 和 `make_root` 在低层摆放 JSON 里接受可见字段位置（世界坐标，角度 0 或 90，字号至少 1 mm）：
 
 ```json
 {"C1":{"at":[50.8,63.5],"fields":{
@@ -64,13 +45,10 @@ low-level placement JSON (world coordinates, angle 0 or 90, font at least 1 mm):
 }}}
 ```
 
-Explicit fields are reserved before automatic fields and routing; collisions
-are rejected. This does not add field-style selection to automatic v2 packing.
+显式字段在自动字段和走线之前预留；有碰撞就拒绝。这不给自动 v2 排布增加字段样式选择。
 
-A net policy can declare groups of real `reference.pin` terminals. Every pin
-must appear exactly once. Groups are wired locally and joined using the real
-net name; internal group keys never enter the schematic. A group object can
-also select `rail_y`, `mode`, or `priority`:
+网络策略可以声明由真实 `位号.引脚` 端子组成的组。每个引脚恰好出现一次。组内局部连线，组间用真实网络名连接；
+内部的组键不进入原理图。组对象还可以选 `rail_y`、`mode` 或 `priority`：
 
 ```json
 {"VIN_5V":{"groups":[
@@ -79,73 +57,45 @@ also select `rail_y`, `mode`, or `priority`:
 ]}}
 ```
 
-Native verification compares the original complete net partitions and label
-names. Grouping does not change circuit IR or authorize a labels-only fallback.
+KiCad 导出的检查比较原来完整的网络分区和标签名。分组不改变 circuit IR，也不授权只用标签的回退。
 
-## Electrical checks learned from the TPS53355 comparison
+## 从 TPS53355 对照中学到的电气检查
 
-Consult the current device datasheet and retain the exact revision. For Rev G:
+查当前器件数据手册并保留确切版本。按 Rev G：
 
-- RF-open 500 kHz is a nominal continuous-conduction setting. Auto-skip is not
-  fixed-frequency operation at light load.
-- MODE-to-GND and MODE-to-PGOOD are distinct modes; do not flag a documented
-  configuration using a generic pull-down heuristic.
-- For ceramic output capacitors use the ripple-injection procedure, including
-  `L*Cout/(Rinj*Cinj) > N*Ton/2`, and `N=4` when `L<=250nH`.
-- Include injected/output ripple when estimating average VFB and selecting the
-  divider. A simple `0.6*(1+Rtop/Rbottom)` estimate can miss the setpoint shift.
-- OCP is valley sensed; distinguish average-load trip and instantaneous peak.
-  Typical RDS(on), a nominal TRIP equation and an Isat-at-25C curve do not prove
-  guaranteed current protection over temperature and process.
-- External regulated 5 V bias and an internal VREG supply are different legal
-  architectures when the manufacturer allows them. Check voltage headroom
-  before copying a series VDD filter at the minimum input voltage.
-- Effective capacitance and ESR remain conditional until vendor curves or
-  measurements support them. Arithmetic margin is not loop/transient evidence.
+- RF 开路的 500 kHz 是连续导通下的名义设定。自动跳脉冲在轻载时不是固定频率工作。
+- MODE 接 GND 和 MODE 接 PGOOD 是不同的模式；不要用通用的下拉经验规则把手册写明的配置判为问题。
+- 输出用陶瓷电容时按纹波注入的步骤，包括 `L*Cout/(Rinj*Cinj) > N*Ton/2`，`L<=250nH` 时 `N=4`。
+- 估算平均 VFB 和选分压时计入注入/输出纹波。简单的 `0.6*(1+Rtop/Rbottom)` 估算会漏掉设定点偏移。
+- OCP 检测谷值电流；区分平均负载的动作点和瞬时峰值。典型 RDS(on)、名义的 TRIP 公式和 25°C 的 Isat 曲线
+  不能证明全温度、全工艺下有保证的电流保护。
+- 外部 5 V 稳压偏置和内部 VREG 供电在厂家允许时是两种合法的架构。照抄串联 VDD 滤波前，在最低输入电压下核对电压余量。
+- 有效电容和 ESR 在有厂家曲线或实测支持之前保持有条件。算术裕量不是环路/瞬态证据。
 
-Close with native ERC, original-intent pin partition/identity verification,
-serialized geometry, full-page/region native renders, an electrical change
-ledger, exact hashes, and a list of remaining electrical evidence gaps.
+最后用 KiCad ERC、按原设计网表的引脚分区/身份检查、序列化几何、整页/局部的 KiCad 渲染、电气改动清单、
+确切哈希和剩余的电气证据缺口清单收尾。
 
-## Peripheral completeness and population evidence
+## 外围完整性与装配证据
 
-Build two ledgers before simplifying an engineer reference:
+简化工程师参考图前先建两份清单：
 
-- Pin basis: physical number/name, datasheet pin table, relevant application or
-  control section, actual connected endpoints, default fitted path, and each
-  optional path. Separate manufacturer requirements from calculated values and
-  project choices. An IC datasheet and an official manufacturer clarification
-  are different sources; retain both when using the latter for a bias choice.
-- Peripheral function: mandatory operating network, configuration provision,
-  sequencing/status interface, debug/isolation link, local bypass and tuning
-  footprint. Each visible branch is retained, changed with a reason, or left
-  unresolved; extra series resistors or capacitors do not automatically mean
-  the generated design is missing a function.
+- 引脚依据：物理引脚号/引脚名、数据手册引脚表、相关的应用或控制章节、实际连接的端点、默认装配路径和每条可选路径。
+  厂家要求、计算值和项目选择分开。IC 数据手册和厂家的官方澄清是不同的来源；用后者定偏置方式时两者都保留。
+- 外围功能：必需的工作网络、配置设施、时序/状态接口、调试/隔离跳接、局部去耦和调谐焊盘。每条可见支路要么保留，
+  要么写明理由后改动，要么标为未定；多出的串联电阻或电容不自动说明生成的设计缺功能。
 
-Never collapse a reference DNP resistor into an IC NC marker when retaining an
-engineering adjustment provision is part of the task. Its pads and connections
-must exist in the native netlist and BOM, while its default non-conduction is
-checked separately. A printed `NC` on a component normally suggests DNP in this
-reference context, but the real assembly BOM is needed to confirm production
-population. A printed `NC` in the IC pin table is a different instruction.
+保留工程调整设施是任务的一部分时，不能把参考图里的 DNP 电阻合并成 IC 的 NC 标记。它的焊盘和连接必须出现在
+导出网表和 BOM 里，默认不导通另行核对。这类参考图中器件上印的 `NC` 通常表示 DNP，但要确认生产装配需要真实的装配 BOM。
+IC 引脚表里印的 `NC` 是另一回事。
 
-For TPS53355, Rev G Table 7-1 assigns RF-open to 500 kHz. Both optional RF
-resistors may be drawn yet unpopulated. The Rev C example draws 866k to VREG
-(650 kHz) and 187k to GND (300 kHz), both DNP by default. A 100k/NC placeholder
-in the image is not evidence that a 100k fitted pull-up is a recommended setting.
-Preserve the options and annotate their default; do not add a fitted pull-up
-solely to make the schematic resemble a reference image.
+TPS53355 的 Rev G 表 7-1 规定 RF 开路为 500 kHz。两只可选的 RF 电阻可以画出但不装。Rev C 例子画了接 VREG 的 866k
+（650 kHz）和接 GND 的 187k（300 kHz），默认都是 DNP。图片里的 100k/NC 占位不能证明装 100k 上拉是推荐设定。
+保留这些选项并标注默认状态；不要只为让原理图像参考图而加装上拉。
 
-Audit the populated graph in addition to the native all-pads graph. Remove DNP
-parts and collapse only fitted zero-ohm links, then verify open configuration
-inputs, mutually exclusive branches, mandatory bias links, external-driver
-requirements and paired snubber assembly. A legal RF code must still return
-REVIEW_REQUIRED when its frequency changes ripple injection, feedback setpoint,
-inductor current, protection and thermal behavior. Do not let engineer approval
-or a clean ERC promote such an alternate to a verified converter.
+除 KiCad 导出的全焊盘连接图外，还要审计装配后的连接图。去掉 DNP 器件、只并合已装配的零欧跳接，再核对开路的配置输入、
+互斥支路、必需的偏置跳接、外部驱动要求和成对的缓冲电路装配。合法的 RF 编码在频率改变纹波注入、反馈设定点、
+电感电流、保护和热表现时仍须返回 REVIEW_REQUIRED。工程师认可或 ERC 干净都不能把这种替代方案升为已核实的变换器。
 
-The explicit TPS53355 recipe adds RF/MODE options, PG isolation, separate VDD
-and VREG bias links, and VIN/load high-frequency bypasses (37 to 47 physical
-components). The 0-ohm VDD link is a test/isolation provision, not an effective
-RC filter; copying a 10-ohm filter at a 5 V minimum bias needs a fresh headroom
-check. A larger component count alone is never the acceptance criterion.
+显式的 TPS53355 画法增加了 RF/MODE 选项、PG 隔离、独立的 VDD 和 VREG 偏置跳接，以及 VIN/负载高频去耦
+（37 到 47 个物理器件）。0 欧 VDD 跳接是测试/隔离设施，不是有效的 RC 滤波；在 5 V 最低偏置下照抄 10 欧滤波需要重新核对余量。
+器件数更多本身从来不是验收标准。

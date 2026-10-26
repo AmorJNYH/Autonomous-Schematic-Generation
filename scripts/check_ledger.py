@@ -22,7 +22,7 @@ LEDGER = ROOT / 'docs' / 'improvement-ledger.md'
 SOURCE = re.compile(r'(review:[^\s/,;]+/[^\s,;]+|datasheet:[^\s,;]+#p\d+|test:[^\s,;]+|user:\d{4}-\d{2}-\d{2})')
 # (file, heading) of each outline section; a section runs to the next level-2 heading.
 OUTLINE = (('SKILL.md', '## ASG 纲要（核心标准）'), ('SKILL.md', '## 主流程'),
-           ('references/drawing-recipes.md', '## Outline rules (how to decide the structure)'))
+           ('references/drawing-recipes.md', '## 绘图纲要（怎样决定结构）'))
 APPROVED = re.compile(r'user:\d{4}-\d{2}-\d{2}')
 
 
