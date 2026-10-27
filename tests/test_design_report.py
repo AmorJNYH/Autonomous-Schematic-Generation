@@ -151,11 +151,18 @@ class DesignReportTests(unittest.TestCase):
         _, problems = self.d.report()
         self.assertTrue(any('gap_version 1' in p for p in problems), problems)
 
-    def ask_user(self):
+    def ask_user(self, decision='DEFERRED'):
         c = self.d.closure
+        proposal = '待机功耗 ≤0.1 W（230 Vac 空载）'
+        c['clarifications'] = [{'id': 'CL-STBY', 'requirement_ids': ['R-OUT'], 'found_in': '2.2',
+                                'question': '待机功耗上限没给，启动电阻取值没有依据', 'requirement_text': '需求规格 §3：未提及待机功耗',
+                                'proposed_requirement': proposal}]
+        if decision:
+            c['clarifications'][0]['answer'] = {'decision': decision, 'text': '先按建议设计，量产前再定', 'by': '产品负责人',
+                                                'date': '2026-10-27', 'source': {'source': '对话记录', 'locator': '2026-10-27 第 1 问'}}
         c['work_items'].append({'id': 'W-STBY', 'stage': 'requirement', 'status': 'open', 'consequence_class': 'optimization', 'occurrence': 'normal',
-                                'requirements': ['R-OUT'], 'evidence': [], 'owner': '产品负责人',
-                                'action': '确定待机功耗上限', 'assumption': '按待机 ≤0.1W 设计'})
+                                'requirements': ['R-OUT'], 'evidence': [], 'owner': '产品负责人', 'clarification': 'CL-STBY',
+                                'action': '确定待机功耗上限', 'assumption': proposal})
         c['requirements'][0]['depends_on'].append('W-STBY')
         self.d.write('design-closure.json', c)
         self.d.write('design-closure-audit.json',
@@ -166,25 +173,55 @@ class DesignReportTests(unittest.TestCase):
         text, problems = self.d.report()
         self.assertEqual(problems, [])
         conclusion = text.split('## 结论')[1].split('\n## ')[0]
-        self.assertIn('- **待用户确认的需求**：1 件（W-STBY）。本版先按写明的假设设计', conclusion)
-        self.assertIn('3 件未关闭项（待用户确认需求 1 件，设计未完成 1 件，外部资料缺口 1 件）', conclusion)
-        self.assertIn('待用户确认的需求排最前', conclusion)
+        self.assertIn('- **用户暂缓的需求**：1 件（W-STBY）。本版按建议条文设计', conclusion)
+        self.assertIn('3 件未关闭项（用户暂缓的需求 1 件，设计未完成 1 件，外部资料缺口 1 件）', conclusion)
+        self.assertIn('用户暂缓的需求排最前', conclusion)
+        self.assertIn('- **需求澄清**：问过用户 1 个问题。用户暂缓 1 个。', conclusion)
         section = text.split('## 未关闭项')[1].split('\n## ')[0]
         self.assertLess(section.index('W-STBY（P3'), section.index('W-FW（P0'))
-        self.assertIn('- **类型**：待用户确认需求', section)
-        self.assertIn('- **设计假设**：按待机 ≤0.1W 设计', section)
-        self.assertIn('| 未关闭项：待用户确认需求 | 1 |', text)
+        self.assertIn('- **类型**：用户暂缓的需求', section)
+        self.assertIn('- **需求澄清**：CL-STBY', section)
+        self.assertIn('- **设计假设**：待机功耗 ≤0.1 W（230 Vac 空载）', section)
+        self.assertIn('| 未关闭项：用户暂缓的需求 | 1 |', text)
+        record = text.split('## 需求澄清记录')[1].split('\n## ')[0]
+        self.assertIn('| CL-STBY | 需求规格 §3：未提及待机功耗 | 待机功耗上限没给，启动电阻取值没有依据 | 待机功耗 ≤0.1 W（230 Vac 空载） '
+                      '| 用户暂缓：先按建议设计，量产前再定 | 产品负责人 2026-10-27 | R-OUT |', record)
 
-    def test_ask_user_response_must_point_at_requirement_items(self):
+    def test_calculation_on_a_deferred_requirement_has_its_own_tier(self):
+        self.ask_user()
+        c1 = self.d.closure['calculations'][0]
+        c4 = dict(c1, id='C4', coverage='bounded', conclusion='conditional', rests_on='user_deferred', omitted_terms=[], parameters=[
+            {'name': 'P_stby', 'value': 0.1, 'unit': 'W', 'basis': 'requirement', 'source': 'req:R-OUT'}])
+        self.d.closure.update(parameter_version=2, calculations=[c4])
+        self.d.closure['work_items'][-1]['calculations'] = ['C4']
+        self.d.write('design-closure.json', self.d.closure)
+        self.d.write('design-closure-audit.json', audit(self.d.closure, self.d.record / 'electrical-intent.json', self.d.root))
+        text, problems = self.d.report()
+        self.assertEqual([], [p for p in problems if '计算' in p], problems)
+        self.assertIn('依赖暂缓的需求 1 项', text.split('## 结论')[1].split('\n## ')[0])
+        section = text.split('## 依赖暂缓的需求的计算')[1].split('\n## ')[0]
+        self.assertIn('用户定下需求后按定下的数值复算', section)
+        self.assertIn('| C4 | R-OUT | 输出纹波：18 ≤ 30 mV | 待办 W-STBY | W-STBY |', section)
+
+    def test_unanswered_clarification_is_a_problem(self):
+        self.ask_user(decision=None)
+        text, problems = self.d.report()
+        self.assertIn('需求澄清 CL-STBY 还没有答复：要当场问用户，答复写回需求清单后再往下设计（见 requirement-clarifications.md）', problems)
+        self.assertIn('| 还没有答复 |', text.split('## 需求澄清记录')[1].split('\n## ')[0])
+
+    def test_ask_user_response_must_point_at_clarifications(self):
         self.ask_user()
         self.d.write('review-responses.json', {'schema_version': 1,
             'sources': [{'id': 'S1', 'path': '/x', 'sha256': '0' * 64}],
             'items': [{'id': 'RC1', 'source': 'S1', 'locator': '1', 'comment': 'c', 'cause': 'none', 'response': 'ASK_USER',
-                       'detail': '待机功耗上限要产品定', 'work_items': ['W-STBY']},
+                       'detail': '待机功耗上限要产品定', 'clarifications': ['CL-STBY']},
                       {'id': 'RC2', 'source': 'S1', 'locator': '2', 'comment': 'c', 'cause': 'none', 'response': 'ASK_USER',
-                       'detail': 'd', 'work_items': ['W-CALC']}]})
+                       'detail': 'd', 'clarifications': ['CL-LOAD']},
+                      {'id': 'RC3', 'source': 'S1', 'locator': '3', 'comment': 'c', 'cause': 'none', 'response': 'ASK_USER',
+                       'detail': 'e', 'work_items': ['W-STBY']}]})
         _, problems = self.d.report()
-        self.assertEqual(problems, ['RC2：待办 W-CALC 的阶段与处理方式“请用户定需求”不符'])
+        self.assertEqual(problems, ['RC2：引用的需求澄清 CL-LOAD 不在 design-closure.json 里',
+                                    'RC3：处理方式为“请用户定需求”时必须填 clarifications'])
 
     def test_conditional_calculations_listed_with_assumptions(self):
         text, _ = self.d.report()

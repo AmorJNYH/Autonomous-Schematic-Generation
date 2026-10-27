@@ -59,6 +59,10 @@ DATASHEET = re.compile(r'^datasheet:.+#p\d+$')
 # Where a data gap was found (gap_version 1): a datasheet page, a review item or a user decision.
 GAP_SOURCE = re.compile(r'^(datasheet:.+#p\d+|review:[^/\s]+/\S+|user:\d{4}-\d{2}-\d{2})$')
 GAP_FIELDS = ('missing', 'why_external', 'calculations', 'consequence', 'questions', 'owner', 'fallback', 'action')
+# A requirement question put to the user (requirement-clarifications.md) is answered in one of three ways.
+DECISIONS = ('DECIDED', 'ADOPTED_PROPOSAL', 'DEFERRED')
+CLARIFICATION_ID = re.compile(r'^CL-\S+$')
+DATE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 
 
 def text(value):
@@ -109,10 +113,11 @@ def audit_operating_points(record, work, refs, error, need):
     return points
 
 
-def calculation_basis(row, vendor_items=()):
+def calculation_basis(row, vendor_items=(), deferred_items=()):
     """(conclusion, rests_on, reasons) a parameter_version 2 calculation follows to.
 
-    ``vendor_items`` are the open external work items whose ``calculations`` name this one.
+    ``vendor_items`` are the open external work items whose ``calculations`` name this one;
+    ``deferred_items`` the open requirement work items (requirements the user deferred) that do.
     """
     failing = [c.get('name') for c in row.get('checks') or [] if isinstance(c, dict) and c.get('operator') in OPERATORS
                and finite(c.get('value')) and finite(c.get('limit')) and not OPERATORS[c['operator']](c['value'], c['limit'])]
@@ -123,20 +128,76 @@ def calculation_basis(row, vendor_items=()):
     estimate = [p.get('name') for p in params if p.get('basis') in ESTIMATE_BASES]
     estimate += ['没算：%s' % o.get('term') for o in row.get('omitted_terms') or []
                  if isinstance(o, dict) and o.get('kind') == 'not_calculated']
+    deferred = ['待办 %s' % w for w in deferred_items]
     if vendor:
-        return 'conditional', 'vendor_data', vendor + estimate
+        return 'conditional', 'vendor_data', vendor + deferred + estimate
+    if deferred:
+        return 'conditional', 'user_deferred', deferred + estimate
     if estimate:
         return 'conditional', 'estimate', estimate
     return 'supported', None, []
 
 
-def vendor_items_of(work):
-    """{calculation id: [open external work item ids naming it]}."""
+def vendor_items_of(work, stage='external'):
+    """{calculation id: [open work item ids of this stage naming it]}; external by default."""
     found = {}
     for key, row in work.items():
-        if row.get('stage') == 'external' and row.get('status') != 'closed' and isinstance(row.get('calculations'), list):
+        if row.get('stage') == stage and row.get('status') != 'closed' and isinstance(row.get('calculations'), list):
             for cid in row['calculations']:
                 found.setdefault(cid, []).append(key)
+    return found
+
+
+def audit_clarifications(record, requirements, work, error):
+    """Requirement questions put to the user: each one answered, the answer written back as a requirement,
+    or, when the user deferred it, carried by an open requirement work item on the proposed text."""
+    rows = record.get('clarifications', [])
+    if not isinstance(rows, list):
+        error('schema', 'clarifications must be a list')
+        return {}
+    found = {}
+    for row in rows:
+        if not isinstance(row, dict) or not (isinstance(row.get('id'), str) and CLARIFICATION_ID.match(row['id'])):
+            error('schema', 'clarifications entry requires an id CL-<name>')
+            continue
+        key = row['id']
+        if key in found:
+            error('duplicate_id', 'clarifications:' + key)
+        found[key] = row
+        for field in ('found_in', 'question', 'requirement_text', 'proposed_requirement'):
+            if not text(row.get(field)):
+                error('schema', key + ':needs ' + field)
+        ids = row.get('requirement_ids')
+        if not isinstance(ids, list) or not all(isinstance(r, str) for r in ids):
+            error('schema', key + ':requirement_ids must be a string list')
+            ids = []
+        for rid in ids:
+            if rid not in requirements:
+                error('unknown_requirement_ids', key + ':' + rid)
+        answer = row.get('answer')
+        if answer is None:
+            error('clarification_unanswered', key)
+            continue
+        source = answer.get('source') if isinstance(answer, dict) else None
+        if (not isinstance(answer, dict) or answer.get('decision') not in DECISIONS
+                or not text(answer.get('text')) or not text(answer.get('by'))
+                or not (isinstance(answer.get('date'), str) and DATE.match(answer['date']))
+                or not (isinstance(source, dict) and text(source.get('source')) and text(source.get('locator')))):
+            error('schema', key + ':answer needs decision (%s), text, by, date YYYY-MM-DD and source {source, locator}'
+                  % '/'.join(DECISIONS))
+            continue
+        if answer['decision'] == 'ADOPTED_PROPOSAL' and answer['text'] != row.get('proposed_requirement'):
+            error('adopted_text_differs', key)
+        if answer['decision'] != 'DEFERRED':
+            if requirements.get(key, {}).get('text') != answer['text']:
+                error('clarification_not_written_back', key)
+            continue
+        if not any(w.get('stage') == 'requirement' and w.get('status') == 'open' and w.get('clarification') == key
+                   for w in work.values()):
+            error('deferred_without_requirement_item', key)
+        for rid in ids:
+            if requirements.get(rid, {}).get('status') == 'design_supported':
+                error('deferred_requirement_claimed_supported', key + ':' + rid)
     return found
 
 
@@ -278,7 +339,7 @@ def resolve(p, root, inputs):
     return None
 
 
-def audit_calculation_v2(key, row, work, vendor_items, derived, error, need):
+def audit_calculation_v2(key, row, work, vendor_items, deferred_items, derived, error, need):
     """The written conclusion, rests_on and coverage must be the ones the record follows to."""
     kinds = audit_omissions(key, row, work, error)
     assumptions = row.get('assumptions', [])
@@ -306,7 +367,7 @@ def audit_calculation_v2(key, row, work, vendor_items, derived, error, need):
                 error('threshold_window_incomplete', key + ':' + side)
     elif row.get('kind') is not None:
         error('schema', key + ':kind must be threshold when present')
-    conclusion, rests_on, reasons = calculation_basis(row, vendor_items)
+    conclusion, rests_on, reasons = calculation_basis(row, vendor_items, deferred_items)
     derived[key] = {'conclusion': conclusion, 'rests_on': rests_on, 'reasons': reasons}
     if (row.get('conclusion'), row.get('rests_on')) != (conclusion, rests_on):
         error('conclusion_not_derived', '%s: 写的 %s/%s，按记录是 %s/%s' % (
@@ -350,6 +411,7 @@ def audit(record, intent_path, artifact_root, inputs=None):
             table[row['id']] = row
         tables[key] = table
     evidence, requirements, work, calculations = (tables[k] for k in ('evidence', 'requirements', 'work_items', 'calculations'))
+    clarifications = audit_clarifications(record, requirements, work, error)
     if not requirements:
         need('missing_requirements', 'No requirements reviewed')
     for key, row in evidence.items():
@@ -405,10 +467,17 @@ def audit(record, intent_path, artifact_root, inputs=None):
                 item = work.get(dep, {})
                 if item.get('stage') != 'design' or item.get('status') != 'closed':
                     error('pcb_electrical_precondition', key + ':' + dep)
-        # A requirement gap still waiting on the user must say what this version assumed.
-        if stage == 'requirement' and state != 'closed' and not (
-                isinstance(row.get('assumption'), str) and row['assumption'].strip()):
-            error('missing_assumption', key)
+        # A requirement the user deferred is designed on the proposed text; one never asked is asked now, not at delivery.
+        if stage == 'requirement' and state != 'closed':
+            asked = clarifications.get(row.get('clarification')) or {}
+            if not text(row.get('assumption')):
+                error('missing_assumption', key)
+            if (asked.get('answer') or {}).get('decision') != 'DEFERRED':
+                error('requirement_without_clarification', key)
+            elif text(row.get('assumption')) and row['assumption'] != asked.get('proposed_requirement'):
+                error('assumption_differs_from_proposal', key)
+            if 'calculations' in row:
+                linked(row, 'calculations', calculations)
         for rid in affected:
             if rid in requirements and key not in requirements[rid].get('depends_on', []):
                 error('unlinked_dependency', rid + ':' + key)
@@ -436,7 +505,7 @@ def audit(record, intent_path, artifact_root, inputs=None):
         parameters = False
     version = record['parameter_version'] if parameters else None
     points = audit_operating_points(record, work, refs, error, need) if parameters else {}
-    vendor_items, derived = vendor_items_of(work), {}
+    vendor_items, deferred_items, derived = vendor_items_of(work), vendor_items_of(work, 'requirement'), {}
     for key, row in calculations.items():
         if parameters:
             audit_parameters(key, row, refs, points, calculations, error, version, requirements)
@@ -446,7 +515,7 @@ def audit(record, intent_path, artifact_root, inputs=None):
         if coverage not in ('bounded', 'partial') or conclusion not in ('supported', 'conditional', 'failed'):
             error('schema', key + ':invalid coverage/conclusion')
         if version == 2:
-            audit_calculation_v2(key, row, work, vendor_items.get(key, []), derived, error, need)
+            audit_calculation_v2(key, row, work, vendor_items.get(key, []), deferred_items.get(key, []), derived, error, need)
             continue
         omitted = row.get('omitted_terms')
         if not isinstance(omitted, list) or any(not isinstance(x, str) for x in omitted):

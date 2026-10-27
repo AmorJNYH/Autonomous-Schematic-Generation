@@ -28,7 +28,7 @@
 | `CALC_DOC` | 补计算/补文档 | `changes`：补的计算编号或 `设计资料/` 里的文件名；没有改到电路的不叫改图 |
 | `DESIGN` | 补设计（计算、选型、配置） | `work_items`：design 阶段的待办，待办里写 `progress`（本版算到哪、定了什么），报告在待办下列出 |
 | `OBTAIN_DATA` | 补资料 | `work_items`：external 阶段的待办（含替代方案评估） |
-| `ASK_USER` | 请用户定需求 | `detail`：要用户决定的具体取舍；引用的 `work_items` 须为 requirement 阶段 |
+| `ASK_USER` | 请用户定需求 | `clarifications`：当场问用户的需求澄清编号（在 `design-closure.json` 里，见 [需求澄清](requirement-clarifications.md)）；问完按答复改图或补算 |
 | `HANDOFF` | 交给后续环节 | `work_items`：validation 或 pcb 阶段、状态 handoff 的待办 |
 | `DECLINE` | 不采纳 | `detail` 写理由，`evidence` 给依据（计算、手册页） |
 | `DEFERRED` | 已暂缓 | `detail` 写谁、何时决定暂缓 |

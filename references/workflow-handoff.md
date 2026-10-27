@@ -18,6 +18,7 @@
 | `design` | 前一版设计交付目录及其哈希；首轮可为 null |
 | `previous_review` | 收到的审查意见（任何格式），首轮可为 null；按 [处理审查意见](review-comments.md) 逐条登记 |
 | `open_items` | 前一轮留下的待办 |
+| `clarification_answers` | 可选：对 ASG 上一轮提出的需求澄清的答复，每项 `{id, decision, text, by, date, source}`，按澄清编号对上（见 [需求澄清](requirement-clarifications.md)） |
 | `output` | 本任务 result.json 的绝对路径 |
 
 需求文档保留原文与未决项。设计网表（`electrical-intent.json`）由 ASG 从需求和手册独立写出，
@@ -44,6 +45,9 @@
 - 交付内容就是 SKILL 任务 5.3 的交付目录（`设计报告.md`、`原理图/`、`设计资料/`、`record/`），先用
   `pack_design.py` 检查通过，再用流程提供的 `pack-result --roles roles.json --open-items open-items.json`
   生成 result.json；不手填哈希。
+- 无人当场答复需求澄清时，ASG 用 `task.json` 的 `clarification_answers` 填 `answer`（`source` 写
+  `{"source": "任务书", "locator": "<任务 id> clarification_answers <澄清编号>"}`）；没覆盖到的问题不往下设计，
+  `status` 写 `NEEDS_INPUT`，每个问题是一件 `REQUIREMENT` 待办，`summary` 写问题，`next_action` 写建议条文。
 - `DELIVERED` 只表示交付目录完整、可核对，不表示电路通过。缺需求、资料或方案输入时用 `NEEDS_INPUT`；
   工具没跑完用 `TOOL_FAILED`。后两者可以没有文件，但至少要有一个待办，不得用假文件凑角色。
 - 每个待办为 `{id, kind, summary, next_action}`，均为非空字符串，ID 不重复。kind 取值：
@@ -52,7 +56,7 @@
 |---|---|
 | `DESIGN` | 还能用现有资料完成的设计、计算、选型、改图（含审查意见的 `REDESIGN` / `DESIGN`） |
 | `EVIDENCE` | 需要厂家或别人提供的资料（含 `OBTAIN_DATA`） |
-| `REQUIREMENT` | 需要用户决定的需求取舍（含 `ASK_USER`；对应待办阶段 `requirement`） |
+| `REQUIREMENT` | 没答复的需求澄清（含 `ASK_USER`），或用户暂缓的需求（待办阶段 `requirement`） |
 | `REVIEW` | ASG 自检或图面审阅没通过、没做完 |
 | `DOWNSTREAM` | 交给 PCB、结构、样机测试的要求（含 `HANDOFF`） |
 | `TOOL` | 工具没跑完 |

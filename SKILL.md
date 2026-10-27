@@ -56,7 +56,7 @@ ASG 是五个步骤的流程，每个步骤下有几项任务（1.1、1.2 …）
 
 | 步骤 | 任务 | 这一步的目的 | 产出 |
 |---|---|---|---|
-| ① 需求与方案 | 1.1 需求追溯 · 1.2 系统架构 · 1.3 功能块做法 · 1.4 核心器件选型与方案确认 | 把需求落到功能块和核心器件，会改变方案的取舍由用户定下 | 需求追溯、系统架构、`selection.json` |
+| ① 需求与方案 | 1.1 需求追溯 · 1.2 系统架构 · 1.3 功能块做法 · 1.4 核心器件选型与方案确认 | 把需求落到功能块和核心器件；需求缺口当场问用户，答复写回需求清单，会改变方案的取舍由用户定下 | 需求追溯、需求澄清、系统架构、`selection.json` |
 | ② 详细设计 | 2.1 数据手册核对与外围电路 · 2.2 设计计算 · 2.3 设计网表 | 按关键器件的数据手册定外围电路，算出常规件的最低额定并写成规格，写出设计网表 | `reference-input.json`、计算记录、`electrical-intent.json` |
 | ③ 原理图绘制 | 3.1 分页方案 · 3.2 图页脚本 · 3.3 组装工程 | 按绘图纲要 O1–O8 把设计网表画成可读的 KiCad 工程 | `page-plan.json`、图页脚本、KiCad 工程 |
 | ④ 设计检查 | 4.1 自动检查 · 4.2 图面审阅 | 用 KiCad 导出核对电气与图面，再按 PDF 逐页审阅 | `summary.json`、`visual-review.json` |
@@ -103,14 +103,15 @@ ASG 是五个步骤的流程，每个步骤下有几项任务（1.1、1.2 …）
 #### 1.1 需求追溯
 
 按 [requirements-to-intent.md](references/requirements-to-intent.md) 第 1–2 节建立需求清单和
-功能追溯表。只用已确认的需求，缺口记为待办。每项映射具体功能路径、器件/固件责任和验收；
-不能批量挂整板位号代替追溯。只问证据和工程判断不能解决的产品取舍，分两档：
-会改变架构或拓扑的缺口（输入电压范围、输出档位/功率、接口、隔离等级、保护目标等）在本任务
-一次性集中问用户，得到答复再继续，不先画一版再问；不改变架构的缺口（参数细节、优化取舍）按写明的
-假设继续设计，记成 `requirement` 待办，随交付一起问。
+功能追溯表。每项映射具体功能路径、器件/固件责任和验收；不能批量挂整板位号代替追溯。
+需求没写、写得含糊、前后矛盾或尚未确认，而设计要靠它定的，**当场问用户**（[需求澄清](references/requirement-clarifications.md)）：
+录完需求后一次汇总提问，不逐颗器件打断用户；每问附一条可验收的建议条文；答复后马上写回需求清单，再按定下的需求往下设计。
+只问证据和工程判断解决不了的产品取舍；缺厂家资料、设计没做完、属于后续环节的事项不问。
+任务 1.2–2.3 中途发现新的需求缺口，同样停在当前任务问，答复写回需求清单后从受影响的任务重做（会改变架构的回到 1.2）。
+用户暂缓的，按建议条文作为写明的假设设计，相关需求和计算为有条件成立，记成 `requirement` 待办。
 
-做完的标志：`design-closure.json` 的每条需求有功能路径和承担器件（或写明理由的空列表）；会改变架构的缺口都有用户答复
-（`user:<日期>`），其余记为 `requirement` 待办。
+做完的标志：`design-closure.json` 的每条需求有功能路径和承担器件（或写明理由的空列表）；每个需求澄清都有答复
+（用户给定、采纳建议或明确暂缓），给定和采纳的已成为需求清单里的一条需求。有未答复的需求澄清不进入步骤 ②。
 
 #### 1.2 系统架构
 
@@ -338,7 +339,7 @@ python3 <skill>/scripts/verify_schematic.py <root.kicad_sch> --intent electrical
 
 还有可独立完成的设计项就回到对应任务做完，不以列出缺口代替完成。待办只由本版设计过程中确认仍需做的事项决定，不与上一版比较。
 
-做完的标志：未关闭项只剩外部资料待办、技术转交和已登记理由的设计待办；审计列出的可执行设计动作都已完成。
+做完的标志：未关闭项只剩外部资料待办、技术转交、用户暂缓的需求和已登记理由的设计待办；没有未答复的需求澄清；审计列出的可执行设计动作都已完成。
 
 #### 5.2 经验总结
 
@@ -407,6 +408,7 @@ python3 <skill>/scripts/pack_design.py <交付目录> --input requirements=<需�
 | 收到审查意见：逐条处理、采用建议改法、收敛判断 | [review-comments.md](references/review-comments.md) |
 | 交付目录、设计报告、打包检查 | [delivery-report.md](references/delivery-report.md) |
 | 从需求写设计网表 | [requirements-to-intent.md](references/requirements-to-intent.md) |
+| 需求没说清：问什么、什么时候问、答复怎样写回需求清单 | [requirement-clarifications.md](references/requirement-clarifications.md) |
 | 架构页、参考设计外围、学习工程师图面 | [reference-driven-board-design.md](references/reference-driven-board-design.md) |
 | 核心器件从哪找候选、怎么比较、`selection.json` | [core-part-selection.md](references/core-part-selection.md) |
 | 技能怎样持续改进：事件、归因、台账、合成测试 | [docs/improvement-plan.md](docs/improvement-plan.md)、每版的固定动作 [docs/operating-cadence.md](docs/operating-cadence.md) |

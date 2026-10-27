@@ -8,6 +8,23 @@ in the library and have the cited page); `Changed:` the files touched.
 entry that changes the ASG 纲要 or the 绘图纲要 O1–O8 also carries `Approved:
 user:<date>` and `Outline:` the hash from `check_ledger.py --outline-hash`.
 
+## 需求没说清时当场问用户，答复写回需求清单，对齐 schematic-review (2026-10-27)
+
+用户要求 SR 遇到需求不明时及时问用户、改需求清单后，指出 ASG 设计中遇到需求未明也应及时沟通。原做法只在任务 1.1 问会改变架构的缺口，
+其余按假设设计、记成 `requirement` 待办“随交付一起问”；设计中途发现的缺口没有规定，答复不写回需求清单，没答复也能出图打包
+（R6、R7 的 `design-closure.json` 里 `requirement` 待办都是 0 件，看不出是没有缺口还是没记）。
+用户确认的改法：纲要任务 1.1、5.1 与架构表 ① 行改为需求缺口当场问用户，任务 1.2–2.3 中途发现的同样停下来问；每问附可验收的建议条文；
+答复只有用户给定、采纳建议、明确暂缓三种（字段与 SR 的需求澄清相同），给定和采纳的以同编号写进 `requirements`；
+暂缓的按建议条文作为假设设计，挂一件 `requirement` 待办，依赖它的计算为有条件成立（`rests_on: user_deferred`，报告写“依赖暂缓的需求”）；
+未答复的问题审计 FAIL、报告列为记录问题、打包被拒；没有对应暂缓澄清的 `requirement` 待办不再允许；审查意见 `ASK_USER` 改为引用需求澄清；
+`task.json` 可带 `clarification_answers`，没覆盖到的问题交 `NEEDS_INPUT`（无脚本读取 task.json，这一条只改了格式说明）。
+
+- Event: user:2026-10-27
+- Approved: user:2026-10-27
+- Outline: ef01c0a229a92b30
+- Causes: rule_missing 1
+- Changed: SKILL.md, references/requirement-clarifications.md, references/requirements-to-intent.md, references/design-closure.md, references/review-comments.md, references/workflow-handoff.md, references/delivery-report.md, scripts/audit_design_closure.py, scripts/render_design_report.py, tests/test_design_closure.py, tests/test_design_report.py, docs/improvement-ledger.md
+
 ## 器件分级细化：电阻电容子类与档位、保护器件阈值计算、安全防护位置认证、类型声明照 SR 核对 (2026-10-26)
 
 评估上一版分级时找出三处不完整，用户逐项定了改法（草案 `docs/proposals/2026-10-26-器件分级第3-5-6项草案.md`）。

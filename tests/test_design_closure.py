@@ -164,17 +164,79 @@ class DesignClosureTests(unittest.TestCase):
         item['severity'] = 'P2'
         self.assertNotIn('severity_contradicts_rule', {e['code'] for e in self.run_audit()['errors']})
 
-    def test_requirement_gap_must_state_current_assumption(self):
+    def clarification(self, decision=None, answer=None):
+        """One requirement question put to the user (requirement-clarifications.md), answered when decision is given."""
+        q = {'id': 'CL-STBY', 'requirement_ids': ['R1'], 'found_in': '2.2', 'question': '待机功耗上限没给，启动电阻取值没有依据',
+             'requirement_text': '需求规格 §3：未提及待机功耗', 'proposed_requirement': '待机功耗 ≤0.1 W（230 Vac 空载）'}
+        if decision:
+            q['answer'] = {'decision': decision, 'text': answer or q['proposed_requirement'], 'by': '用户', 'date': '2026-10-27',
+                           'source': {'source': '对话记录', 'locator': '2026-10-27 需求澄清第 1 问'}}
+        self.record['clarifications'] = [q]
+        return q
+
+    def written_back(self, text):
+        self.record['requirements'].append({'id': 'CL-STBY', 'status': 'design_supported', 'text': text, 'refs': ['U1'],
+                                            'evidence': ['E1'], 'implementation': '启动电阻按待机功耗上限取值', 'depends_on': []})
+
+    def deferred_item(self, assumption='待机功耗 ≤0.1 W（230 Vac 空载）'):
         self.record['requirements'][0]['status'] = 'conditional'
-        self.record['work_items'][0].update(stage='requirement', status='open', owner='用户', consequence_class='margin', occurrence='normal',
-                                            action='确定待机功耗上限')
+        self.record['work_items'][0].update(stage='requirement', status='open', owner='用户', consequence_class='margin',
+                                            occurrence='normal', action='确定待机功耗上限', clarification='CL-STBY',
+                                            assumption=assumption)
+
+    def test_requirement_gap_is_a_deferred_clarification(self):
+        # A requirement gap is asked at once, not carried to delivery (user 2026-10-27).
+        self.deferred_item(assumption=None)
+        del self.record['work_items'][0]['clarification']
+        codes = self.codes()
+        self.assertIn('missing_assumption', codes)
+        self.assertIn('requirement_without_clarification', codes)
+        self.clarification('DEFERRED', '先按建议设计，量产前再定')
+        self.deferred_item()
         result = self.run_audit()
-        self.assertEqual('FAIL', result['status'])
-        self.assertIn({'code': 'missing_assumption', 'item': 'W1'}, result['errors'])
-        self.record['work_items'][0]['assumption'] = '按待机 ≤0.1W 设计'
-        result = self.run_audit()
-        self.assertEqual('INCOMPLETE', result['status'])
+        self.assertEqual('INCOMPLETE', result['status'], result['errors'])
         self.assertIn({'code': 'open_requirement', 'item': 'W1'}, result['pending'])
+
+    def test_unanswered_clarification_fails(self):
+        self.clarification()
+        self.assertEqual('FAIL', self.run_audit()['status'])
+        self.assertIn({'code': 'clarification_unanswered', 'item': 'CL-STBY'}, self.run_audit()['errors'])
+
+    def test_answer_is_written_back_as_a_requirement(self):
+        q = self.clarification('ADOPTED_PROPOSAL')
+        self.assertIn('clarification_not_written_back', self.codes())
+        self.written_back('待机功耗 ≤0.2 W')
+        self.assertIn('clarification_not_written_back', self.codes())
+        self.record['requirements'][-1]['text'] = q['proposed_requirement']
+        self.assertEqual('PASS', self.run_audit()['status'], self.run_audit()['errors'])
+
+    def test_adopted_answer_is_the_proposal_word_for_word(self):
+        self.clarification('ADOPTED_PROPOSAL', '待机功耗 ≤0.2 W')
+        self.written_back('待机功耗 ≤0.2 W')
+        self.assertIn('adopted_text_differs', self.codes())
+        self.clarification('DECIDED', '待机功耗 ≤0.2 W')
+        self.assertEqual('PASS', self.run_audit()['status'], self.run_audit()['errors'])
+
+    def test_deferred_answer_needs_an_open_item_on_the_proposed_text(self):
+        self.clarification('DEFERRED', '先按建议设计，量产前再定')
+        codes = self.codes()
+        self.assertIn('deferred_without_requirement_item', codes)
+        self.assertIn('deferred_requirement_claimed_supported', codes)
+        self.deferred_item(assumption='按待机 ≤0.3W 设计')
+        self.assertIn('assumption_differs_from_proposal', self.codes())
+        self.deferred_item()
+        self.assertNotIn('assumption_differs_from_proposal', self.codes())
+
+    def test_clarification_fields_and_answer_are_checked(self):
+        q = self.clarification('DECIDED', '待机功耗 ≤0.2 W')
+        self.written_back('待机功耗 ≤0.2 W')
+        q['requirement_ids'] = ['R9']
+        del q['answer']['date']
+        codes = self.codes()
+        self.assertIn('unknown_requirement_ids', codes)
+        self.assertTrue(any(e['item'].startswith('CL-STBY:answer needs') for e in self.run_audit()['errors']))
+        q['id'] = 'STBY'
+        self.assertTrue(any('CL-<name>' in e['item'] for e in self.run_audit()['errors']))
 
     def test_requirement_gap_cannot_be_handed_off(self):
         self.record['work_items'][0].update(stage='requirement', status='handoff', owner='用户',
@@ -430,6 +492,18 @@ class DerivedConclusionTests(unittest.TestCase):
         self.calc('guaranteed', 'design_choice', 'requirement', 'constant')
         self.assertEqual('PASS', self.run_audit()['status'])
         self.assertEqual({'conclusion': 'supported', 'rests_on': None, 'reasons': []}, self.basis())
+
+    def test_a_deferred_requirement_leaves_the_calculation_conditional(self):
+        DesignClosureTests.clarification(self, 'DEFERRED', '先按建议设计，量产前再定')
+        DesignClosureTests.deferred_item(self)
+        self.record['work_items'][0]['calculations'] = ['C1']
+        self.calc('guaranteed', 'model', conclusion='conditional', rests_on='estimate')
+        self.assertIn('conclusion_not_derived', self.codes())
+        self.calc('guaranteed', 'model', conclusion='conditional', rests_on='user_deferred')
+        self.assertNotIn('conclusion_not_derived', self.codes())
+        self.assertEqual(['待办 W1', 'eta'], self.basis()['reasons'])
+        self.record['work_items'][0]['calculations'] = ['C9']
+        self.assertIn('unknown_calculations', self.codes())
 
     def test_an_engineering_model_rests_on_the_estimate(self):
         self.calc('guaranteed', 'model')
