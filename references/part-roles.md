@@ -12,14 +12,16 @@
 
 判据只有一条：**设计依赖的器件参数，能不能只靠“值 + 通用规格”确定**。能，满足规格的料都可以互换；不能，这个参数只有某个料号的
 数据手册保证（半导体电气特性、钳位与击穿电压、保护动作曲线、安规认证、寿命与纹波电流、饱和电流、连接器额定与引脚定义）。
-级别由器件在设计网表里的符号库和位号决定，不由设计者另选；`scripts/schematic_layout/part_classes.py` 按下表判定，
-`render_design_report.py` 核对。
+级别由器件在设计网表里的位号前缀和符号家族决定（两者任一命中即算），不由设计者另选；`scripts/schematic_layout/part_classes.py` 按下表
+从上到下判定，`render_design_report.py` 核对。规格件是白名单：认不出的器件一律按料号件处理，宁可多要料号，不漏。
 
-| 级别 | 定义 | 判定（设计网表的 `lib_id` 与位号） | 设计网表要求 |
+| 级别 | 定义 | 判定（设计网表的位号前缀与 `lib_id` 符号名） | 设计网表要求 |
 |---|---|---|---|
-| 核心器件 | 决定架构或带来固件/配置依赖：控制器、协议 IC、MCU、功率开关、主磁件、隔离与反馈器件（选型见 [core-part-selection.md](core-part-selection.md)） | 位号 U、Q、T | 选型比较、确切 `mpn`、`datasheet`、引脚表 |
-| 料号件 | 设计依赖的参数只有具体料号的手册保证：分立半导体、保护件、安规电容、电解/聚合物/钽电容、功率电感与共模扼流圈、连接器 | 符号名以 `D` 开头或为 `LED`、位号 BR；`Fuse`、`Varistor`、`Thermistor*`；位号 CX、CY；`C_Polarized*`、`CP*`；`Device:L*`、位号 L；`Connector*` 库（`TestPoint` 除外） | 确切 `mpn`、`datasheet` |
-| 规格件 | 值加通用规格就能确定：通用电阻、陶瓷电容、测试点 | 其余器件 | `value` 加规格字段（容差、功率或耐压、介质）；不要求 `mpn` |
+| 核心器件 | 决定架构或带来固件/配置依赖：控制器、协议 IC、MCU 与主控模块、功率开关、主磁件、隔离与反馈器件（选型见 [core-part-selection.md](core-part-selection.md)） | 位号 U、Q、T、A、MODULE、REF；或符号名以 `Q_`、`Transformer` 开头，或在 `Transistor*` 库 | 选型比较、确切 `mpn`、`datasheet`、引脚表 |
+| 规格件 | 值加通用规格就能确定：通用电阻与电位器、无极性电容、测试点、跳线、开关、键盘轴、安装孔等机械件 | 符号 `TestPoint`；位号 TP、JP、H、MB、FID、HS、LOGO、SW、MX，或符号名以 `MountingHole`、`Fiducial`、`SolderJumper`、`Jumper`、`Heatsink`、`SW_`、`KEYSW`、`MX-` 开头；位号 R、RV（符号 `Thermistor*`、`Varistor*` 除外）；位号 C（符号 `C_Polarized*`、`CP*` 除外） | `value` 加规格字段（容差、功率或耐压、介质）；不要求 `mpn` |
+| 料号件 | 设计依赖的参数只有具体料号的手册保证：二极管/LED/TVS/ESD、整流桥、晶体与振荡器、保险丝与自恢复保险丝、压敏与热敏电阻、安规电容（CX、CY）、电解/聚合物/钽电容、电感/磁珠/共模扼流圈、连接器、继电器、电池、蜂鸣器/扬声器/麦克风、天线 | 其余器件 | 确切 `mpn`、`datasheet` |
+
+- 按符号判定有一处做不到：电解电容画成无极性符号（`Device:C`）时会被判成规格件，所以电解、聚合物、钽电容必须用有极性符号。
 
 - **定制磁件**（变压器、PFC 电感、共模扼流圈等按磁件设计单定制的器件）用 `fields.DesignSheet` 指向磁件设计单，代替 `datasheet`；
   `mpn` 写设计单编号。

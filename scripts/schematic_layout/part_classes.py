@@ -1,10 +1,10 @@
 """Which parts the design netlist must name exactly (references/part-roles.md section 1).
 
-A part's class follows from its symbol library and reference, never from a designer's choice:
-core parts (U, Q, T) and exact-MPN parts (discrete semiconductors, protection parts, safety and
-electrolytic capacitors, inductors, connectors) need an MPN and a datasheet; a custom magnetic names
-its design sheet in ``fields.DesignSheet`` instead. Spec parts (resistors, ceramic capacitors, test
-points) are fixed by value and specification. A datasheet cited for a part in a calculation or a data
+A part's class follows from its reference prefix and symbol family, never from a designer's choice:
+core parts (ICs, transistors, transformers, modules) and exact-MPN parts need an MPN and a datasheet;
+a custom magnetic names its design sheet in ``fields.DesignSheet`` instead. Spec parts are a whitelist
+(resistors, non-polarized capacitors, test points, jumpers, switches, mechanical items) fixed by value
+and specification; any part not recognized as core or spec is an exact-MPN part. A datasheet cited for a part in a calculation or a data
 gap must be the datasheet the design netlist gives that part.
 """
 
@@ -20,20 +20,29 @@ CORE, EXACT, SPEC = 'core', 'exact', 'spec'
 CLASS_NAMES = {CORE: '核心器件', EXACT: '料号件'}
 
 
+CORE_PREFIXES = ('U', 'Q', 'T', 'A', 'MODULE', 'REF')
+CORE_SYMBOLS = ('Q_', 'Transformer')
+SPEC_PREFIXES = ('TP', 'JP', 'H', 'MB', 'FID', 'HS', 'LOGO', 'SW', 'MX')
+SPEC_SYMBOLS = ('TestPoint', 'MountingHole', 'Fiducial', 'SolderJumper', 'Jumper', 'Heatsink', 'SW_', 'KEYSW', 'MX-')
+
+
 def part_class(comp):
     """core / exact / spec for one design-netlist component."""
     ref = str(comp.get('ref', ''))
     prefix = re.match(r'[A-Z]*', ref.upper()).group()
     lib = str(comp.get('lib_id', ''))
     library, _, name = lib.rpartition(':')
-    if prefix in ('U', 'Q', 'T'):
-        return CORE
     if name == 'TestPoint':
         return SPEC
-    if (prefix in ('BR', 'CX', 'CY', 'L') or name.startswith(('D', 'LED', 'Fuse', 'Varistor', 'Thermistor', 'C_Polarized', 'CP'))
-            or (library == 'Device' and name.startswith('L')) or library.startswith('Connector')):
-        return EXACT
-    return SPEC
+    if prefix in CORE_PREFIXES or name.startswith(CORE_SYMBOLS) or library.startswith('Transistor'):
+        return CORE
+    if prefix in SPEC_PREFIXES or name.startswith(SPEC_SYMBOLS):
+        return SPEC
+    if prefix in ('R', 'RV') and not name.startswith(('Thermistor', 'Varistor')):
+        return SPEC
+    if prefix == 'C' and not name.startswith(('C_Polarized', 'CP')):
+        return SPEC
+    return EXACT
 
 
 def text(value):

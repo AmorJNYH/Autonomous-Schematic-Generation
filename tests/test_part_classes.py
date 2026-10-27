@@ -31,6 +31,26 @@ class ClassTests(unittest.TestCase):
             for p in parts:
                 self.assertEqual(kind, pc.part_class(p), p['ref'])
 
+    def test_prefix_or_symbol_family_decides_and_unknown_parts_need_an_mpn(self):
+        # Scan of 20 public KiCad projects: 150 of 2774 parts named after their MPN or of an unlisted kind fell to spec.
+        cases = {
+            'core': [part('AH2', 'Device:Q_NMOS_SGD'), part('Q3', 'motor_parts:BSS816NWH6327'),
+                     part('Tr1', 'tesla_smps-rescue:Transformer'), part('REF1', 'Reference_Voltage:TL431LP'),
+                     part('A1', 'MCU_Module:Arduino_Nano_v3.x'), part('Module1', 'CM5IO:ComputeModule5-CM5')],
+            'exact': [part('D21', 'Diode:1N4148WT'), part('D1', 'Power_Protection:PRTR5V0U2X'), part('D33', 'MotorBuck:WS2812B'),
+                      part('CR1', 'TSD05CDYFR:TSD05CDYFR'), part('Y1', 'Device:Crystal_GND24'), part('X1', 'Oscillator:TXC-7C'),
+                      part('F1', 'Device:Polyfuse'), part('FB2', 'Device:FerriteBead'), part('FL1', 'tesla_smps-rescue:F_CHOKE'),
+                      part('J10', 'HR911105A:HR911105A'), part('K20', 'Relay:FINDER-40.41'), part('BT1', 'Device:Battery_Cell'),
+                      part('BZ1', 'Device:Buzzer'), part('AE1', 'otter:KH-5220-A56_U.FL'), part('RV2', 'Device:Varistor'),
+                      part('R9', 'Device:Thermistor_NTC'), part('C4', 'Device:CP_Small')],
+            'spec': [part('RV3', 'Device:R_Potentiometer_Trim'), part('R2', 'SPIRIT-components:1K-05W-0805-RES_ERJP06J102V'),
+                     part('C3', 'SPIRIT-components:USBC_capacitor_GRM033R60J334ME90D'), part('SW1', 'Switch:SW_Push'),
+                     part('K32', 'keyboard_parts:KEYSW'), part('JP1', 'Jumper:SolderJumper_2_Open'),
+                     part('H1', 'Mechanical:MountingHole_Pad'), part('FID1', 'Mechanical:Fiducial'), part('TP3', 'otter:test-pad-1')]}
+        for kind, parts in cases.items():
+            for p in parts:
+                self.assertEqual(kind, pc.part_class(p), p['ref'])
+
 
 class IdentityTests(unittest.TestCase):
     def setUp(self):

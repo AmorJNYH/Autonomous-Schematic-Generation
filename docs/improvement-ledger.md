@@ -8,6 +8,20 @@ in the library and have the cited page); `Changed:` the files touched.
 entry that changes the ASG 纲要 or the 绘图纲要 O1–O8 also carries `Approved:
 user:<date>` and `Outline:` the hash from `check_ledger.py --outline-hash`.
 
+## 器件分级改为位号前缀与符号家族都算、规格件白名单 (2026-10-26)
+
+用 `part_classes.py` 给 GitHub 上 20 个公开 KiCad 工程的 2774 个器件分级，按器件实际类型逐组核对，错判 153 个，其中 150 个是该写料号的器件落成了规格件。
+原因有两处：一是只看符号名或只看位号，按 MPN 命名的项目库符号（`Diode:1N4148WT`、`Power_Protection:PRTR5V0U2X`、自定义库的 RJ45/USB-C 连接器、
+位号 AH/AL 的 `Q_NMOS`、位号 TR 的变压器、位号 REF 的 TL431）都漏了；二是“其余都是规格件”，表里没列到的类（晶体与振荡器、自恢复保险丝、磁珠、
+继电器、电池、蜂鸣器/麦克风、天线、主控模块）全部放过。现在位号前缀和符号家族任一命中即算，规格件改为白名单（电阻与电位器、无极性电容、测试点、
+跳线、开关、键盘轴、机械件），其余默认料号件。同一批器件错判降为 6 个（3 个自定义机械件被多要料号，3 个用 U 位号的连接器/LED 判为核心器件，
+两者同样要求料号）；规则是照这批数据写的，这是样本内结果。R1–R7 的设计网表分级与改前完全相同。电解电容画成 `Device:C` 时按符号认不出，
+`part-roles.md` 第 1 节改为要求用有极性符号。
+
+- Event: test:扫描20个公开KiCad工程2774个器件现行分级错判153个其中150个料号件落成规格件
+- Causes: rule_missing 2
+- Changed: references/part-roles.md, scripts/schematic_layout/part_classes.py, tests/test_part_classes.py, docs/improvement-ledger.md
+
 ## 器件分级：核心器件和料号件必须写确切料号和数据手册 (2026-10-26)
 
 对比 R6 与 R7 的设计结果时发现，R7 从需求重新设计后设计网表的料号精度倒退：电容的 MPN 全部丢失（C-LIFE 却按 BXW、PZJ 系列算寿命），
