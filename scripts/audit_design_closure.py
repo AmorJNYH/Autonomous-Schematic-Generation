@@ -11,6 +11,7 @@ import math
 import re
 from pathlib import Path
 from design_frontier import frontier
+from schematic_layout import part_classes
 from schematic_layout.citations import check_source
 
 
@@ -29,7 +30,9 @@ def severity_of(row):
         return None
     return SEVERITY_RULE[consequence][OCCURRENCES.index(occurrence)]
 OPERATORS = {'<=': lambda v, l: v <= l, '<': lambda v, l: v < l,
-             '>=': lambda v, l: v >= l, '>': lambda v, l: v > l}
+             '>=': lambda v, l: v >= l, '>': lambda v, l: v > l,
+             # A consistency check: two records of one quantity agree (R8 C-LIFE wrote "218 ≤ 218 Wh").
+             '==': lambda v, l: math.isclose(v, l, rel_tol=1e-9, abs_tol=1e-12)}
 # Parts whose job is to set or clamp a voltage. Each one needs a calculation
 # naming it, so a protection threshold cannot ship as prose only.
 THRESHOLD_PART = re.compile(r'zener|tvs|tl431|atl431|lm4040|shunt.?ref|voltage.?ref|^power:vref', re.I)
@@ -50,6 +53,9 @@ WINDOW_SIDES = ('no_false_trip', 'protection')
 # Version 2 adds requirement inputs and physical constants, no longer filed as models.
 PARAMETER_BASES = ('guaranteed', 'typical', 'derived', 'design_choice', 'model', 'unspecified')
 PARAMETER_BASES_V2 = PARAMETER_BASES + ('requirement', 'constant')
+# Version 3 (R8, user 2026-10-27): each check also says where its limit comes from, so a limit ASG set itself
+# ("20 J 采购资格", "60 V 筛查值") no longer reads like a rating; and every requirement is checked or says why not.
+LIMIT_BASES = ('requirement', 'guaranteed', 'typical', 'standard', 'derived', 'model')
 # Version 2: the conclusion follows from the inputs. A typical or unspecified device value, or an open
 # vendor-data item, leaves it resting on the vendor; an engineering model or a term not calculated
 # leaves it resting on ASG's own estimate; otherwise the design holds.
@@ -59,12 +65,20 @@ DATASHEET = re.compile(r'^datasheet:.+#p\d+$')
 # Where a data gap was found (gap_version 1): a datasheet page, a review item or a user decision.
 GAP_SOURCE = re.compile(r'^(datasheet:.+#p\d+|review:[^/\s]+/\S+|user:\d{4}-\d{2}-\d{2})$')
 GAP_FIELDS = ('missing', 'why_external', 'calculations', 'consequence', 'questions', 'owner', 'fallback', 'action')
+# gap_version 2 (R8): what kind of data each gap lacks. Tests, approvals, certification and quotes are not datasheet
+# gaps but validation hand-offs; a value given only as typical, or not at all, first rules out a part that guarantees it.
+GAP_KINDS = ('unspecified', 'typical_only', 'firmware', 'internal')
 # A requirement question put to the user (requirement-clarifications.md) is answered in one of three ways.
 DECISIONS = ('DECIDED', 'ADOPTED_PROPOSAL', 'DEFERRED')
 CLARIFICATION_ID = re.compile(r'^CL-\S+$')
 DATE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
 # Whether the user let ASG write a decided requirement into the original requirement files.
 FILE_DECISIONS = ('UPDATED', 'KEPT')
+# derating_version 1 (user 2026-10-27): stresses are checked against the I/II/III column of the shared derating spec.
+DERATING_RULES = Path(__file__).resolve().parent.parent / 'references' / 'derating-rules.json'
+DERATING_SOURCE = re.compile(r'^(req:|clarification:)(\S+)$')
+USER_DATE = re.compile(r'^user:\d{4}-\d{2}-\d{2}$')
+RATING_SOURCE = re.compile(r'^(datasheet:.+#p\d+|req:\S+|calc:\S+)$')
 
 
 def text(value):
@@ -115,26 +129,46 @@ def audit_operating_points(record, work, refs, error, need):
     return points
 
 
-def calculation_basis(row, vendor_items=(), deferred_items=()):
+def holds(c, limit_key='limit'):
+    """Whether a well-formed check meets its limit (or its rating); None when it cannot be compared."""
+    if not (isinstance(c, dict) and c.get('operator') in OPERATORS and finite(c.get('value')) and finite(c.get(limit_key))):
+        return None
+    return OPERATORS[c['operator']](c['value'], c[limit_key])
+
+
+def derating_deviation(c):
+    """A derating check beyond its derated limit but within the part's rating: conditional, not failed."""
+    return bool(text(c.get('derating_rule')) and holds(c) is False and holds(c, 'rating') is True)
+
+
+def calculation_basis(row, vendor_items=(), deferred_items=(), derating_items=()):
     """(conclusion, rests_on, reasons) a parameter_version 2 calculation follows to.
 
     ``vendor_items`` are the open external work items whose ``calculations`` name this one;
-    ``deferred_items`` the open requirement work items (requirements the user deferred) that do.
+    ``deferred_items`` the open requirement work items (requirements the user deferred) that do;
+    ``derating_items`` the open design work items whose ``derating`` names it (a deviation not yet fixed or accepted).
     """
-    failing = [c.get('name') for c in row.get('checks') or [] if isinstance(c, dict) and c.get('operator') in OPERATORS
-               and finite(c.get('value')) and finite(c.get('limit')) and not OPERATORS[c['operator']](c['value'], c['limit'])]
+    checks = [c for c in row.get('checks') or [] if isinstance(c, dict)]
+    failing = [c.get('name') for c in checks if holds(c) is False and not derating_deviation(c)]
     if failing:
         return 'failed', None, failing
     params = [p for p in row.get('parameters') or [] if isinstance(p, dict)]
-    vendor = [p.get('name') for p in params if p.get('basis') in VENDOR_BASES] + ['待办 %s' % w for w in vendor_items]
+    vendor =[p.get('name') for p in params if p.get('basis') in VENDOR_BASES] + ['待办 %s' % w for w in vendor_items]
+    vendor += ['门槛 %s' % c.get('name') for c in checks if c.get('limit_basis') == 'typical']
     estimate = [p.get('name') for p in params if p.get('basis') in ESTIMATE_BASES]
+    estimate += ['门槛 %s' % c.get('name') for c in checks if c.get('limit_basis') == 'model']
     estimate += ['没算：%s' % o.get('term') for o in row.get('omitted_terms') or []
                  if isinstance(o, dict) and o.get('kind') == 'not_calculated']
     deferred = ['待办 %s' % w for w in deferred_items]
+    # An accepted deviation (its item closed with the user's acceptance) no longer makes the calculation conditional.
+    deviations = ['降额 %s' % c.get('name') for c in checks if derating_deviation(c)]
+    derating = deviations + ['待办 %s' % w for w in derating_items] if deviations and derating_items else []
     if vendor:
-        return 'conditional', 'vendor_data', vendor + deferred + estimate
+        return 'conditional', 'vendor_data', vendor + deferred + derating + estimate
     if deferred:
-        return 'conditional', 'user_deferred', deferred + estimate
+        return 'conditional', 'user_deferred', deferred + derating + estimate
+    if derating:
+        return 'conditional', 'derating', derating + estimate
     if estimate:
         return 'conditional', 'estimate', estimate
     return 'supported', None, []
@@ -242,7 +276,7 @@ def audit_parameters(key, row, refs, points, calculations, error, version=1, req
             continue
         where = key + ':' + p['name']
         basis = p.get('basis')
-        bases = PARAMETER_BASES_V2 if version == 2 else PARAMETER_BASES
+        bases = PARAMETER_BASES_V2 if version >= 2 else PARAMETER_BASES
         if basis not in bases:
             error('schema', where + ':basis must be one of ' + '/'.join(bases))
             continue
@@ -272,9 +306,53 @@ def audit_parameters(key, row, refs, points, calculations, error, version=1, req
             error('supported_with_unguaranteed_parameter', where)
 
 
-def audit_gaps(work, calculations, error):
+def audit_limits(key, row, requirements, calculations, error):
+    """Version 3: each check names where its limit comes from."""
+    for i, c in enumerate(row.get('checks') or []):
+        if not isinstance(c, dict):
+            continue
+        where = '%s:%s' % (key, c.get('name') if text(c.get('name')) else 'checks[%d]' % i)
+        basis, source = c.get('limit_basis'), c.get('limit_source')
+        source = source if isinstance(source, str) else ''
+        if basis not in LIMIT_BASES:
+            error('check_limit_without_basis', where)
+        elif not {'model': text(c.get('limit_reason')),
+                  'requirement': source.startswith('req:') and source[4:] in requirements,
+                  'guaranteed': bool(DATASHEET.match(source)), 'typical': bool(DATASHEET.match(source)),
+                  'standard': source.startswith('standard:') and text(source[9:]),
+                  'derived': bool(DATASHEET.match(source)) or (source.startswith('calc:') and source[5:] in calculations)}[basis]:
+            error('check_limit_without_source', where)
+
+
+def audit_gap_kinds(key, row, error):
+    """gap_version 2: each missing entry is a kind of datasheet or firmware gap; an unguaranteed value rules out the
+    alternatives that would guarantee it."""
+    for i, m in enumerate(row.get('missing') if isinstance(row.get('missing'), list) else []):
+        where = '%s:missing[%d]' % (key, i)
+        kind = m.get('kind') if isinstance(m, dict) else None
+        if kind is None:
+            error('gap_kind_missing', where)
+            continue
+        if kind not in GAP_KINDS:
+            error('gap_not_external', '%s:%s（试验、认证、承认、报价交 validation）' % (where, kind))
+            continue
+        if kind not in ('unspecified', 'typical_only'):
+            continue
+        alternatives = m.get('alternatives')
+        if not isinstance(alternatives, list) or not alternatives:
+            error('gap_without_alternatives', where)
+            continue
+        for j, alt in enumerate(alternatives):
+            if (not isinstance(alt, dict) or not text(alt.get('approach')) or not text(alt.get('reason'))
+                    or not isinstance(alt.get('specified'), bool) or not isinstance(alt.get('feasible'), bool)):
+                error('schema', where + ':alternatives[%d] needs approach, specified, feasible and reason' % j)
+            elif alt['specified'] and alt['feasible']:
+                error('gap_alternative_feasible', where + ':' + alt['approach'])
+
+
+def audit_gaps(work, calculations, error, version=1):
     """Open external items say which data is missing, why only the owner has it and what to ask."""
-    fallbacks = {}
+    fallbacks, reasons = {}, {}
     for key, row in work.items():
         if row.get('stage') != 'external' or row.get('status') == 'closed':
             continue
@@ -298,9 +376,113 @@ def audit_gaps(work, calculations, error):
                 error('gap_unlinked_calculation', key + ':' + str(cid))
         if text(row.get('fallback')):
             fallbacks.setdefault(' '.join(row['fallback'].split()), []).append(key)
+        if version == 2:
+            audit_gap_kinds(key, row, error)
+            if text(row.get('why_external')):
+                reasons.setdefault(' '.join(row['why_external'].split()), []).append(key)
     for keys in fallbacks.values():
         if len(keys) > 1:
             error('gap_generic_fallback', '、'.join(keys))
+    for keys in reasons.values():        # R8: one sentence for all seven items says nothing about any of them
+        if len(keys) > 1:
+            error('gap_reason_repeated', '、'.join(keys))
+
+
+def load_derating(path=DERATING_RULES):
+    """The shared derating spec: {rule id: rule} plus the spec itself."""
+    spec = json.loads(Path(path).read_text(encoding='utf-8'))
+    return {r['id']: r for r in spec['rules']}, spec
+
+
+def derated_limit(rule, level, rating):
+    """The limit a rule sets at this level, or None when the measure has no single number to compare."""
+    v, m = rule['values'][level], rule['measure']
+    if m in ('ratio', 'pulse_ratio', 'min_ratio', 'margin_c', 'tj_percent') and not finite(rating):
+        return None
+    return {'ratio': lambda: rating * v, 'pulse_ratio': lambda: rating * v, 'min_ratio': lambda: rating * v,
+            'margin_c': lambda: rating - v, 'tj_percent': lambda: (rating - 25) * v + 25,
+            'max_c': lambda: v, 'max_rise_k': lambda: v, 'max_v': lambda: v, 'min_hours': lambda: v,
+            'min_years': lambda: v, 'max_dvdt': lambda: v}.get(m, lambda: None)()
+
+
+def derating_items_of(work):
+    """({calculation id: [open design items whose derating names it]}, {calculation id: [accepted closed items]})."""
+    open_, accepted = {}, {}
+    for key, row in work.items():
+        if row.get('stage') != 'design' or not isinstance(row.get('derating'), list):
+            continue
+        target = open_ if row.get('status') == 'open' else accepted if (
+            row.get('status') == 'closed' and isinstance(row.get('accepted'), str) and USER_DATE.match(row['accepted'])) else None
+        for cid in row['derating'] if target is not None else ():
+            target.setdefault(cid, []).append(key)
+    return open_, accepted
+
+
+def audit_derating(record, intent, calculations, work, requirements, clarifications, error, loaded=None):
+    """derating_version 1: the level and where it was decided; each derating check uses its rule's limit for that level;
+    a deviation has an open design item or the user's acceptance; key and special parts check every rule of their type."""
+    rules, _ = loaded or load_derating()
+    info = record.get('derating') if isinstance(record.get('derating'), dict) else {}
+    level = info.get('level')
+    if level not in ('I', 'II', 'III'):
+        error('derating_level_missing', 'derating.level must be I, II or III')
+        level = None
+    m = DERATING_SOURCE.match(info.get('source') or '')
+    if not m or (m.group(1) == 'req:' and m.group(2) not in requirements) or (
+            m.group(1) == 'clarification:' and ((clarifications.get(m.group(2)) or {}).get('answer') or {}).get('decision') != 'DEFERRED'):
+        error('derating_level_without_source', 'derating.source: req:<需求编号>，或 clarification:<用户暂缓的需求澄清>')
+    comps = {c['ref']: c for c in intent.get('components') or []}
+    open_items, accepted = derating_items_of(work)
+    covered, deviations = set(), []
+    for key, row in calculations.items():
+        for c in row.get('checks') or []:
+            if not (isinstance(c, dict) and text(c.get('derating_rule'))):
+                continue
+            where, rule = '%s:%s' % (key, c.get('name')), rules.get(c['derating_rule'])
+            if rule is None:
+                error('derating_rule_unknown', where + ':' + c['derating_rule'])
+                continue
+            ref = c.get('ref')
+            kind = part_classes.kind_of(comps[ref])[0] if ref in comps else None
+            if not set(rule['kinds']) <= {'pcb', 'wire', 'enclosure'} and kind not in rule['kinds']:
+                error('derating_rule_kind', '%s: %s 是%s，规则 %s 用于 %s' % (where, ref, kind, rule['id'], '/'.join(rule['kinds'])))
+            covered.add((ref, rule['id']))
+            if c.get('limit_basis') != 'standard' or c.get('limit_source') != 'standard:derating-rules#' + rule['id']:
+                error('derating_limit_source', where + '：limit_basis 写 standard，limit_source 写 standard:derating-rules#' + rule['id'])
+            if c.get('rating') is not None and not (finite(c['rating']) and RATING_SOURCE.match(str(c.get('rating_source') or ''))):
+                error('derating_rating_without_source', where)
+            expected = derated_limit(rule, level, c.get('rating')) if level else None
+            if rule['measure'] in ('ratio', 'pulse_ratio', 'min_ratio', 'margin_c', 'tj_percent') and not finite(c.get('rating')):
+                error('derating_rating_missing', where)
+            elif expected is not None and finite(c.get('limit')) and not math.isclose(c['limit'], expected, rel_tol=1e-6, abs_tol=1e-9):
+                error('derating_limit_mismatch', '%s：写的 %g，%s 级 %s 是 %g' % (where, c['limit'], level, rule['id'], expected))
+            if derating_deviation(c):
+                handled = open_items.get(key) or accepted.get(key)
+                deviations.append({'calculation': key, 'check': c.get('name'), 'ref': ref, 'rule': rule['id'],
+                                   'value': c.get('value'), 'limit': c.get('limit'), 'rating': c.get('rating'),
+                                   'unit': c.get('unit'), 'items': open_items.get(key, []), 'accepted': accepted.get(key, [])})
+                if not handled:
+                    error('derating_without_item', where)
+    ctx = part_classes.context(intent)
+    parts = info.get('parts') if isinstance(info.get('parts'), dict) else {}
+    for ref, comp in sorted(comps.items()):
+        kind = part_classes.kind_of(comp)[0]
+        if part_classes.part_class(comp, ctx) not in ('key', 'special') or not any(kind in r['kinds'] for r in rules.values()):
+            continue
+        part = parts.get(ref) if isinstance(parts.get(ref), dict) else None
+        types = part.get('types') if part else None
+        if not isinstance(types, list) or not types:
+            error('derating_part_undeclared', '%s：derating.parts 写它属于降额规范里的哪些类型' % ref)
+            continue
+        known = {r['type'] for r in rules.values() if kind in r['kinds']}
+        for t in types:
+            if t not in known:
+                error('derating_type_unknown', '%s：%s 不是%s的降额类型（可选：%s）' % (ref, t, kind, '、'.join(sorted(known))))
+        exempt = part.get('not_applicable') if isinstance(part.get('not_applicable'), dict) else {}
+        for rid, rule in rules.items():
+            if rule['type'] in types and kind in rule['kinds'] and (ref, rid) not in covered and not text(exempt.get(rid)):
+                error('derating_not_covered', '%s:%s %s' % (ref, rid, rule['parameter']))
+    return {'level': level, 'source': info.get('source'), 'deviations': deviations}
 
 
 def audit_citations(record, calculations, work, extra, error):
@@ -311,6 +493,12 @@ def audit_citations(record, calculations, work, extra, error):
               for key, row in calculations.items() for p in row.get('parameters') or [] if isinstance(p, dict)]
     cited += [('%s:missing[%d]' % (key, i), m.get('source'), ())
               for key, row in work.items() for i, m in enumerate(row.get('missing') or []) if isinstance(m, dict)]
+    cited += [('%s:%s 的门槛' % (key, c.get('name')), c.get('limit_source'),
+               (c.get('limit'),) if c.get('limit_basis') in ('guaranteed', 'typical') else ())
+              for key, row in calculations.items() for c in row.get('checks') or [] if isinstance(c, dict)]
+    cited += [('%s:%s 的额定' % (key, c.get('name')), c.get('rating_source'), (c.get('rating'),))
+              for key, row in calculations.items() for c in row.get('checks') or []
+              if isinstance(c, dict) and str(c.get('rating_source') or '').startswith('datasheet:')]
     summary = {'checked': 0, 'not_checked': [], 'review': []}
     for where, source, values in cited:
         result = check_source(source, values, extra)
@@ -318,7 +506,7 @@ def audit_citations(record, calculations, work, extra, error):
             continue
         summary['checked'] += 1
         if result['status'] == 'FAIL':
-            error('citation_wrong', where + ': ' + result['reason'])
+            error('citation_not_in_library' if result.get('not_library') else 'citation_wrong', where + ': ' + result['reason'])
         elif result['reason'] and result['reason'] not in summary['not_checked']:   # not checked, or values not checked
             summary['not_checked'].append(result['reason'])
         if result['unshown']:
@@ -347,7 +535,7 @@ def resolve(p, root, inputs):
     return None
 
 
-def audit_calculation_v2(key, row, work, vendor_items, deferred_items, derived, error, need):
+def audit_calculation_v2(key, row, work, vendor_items, deferred_items, derived, error, need, derating_items=()):
     """The written conclusion, rests_on and coverage must be the ones the record follows to."""
     kinds = audit_omissions(key, row, work, error)
     assumptions = row.get('assumptions', [])
@@ -363,7 +551,7 @@ def audit_calculation_v2(key, row, work, vendor_items, deferred_items, derived, 
         if (not isinstance(c, dict) or not isinstance(c.get('name'), str) or not c['name'].strip()
                 or not finite(c.get('value')) or not finite(c.get('limit'))
                 or c.get('operator') not in OPERATORS or not isinstance(c.get('unit'), str)):
-            error('schema', where + ' needs name, finite value/limit, operator (<=, <, >=, >) and unit')
+            error('schema', where + ' needs name, finite value/limit, operator (<=, <, >=, >, ==) and unit')
             continue
         if c.get('side') is not None:
             if c['side'] not in WINDOW_SIDES:
@@ -375,7 +563,7 @@ def audit_calculation_v2(key, row, work, vendor_items, deferred_items, derived, 
                 error('threshold_window_incomplete', key + ':' + side)
     elif row.get('kind') is not None:
         error('schema', key + ':kind must be threshold when present')
-    conclusion, rests_on, reasons = calculation_basis(row, vendor_items, deferred_items)
+    conclusion, rests_on, reasons = calculation_basis(row, vendor_items, deferred_items, derating_items)
     derived[key] = {'conclusion': conclusion, 'rests_on': rests_on, 'reasons': reasons}
     if (row.get('conclusion'), row.get('rests_on')) != (conclusion, rests_on):
         error('conclusion_not_derived', '%s: 写的 %s/%s，按记录是 %s/%s' % (
@@ -508,12 +696,13 @@ def audit(record, intent_path, artifact_root, inputs=None):
                 error('unsupported_requirement_claim', key + ':' + dep)
 
     parameters = 'parameter_version' in record
-    if parameters and record['parameter_version'] not in (1, 2):
-        error('schema', 'parameter_version must be 1 or 2')
+    if parameters and record['parameter_version'] not in (1, 2, 3):
+        error('schema', 'parameter_version must be 1, 2 or 3')
         parameters = False
     version = record['parameter_version'] if parameters else None
     points = audit_operating_points(record, work, refs, error, need) if parameters else {}
     vendor_items, deferred_items, derived = vendor_items_of(work), vendor_items_of(work, 'requirement'), {}
+    derating_open = derating_items_of(work)[0] if 'derating_version' in record else {}
     for key, row in calculations.items():
         if parameters:
             audit_parameters(key, row, refs, points, calculations, error, version, requirements)
@@ -522,8 +711,11 @@ def audit(record, intent_path, artifact_root, inputs=None):
         coverage, conclusion = row.get('coverage'), row.get('conclusion')
         if coverage not in ('bounded', 'partial') or conclusion not in ('supported', 'conditional', 'failed'):
             error('schema', key + ':invalid coverage/conclusion')
-        if version == 2:
-            audit_calculation_v2(key, row, work, vendor_items.get(key, []), deferred_items.get(key, []), derived, error, need)
+        if version in (2, 3):
+            audit_calculation_v2(key, row, work, vendor_items.get(key, []), deferred_items.get(key, []), derived, error, need,
+                                 derating_open.get(key, []))
+            if version == 3:
+                audit_limits(key, row, requirements, calculations, error)
             continue
         omitted = row.get('omitted_terms')
         if not isinstance(omitted, list) or any(not isinstance(x, str) for x in omitted):
@@ -561,7 +753,7 @@ def audit(record, intent_path, artifact_root, inputs=None):
             if (not isinstance(c, dict) or not isinstance(c.get('name'), str) or not c['name'].strip()
                     or not finite(c.get('value')) or not finite(c.get('limit'))
                     or c.get('operator') not in OPERATORS or not isinstance(c.get('unit'), str)):
-                error('schema', where + ' needs name, finite value/limit, operator (<=, <, >=, >) and unit')
+                error('schema', where + ' needs name, finite value/limit, operator (<=, <, >=, >, ==) and unit')
                 continue
             results.append(OPERATORS[c['operator']](c['value'], c['limit']))
             if c.get('side') is not None:
@@ -585,18 +777,30 @@ def audit(record, intent_path, artifact_root, inputs=None):
             for rid in row.get('requirements', []):
                 if rid in requirements and requirements[rid].get('status') == 'design_supported':
                     error('unsupported_calculation_dependency', rid + ':' + key)
-    if version == 2:
+    if version in (2, 3):
         for rid, req in requirements.items():
             weak = [k for k, row in calculations.items() if rid in (row.get('requirements') or [])
                     and derived.get(k, {}).get('conclusion') != 'supported']
             if req.get('status') == 'design_supported' and weak:
                 error('requirement_status_not_derived', rid + ': rests on ' + '、'.join(weak))
+    if version == 3:
+        # R8: the cost target was "estimated in the selection record" and never was; every requirement is checked.
+        checked = {r for row in calculations.values() for r in row.get('requirements') or [] if isinstance(r, str)}
+        for rid, req in requirements.items():
+            if rid not in checked and not text(req.get('no_check_reason')):
+                error('requirement_without_check', rid)
+    derating = None
+    if 'derating_version' in record:
+        if record['derating_version'] != 1 or version not in (2, 3):
+            error('schema', 'derating_version must be 1, with parameter_version 2 or 3')
+        else:
+            derating = audit_derating(record, intent, calculations, work, requirements, clarifications, error)
     gaps = 'gap_version' in record
-    if gaps and record['gap_version'] != 1:
-        error('schema', 'gap_version must be 1')
+    if gaps and record['gap_version'] not in (1, 2):
+        error('schema', 'gap_version must be 1 or 2')
         gaps = False
     if gaps:
-        audit_gaps(work, calculations, error)
+        audit_gaps(work, calculations, error, record['gap_version'])
     citations = audit_citations(record, calculations, work, [root, *(inputs or ())], error)
     covered = {r for row in calculations.values() if isinstance(row.get('refs'), list) for r in row['refs']}
     for ref in threshold_parts:
@@ -624,6 +828,7 @@ def audit(record, intent_path, artifact_root, inputs=None):
             'parameters': 'CHECKED' if parameters else 'NOT_CHECKED', 'parameter_version': version,
             'calculation_basis': derived,
             'gaps': 'CHECKED' if gaps else 'NOT_CHECKED', 'citations': citations,
+            'derating': derating if derating is not None else 'NOT_CHECKED',
             'unspecified_operations': sorted(k for k, v in points.items() if v.get('specified') is False),
             'downstream_handoffs': [k for k, v in work.items() if v.get('stage') in ('validation', 'pcb') and v.get('status') == 'handoff']}
 

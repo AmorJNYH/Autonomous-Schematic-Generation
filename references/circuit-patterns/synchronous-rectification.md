@@ -21,6 +21,10 @@
   - 同步整流换向与重复应力没有算（review:SR-20261019-R3-改版前独立审查-41f4ad3/W-SR）
   - 60 V 器件在 21 V 输出 + 400 V/8 反射下裕量不足（选型记录 Q501）
   - 最短导通时间设置只按额定点定，21 V 轻载时副边电流先过零，同步管在电流反向后才关断（review:SR-20261023-R5-从头审查-claude-5802e8c/F-SR-TONMIN）
+  - 控制器 VCC 从输出经二极管取电时，最低输出档（5 V，PPS 恒流时更低）减去二极管低温最大压降，要高于启动门限的最大值
+    （NCP4307 VCCL_ON 最大 4.2 V，datasheet:Datasheet/08_电源管理/栅极驱动器/onsemi - NCP4307.pdf#p7）；
+    R8 按 4.25 V 对 4.2 V 放行且压降没有保证。不满足时改用 CS 脚自供电（同手册 p3、p5）或辅助绕组供电，
+    否则低压档同步管不开，满载电流走体二极管
 - **来源**：
   - raw/Designexample/USB-PD/NCP1343PD100WGEVB（U3 NCP4307、Q3）
   - raw/Datasheet/08_电源管理/栅极驱动器/onsemi - NCP4307.pdf

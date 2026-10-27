@@ -9,7 +9,7 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
 2. **器件可行性**：系列宣传或物理引脚存在，不证明确切型号/固件具备所需状态、配置和启动行为。先验证架构依赖的能力，再展开外围。拿不到资料时评估独立硬件或有证据的替代方案，并继续不受影响的计算和电路；不要仅把设计工作搬到“厂家待提供”。核心/安规相关器件要确切料号与证据；通用料可先给可采购的容差、耐压、功率、温度等边界；定制磁件要受控结构/端子、材料与制造指标。不能把所有空 MPN 一律判错，也不能称其为已完成可下单 BOM。
 3. **计算要完整**：损耗/能效预算须列出所有适用的主要项，无法精算的项给有来源的上下界及剩余预算。部分损耗的效率上界只能排除明显不可行方案，不能证明达标。磁件先选候选磁芯/材料/窗口并计算绕组、气隙、磁通和损耗，供应商公差及样机验证另列；不能把自由选择的工程输入无限留待供应商。保护要追触发、供电、执行、保持和恢复整条路径及容差/掉电角点，不止静态分压值。不能为补齐表格编造缺失参数或保证值。
 4. **状态和可追溯性**：逐个追启动、正常工作、限流、过温、传感器故障、输出过压、掉电及恢复中适用的状态。写清触发源→判定→执行→供电/保持→恢复，映射实际位号/网络与固件责任。批量给每个需求挂上整板位号不构成功能追溯。
-5. **工作分类**：`design` 是还能用现有证据完成的方案/计算/选型/连线；`external` 是确实需厂商或其他输入的能力/保证；`validation` 才是已给出设计依据和试验入口的实物/认证验证。`pcb` 仅指封装库、布局实现、DFM；它与 `validation` 可交给后续环节。工程假设尚未成立时不因“以后实测”而关闭设计项。审查意见的处理方式与这些阶段的对应见 [处理审查意见](review-comments.md#1-逐条登记)。
+5. **工作分类**：`design` 是还能用现有证据完成的方案/计算/选型/连线；`external` 是确实需厂商或其他输入的能力/保证；`validation` 才是已给出设计依据和试验入口的实物/认证验证。系统级 ESD/EMC/安规试验、实物或材料承认、认证和报价都是 `validation`，不是资料缺口；手册里有的额定（IFSM、I²t、分断能力、SOA）拿来比对是 `design`（R8，2026-10-27）。`pcb` 仅指封装库、布局实现、DFM；它与 `validation` 可交给后续环节。工程假设尚未成立时不因“以后实测”而关闭设计项。审查意见的处理方式与这些阶段的对应见 [处理审查意见](review-comments.md#1-逐条登记)。
 
 ## 从审查缺口回到电路
 
@@ -99,7 +99,7 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
 - `coverage`：全部适用需求/设计工作均已审查才填 `complete`；抽查或历史回放填 `partial`。这不是工具自动证明的完整性。
 - 需求状态 `design_supported` / `conditional` / `open`；`implementation` 描述功能而非只列料号。
 - `clarifications`：问用户的需求问题和答复，给定或采纳的以同编号、`text` 等于答复写进 `requirements`；字段与核对见 [需求澄清](requirement-clarifications.md)。
-- `work_items`：阶段 `requirement`（等用户定需求）/ `design` / `external` / `validation` / `pcb`；状态 `open` / `closed` / `handoff`；`validation` 与 `pcb` 允许 `handoff`。未关闭项需 owner/action；`open` 项还需 `consequence_class`（不做的后果：`safety` 安全 / `damage` 器件损坏 / `function` 功能失效 / `margin` 性能余量 / `optimization` 优化）和 `occurrence`（何时出现：`normal` 正常工作 / `condition` 特定工况 / `fault` 仅故障时），等级由审计按规则推出，不手填：安全 P0；器件损坏 P0，仅故障时 P1；功能失效 P1，仅故障时 P2；性能余量 P2，仅故障时 P3；优化 P3。报告按等级排序；写了 `severity` 而与规则不符记 `severity_contradicts_rule`；external 的资料缺口按下面的 `gap_version 1` 写；requirement 只用于用户暂缓的需求：`clarification` 写对应的需求澄清编号，`assumption` 照抄其建议条文，依赖它的计算写进 `calculations`（见 [需求澄清](requirement-clarifications.md)）。closed 与 handoff 均需证据。`pcb` 须声明 `scope` 为 `footprint_library` / `layout_implementation` / `dfm`，并用非空 `electrical_preconditions` 指向已关闭的 design 工作；这些前提须有选定变体、物理引脚号及相关电气边界证据，不能用“已建封装”自证。该分类仍需人工检查，脚本不理解正文电气内容。
+- `work_items`：阶段 `requirement`（等用户定需求）/ `design` / `external` / `validation` / `pcb`；状态 `open` / `closed` / `handoff`；`validation` 与 `pcb` 允许 `handoff`。未关闭项需 owner/action；`open` 项还需 `consequence_class`（不做的后果：`safety` 安全 / `damage` 器件损坏 / `function` 功能失效 / `margin` 性能余量 / `optimization` 优化）和 `occurrence`（何时出现：`normal` 正常工作 / `condition` 特定工况 / `fault` 仅故障时），等级由审计按规则推出，不手填：安全 P0；器件损坏 P0，仅故障时 P1；功能失效 P1，仅故障时 P2；性能余量 P2，仅故障时 P3；优化 P3。报告按等级排序；写了 `severity` 而与规则不符记 `severity_contradicts_rule`；external 的资料缺口按下面的 `gap_version 2` 写（旧记录 1）；requirement 只用于用户暂缓的需求：`clarification` 写对应的需求澄清编号，`assumption` 照抄其建议条文，依赖它的计算写进 `calculations`（见 [需求澄清](requirement-clarifications.md)）。closed 与 handoff 均需证据。`pcb` 须声明 `scope` 为 `footprint_library` / `layout_implementation` / `dfm`，并用非空 `electrical_preconditions` 指向已关闭的 design 工作；这些前提须有选定变体、物理引脚号及相关电气边界证据，不能用“已建封装”自证。该分类仍需人工检查，脚本不理解正文电气内容。
 - 计算：`coverage` 为 `bounded` / `partial`；`conclusion` 为 `supported` / `conditional` / `failed`。无适用计算时提供 `no_calculations_reason`，不能用空列表绕过。
   - **结论由记录推出**（`parameter_version: 2`）：审计按下表推出结论，写的 `conclusion`/`rests_on` 与推出的不一致记
     `conclusion_not_derived`。报告按三档计数，分“依赖厂家资料的计算”“依赖工程估计的计算”两节列出每条依赖的参数或项。
@@ -109,6 +109,7 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
     | 任一 `checks` 不满足 | `failed` | — | 不满足 |
     | `typical`/`unspecified` 参数，或计算 id 出现在未关闭 external 待办的 `calculations` 里 | `conditional` | `vendor_data` | 依赖厂家资料 |
     | 否则，计算 id 出现在未关闭 requirement 待办（用户暂缓的需求）的 `calculations` 里 | `conditional` | `user_deferred` | 依赖暂缓的需求 |
+    | 否则，有降额偏离且计算 id 出现在未关闭 design 待办的 `derating` 里（`derating_version` 1） | `conditional` | `derating` | 超过降额值 |
     | 否则，有 `model` 参数或 `not_calculated` 的遗漏项 | `conditional` | `estimate` | 依赖工程估计 |
     | 都没有 | `supported` | — | 设计成立 |
 
@@ -117,9 +118,40 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
     指向一件 `validation` 阶段的 `handoff` 待办，不影响结论和 `coverage`。指错记 `not_calculated_without_design_item` /
     `verify_by_test_without_validation_handoff`。`missing_guarantee` 不再必填，缺的保证由审计从参数里列出。
   - 需求：挂着不是设计成立的计算时，不能记 `design_supported`（`requirement_status_not_derived`）。
-  - `parameter_version: 1` 的旧记录照旧审计（下面两段），报告写明“结论没有按依据分层”。
+  - **`parameter_version: 3`**（新设计；R8，2026-10-27：“20 J 采购资格”“60 V 筛查值”这类自己定的门槛和手册额定、需求指标写法一样，
+    成本目标写着“在选型记录中估算”却没算）。在版本 2 之上：
+    - 每条 `checks` 写门槛的依据 `limit_basis` 和出处：`requirement`（`limit_source` 写 `req:<需求编号>`）、`guaranteed`/`typical`
+      （`limit_source` 写 `datasheet:<库内路径>#p<页>`，门槛数值也按引用核对）、`standard`（`limit_source` 写 `standard:<标准号 条款>`）、
+      `derived`（`limit_source` 写手册页或 `calc:<计算 id>`）、`model`（ASG 自己定的筛查值，写 `limit_reason`）。
+      缺依据记 `check_limit_without_basis`，出处不对记 `check_limit_without_source`。门槛是 `model` 的，结论只能是依赖工程估计；
+      门槛是 `typical` 的，结论依赖厂家资料（上表照此推出，原因写“门槛 <检查名>”）。
+    - 需求里的数（输入电压范围、空载工况、电流上限、寿命小时数……）作为参数时写 `requirement`，不写成 `model`。
+    - 每个 `model` 参数的 `reason` 写它自己的依据（行业常用值、厂家建议、哪段推导）；同一句理由用在 3 个以上参数上，报告列为记录问题。
+    - 每条需求至少出现在一条计算的 `requirements` 里，或写 `no_check_reason`（认证范围、取舍优先级这类不对应电路的需求）；
+      否则记 `requirement_without_check`。成本需求要有一条物料成本估算：单价按 `model` 写，`reason` 写价格来源和日期；
+      估算超过目标，或设计要拿成本换余量时，按[需求澄清](requirement-clarifications.md)停下来问用户。
+  - **`derating_version: 1`**（新设计，与 `parameter_version` 2 或 3 一起；用户 2026-10-27）：器件应力按[降额规范](derating-rules.md)
+    中本项目等级那一列核对，规则数据在 `derating-rules.json`。
+    - `derating`：`{level, source, parts}`。`level` 是 `I`/`II`/`III`（缺记 `derating_level_missing`）；`source` 写 `req:<需求编号>`，
+      或用户暂缓时 `clarification:<需求澄清编号>`（该澄清的答复是 `DEFERRED`），否则记 `derating_level_without_source`。
+    - `parts`：每颗关键器件与特殊器件（器件类型有降额规则的）写 `{ref: {types, not_applicable}}`：`types` 是它属于的降额类型
+      （规则的 `type` 原文，如 `硅 MOSFET`、`片状陶瓷电容`），`not_applicable` 是 `{规则编号: 不适用的理由}`。
+      没写记 `derating_part_undeclared`，类型不对记 `derating_type_unknown`；这些类型的每条规则都要有一条检查或不适用理由，
+      否则记 `derating_not_covered`。常规件不逐颗核对，规格写出的最低额定 = 最坏应力 ÷ 本级降额系数。
+    - 降额检查是 `checks` 里的一项，另写 `derating_rule`（规则编号）、`ref`（位号）、`rating`（最坏温度下的保证额定）与
+      `rating_source`（`datasheet:<库内路径>#p<页>`，或 `req:`、`calc:`）；`limit_basis` 写 `standard`，`limit_source` 写
+      `standard:derating-rules#<规则编号>`（`derating_limit_source`）。`limit` 由规则推出：`ratio`/`pulse_ratio`/`min_ratio` 为
+      额定 × 取值，`margin_c` 为额定最高温度 − 取值，`tj_percent` 为 (Tjmax − 25) × 取值 + 25，`max_c` 等为取值本身；
+      写错记 `derating_limit_mismatch`，这几种判据缺 `rating` 记 `derating_rating_missing`。规则编号不存在记 `derating_rule_unknown`，
+      规则的器件类型与位号不符记 `derating_rule_kind`。
+    - **结论**：超过额定为 `failed`；在额定内但超过降额值（降额偏离）要有一件 `design` 待办，`derating` 列出这条计算的 id：
+      待办未关闭时计算为 `conditional`、`rests_on: derating`（报告用语“超过降额值”）；用户接受后关闭待办并写
+      `accepted: "user:<日期>"`，计算不再因此有条件。两者都没有记 `derating_without_item`。报告列出每处降额偏离。
+    - 没有 `derating_version` 的记录照旧审计，报告在“记录版本”一行写明器件应力没有按降额等级核对。
+  - `parameter_version: 1` 的旧记录照旧审计（下面两段），报告写明“结论没有按依据分层”；版本 2 的旧记录照旧审计，报告在“记录版本”一行写明门槛出处和需求检查没核对。
   - `refs`：这条计算决定了哪些位号的取值，非空，且都在设计网表里。
   - `checks`：非空列表，每项是一个算出来的值和它必须满足的门槛 `{name, value, operator(<=,<,>=,>), limit, unit}`。
+    核对两处数据一致的检查（寿命剖面的每日能量等于需求给的剖面、两份记录里的同一个数）写 `operator: "=="`，不写成 `≤`/`≥`：不相等就是不满足（R8 C-LIFE 写成“218 ≤ 218 Wh”）。
     **结论由数字决定**：任一项不满足，`conclusion` 只能是 `failed`；全部满足才可以是 `conditional`/`supported`。
     不能在脚本里给所有计算统一写 `conditional`，也不能只写公式和假设不给门槛——没有门槛的计算什么也没证明。
   - **阈值窗口**：保护、检测、钳位类计算填 `"kind": "threshold"`，`checks` 必须两侧都有：
@@ -130,12 +162,13 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
     否则审计报 `threshold_part_uncalculated`。设计资料里写的阈值（如“对应30V包络”）必须与这条计算的数字一致。
   旧记录（`parameter_version: 1`）：门槛按设计用途：`conditional` 必须用 `omitted_terms` 或 `assumptions`（字符串列表）写明假设，并在 `missing_guarantee` 里写明缺的是哪一项保证（哪个器件、哪个参数、哪个条件手册或需求没给）；写明后不阻塞设计完成，需求也可以据此记为 `design_supported`；报告把它们列在“有条件成立的计算”一节，交独立审查严格核对。只有 `failed` 计入未完成，且不能支撑 `design_supported` 的需求。
   `coverage: partial` 必须有非空 `omitted_terms`：说不出漏了什么就不是 partial。`conditional` 不是免责词：1.33 A < 3 A 这种没有缺失保证的核对要写 `bounded`/`supported`，审计报 `conditional_without_missing_guarantee` 和 `partial_without_omitted_terms`。
-- **参数来源**（新交付写 `"parameter_version": 2`；两版都没有时报告提出问题、`pack_design.py` 拒绝打包）：
+- **参数来源**（新交付写 `"parameter_version": 3`；都没有时报告提出问题、`pack_design.py` 拒绝打包）：
   每条计算加非空 `parameters`，每项 `{name, value, unit, basis, ref, source, locator}`。`basis` 取：
   - `guaranteed`：手册保证的 MIN/MAX；`typical`：手册典型值。两者都要 `ref`（位号）和 `source`
     `datasheet:<库内路径>#p<页>` 加 `locator`（表名/参数符号/条件）。
   - 手册引用的核对（`schematic_layout/citations.py`，参数、工作点、缺口里的 `datasheet:` 都核）：文件不在知识库
-    （`HARDWARE_WIKI/raw`）或声明的资料里、页码超出文档页数，记 `citation_wrong`，审计 FAIL。`guaranteed`/`typical`
+    （`HARDWARE_WIKI/raw`）或声明的资料里、页码超出文档页数，记 `citation_wrong`，审计 FAIL；写成本机绝对路径
+    （`/Users/…/原厂资料/X.pdf`）的记 `citation_not_in_library`：引用写知识库里的路径，不写本机副本的位置（R8）。`guaranteed`/`typical`
     的数值在所引页的文字里找不到（含 SI 前缀换算、百分数、尾随 0、Unicode 负号）时列入报告“引用待人工核对”，不拦。
     `locator` 文字不核。找不到知识库或没有 poppler（`pdfinfo`/`pdftotext`）时记为“没核对”并写明原因。
   - 引用器件手册（`datasheet:Datasheet/…`）的参数，不论依据，都要写 `ref`，且设计网表里该位号的 `datasheet` 必须是同一份手册
@@ -161,13 +194,19 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
    "work_item": "W-OPTO",
    "alternatives": [{"approach": "小信号 MOS 缓冲", "specified": true, "feasible": false, "reason": "……"}]}
   ```
-- **资料缺口**（`"gap_version": 1`，新交付必填；有未关闭的 external 待办而没有它时报告提出问题、`pack_design.py` 拒绝打包）：
+- **资料缺口**（新交付写 `"gap_version": 2`，旧记录 1；有未关闭的 external 待办而没有它时报告提出问题、`pack_design.py` 拒绝打包）：
   每件未关闭的 external 待办写：
   - `missing`：非空列表，每项 `{source, given, needed}`。`source` 是发现缺口的位置：`datasheet:<库内路径>#p<页>`、
     `review:<审查目录>/<待办编号>` 或 `user:<日期>`；`given` 写手册给了什么（含测试条件），`needed` 写设计还需要什么。
     `source` 是器件手册（`datasheet:Datasheet/…`）时加 `refs`：缺口说的是哪些位号，它们在设计网表里的 `datasheet` 必须是这份手册；
     标准、应用笔记不写。
-  - `why_external`：为什么只能由这个负责方给，例如行为在芯片内部或固件里，外部推不出来。
+  - 版本 2 的每项 `missing` 加 `kind`，写缺的是哪一类：`unspecified`（手册没给）、`typical_only`（只有典型值）、
+    `firmware`（固件或配置）、`internal`（芯片内部行为）。没写记 `gap_kind_missing`；试验、认证、承认、报价不在其中
+    （记 `gap_not_external`），改记 `validation` 转交。`unspecified`、`typical_only` 还要写 `alternatives`
+    （每项 `{approach, specified, feasible, reason}`，与工作点相同）：评估过的替代做法，例如换一颗手册保证该参数的器件；
+    没写记 `gap_without_alternatives`，有手册保证且可行的替代仍保留缺口记 `gap_alternative_feasible`（R8：比较器只给典型延迟）。
+  - `why_external`：为什么只能由这个负责方给，例如行为在芯片内部或固件里，外部推不出来；版本 2 中两件以上待办写同一句，
+    审计报 `gap_reason_repeated`（R8：七件待办共用一句）。
   - `calculations`：依赖这项资料的计算 id，非空，且都是 `conditional`；报告在待办下列出这些计算依赖的参数（版本 1 为 `missing_guarantee`），
     并在“依赖厂家资料的计算”表（版本 1 为“有条件成立的计算”）里反查对应待办。确实没有计算依赖它（固件行为确认、安规资格这类）时写空列表，
     并用 `no_calculation_reason` 说明为什么，不为凑字段挂不相关的计算。
@@ -181,7 +220,7 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
   ```json
   {"id": "W-PORT-SOA", "stage": "external", "status": "open", "consequence_class": "damage", "occurrence": "fault", "owner": "Richtek 应用支持",
    "missing": [{"source": "datasheet:Datasheet/.../Richtek - RT7209.pdf#p18", "given": "VOH_USBP=VO+8.5–12V，只在 RL=10MΩ 下规定",
-                "needed": "带 120nC 栅荷时的电荷泵电流、开通与关断时间"}],
+                "needed": "带 120nC 栅荷时的电荷泵电流、开通与关断时间", "kind": "internal"}],
    "why_external": "电荷泵驱动能力、故障到下拉的时延和重试时序在芯片内部与固件里",
    "calculations": ["PORT-GATE"], "consequence": "Q701 短路关断或重试时超出 SOA，D-S 短路后端口无法断开",
    "questions": ["从检测到故障到 USBP 开始下拉的最大时延", "短路重试每次开通的持续时间、间隔与次数上限"],

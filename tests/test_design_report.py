@@ -9,7 +9,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
 from audit_design_closure import audit, sha256
-from render_design_report import render, render_sha256, REPORT
+from render_design_report import num, render, render_sha256, REPORT
 from pack_design import pack
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_citations import pdf
@@ -149,7 +149,7 @@ class DesignReportTests(unittest.TestCase):
         del self.d.closure['gap_version']
         self.d.write('design-closure.json', self.d.closure)
         _, problems = self.d.report()
-        self.assertTrue(any('gap_version 1' in p for p in problems), problems)
+        self.assertTrue(any('gap_version 2' in p for p in problems), problems)
 
     def ask_user(self, decision='DEFERRED'):
         c = self.d.closure
@@ -246,7 +246,7 @@ class DesignReportTests(unittest.TestCase):
         del self.d.closure['parameter_version']
         self.d.write('design-closure.json', self.d.closure)
         _, problems = self.d.report()
-        self.assertTrue(any('parameter_version 2' in p for p in problems), problems)
+        self.assertTrue(any('parameter_version 3' in p for p in problems), problems)
 
     def test_version_2_reports_what_each_calculation_rests_on(self):
         c1 = self.d.closure['calculations'][0]
@@ -274,6 +274,58 @@ class DesignReportTests(unittest.TestCase):
     def test_version_1_says_its_conclusions_are_not_layered(self):
         text, _ = self.d.report()
         self.assertIn('记录是 parameter_version 1，结论没有按依据分层', text)
+
+    def test_small_values_are_not_shown_as_zero(self):
+        # R8 showed a 379 ns > 343 ns check as "0 > 0 s".
+        self.assertEqual('3.79e-07', num(3.7914e-07))
+        self.assertEqual('0.000275', num(0.0002748))
+        self.assertEqual('144', num(144.4))
+
+    def estimate_case(self, version=2):
+        c1 = self.d.closure['calculations'][0]
+        c1.update(coverage='bounded', conclusion='conditional', rests_on='estimate', omitted_terms=[], parameters=[
+            {'name': 'eta', 'value': 0.9, 'unit': '1', 'basis': 'model', 'reason': '满载效率工程包络'}],
+            checks=[{'name': '空载功耗', 'value': 0.1445, 'operator': '<=', 'limit': 0.15, 'unit': 'W'},
+                    {'name': '输出纹波', 'value': 18, 'operator': '<=', 'limit': 30, 'unit': 'mV'},
+                    {'name': '每日能量配对', 'value': 217.5, 'operator': '==', 'limit': 217.5, 'unit': 'Wh'}])
+        self.d.closure.update(parameter_version=version)
+        self.d.write('design-closure.json', self.d.closure)
+        return c1
+
+    def test_a_version_2_record_and_a_consistency_check_are_shown(self):
+        self.estimate_case()
+        text, _ = self.d.report()
+        self.assertIn('每日能量配对：218 = 218 Wh', text)
+        self.assertIn('- **记录版本**：parameter_version 2（检查门槛的出处、每条需求有没有检查没核对）', text)
+
+    def test_version_3_estimates_each_say_why(self):
+        c1 = self.estimate_case(3)
+        c1['parameters'] = [{'name': 'p%d' % i, 'value': 1, 'unit': '1', 'basis': 'model',
+                             'reason': '本版工程模型；见设计计算及可复算脚本'} for i in range(4)]
+        self.d.write('design-closure.json', self.d.closure)
+        text, problems = self.d.report()
+        self.assertTrue(any(p.startswith('4 个工程估计参数共用同一句理由') for p in problems), problems)
+        self.assertNotIn('parameter_version 2（', text)
+        self.assertIn('没有 derating_version（器件应力没有按降额等级核对）', text)
+        c1['parameters'] = c1['parameters'][:3]
+        self.d.write('design-closure.json', self.d.closure)
+        self.assertFalse(any('共用同一句理由' in p for p in self.d.report()[1]))
+
+    def test_an_old_gap_record_is_named_in_the_conclusion(self):
+        text, _ = self.d.report()
+        self.assertIn('- **记录版本**：gap_version 1（外部资料缺口没有分类）。新设计按 parameter_version 3、gap_version 2、derating_version 1 写。', text)
+
+    def test_derating_level_and_deviations_are_reported(self):
+        # Task 2.2 (outline approved by user 2026-10-27): the level and every deviation from it are in the report.
+        audit_result = json.loads((self.d.record / 'design-closure-audit.json').read_text(encoding='utf-8'))
+        audit_result['derating'] = {'level': 'II', 'source': 'req:R-DER', 'deviations': [
+            {'calculation': 'C1', 'check': '漏源电压', 'ref': 'Q1', 'rule': 'MOS-VDS-S', 'value': 560, 'limit': 520,
+             'rating': 650, 'unit': 'V', 'items': [], 'accepted': ['W-DER']}]}
+        self.d.write('design-closure-audit.json', audit_result)
+        text, _ = self.d.report()
+        self.assertIn('- **降额等级**：II 级（req:R-DER，见 derating-rules.md）。超过降额值 1 处，见“降额偏离”。', text)
+        section = text.split('## 降额偏离')[1].split('\n## ')[0]
+        self.assertIn('| C1 | Q1 | MOS-VDS-S | 560 / 520 / 650 V | 用户接受（W-DER） |', section)
 
     def test_kept_unspecified_operating_point_is_listed(self):
         c = self.d.closure
@@ -485,6 +537,17 @@ class DesignReportTests(unittest.TestCase):
         self.assertIn('lessons.json 第 5 条的 cause 必须是 rule_missing/rule_not_enforced/knowledge_missing/knowledge_wrong/judgment 或 none', problems)
         self.assertIn('## 改进记录', text)
         self.assertIn('| review:SR-R3/W-2 | 缺知识 | scripts/x.py |', text)
+
+    def test_a_lesson_changed_in_the_delivery_is_not_a_skill_change(self):
+        # R8 wrote its new circuit patterns into 设计资料/references/circuit-patterns/, so the skill learned nothing.
+        self.d.write('lessons.json', {'schema_version': 1, 'events': [
+            {'source': 'user:2026-10-27', 'cause': 'knowledge_missing',
+             'change': '设计资料/references/circuit-patterns/ac-indicator.md：补一次侧 VCC 供电 LED 做法'},
+            {'source': 'user:2026-10-27', 'cause': 'knowledge_missing',
+             'change': 'references/circuit-patterns/ac-indicator.md：补一次侧 VCC 供电 LED 做法'}]})
+        _, problems = self.d.report()
+        self.assertTrue(any(p.startswith('lessons.json 第 1 条的 change 写在交付目录里') for p in problems), problems)
+        self.assertFalse(any(p.startswith('lessons.json 第 2 条') for p in problems), problems)
 
     def test_a_deferred_comment_is_still_attributed(self):
         # R6 marked nine deferred review comments cause=none "下一轮处理时再归因", among them the P1 F-SR-TONMIN.

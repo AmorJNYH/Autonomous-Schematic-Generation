@@ -588,6 +588,62 @@ class DerivedConclusionTests(unittest.TestCase):
         self.assertIn('schema', self.codes())   # version 1 has no requirement basis
 
 
+    def v3(self, **limit):
+        # R8 (user 2026-10-27): limits ASG set itself read like ratings; the cost target was never checked.
+        self.calc('guaranteed', 'design_choice', 'requirement', 'constant')
+        self.record['parameter_version'] = 3
+        check = self.record['calculations'][0]['checks'][0]
+        check.update(limit)
+        return check
+
+    def test_version_3_checks_say_where_their_limit_comes_from(self):
+        check = self.v3()
+        self.assertIn('check_limit_without_basis', self.codes())
+        check.update(limit_basis='requirement', limit_source='req:R9')
+        self.assertIn('check_limit_without_source', self.codes())
+        check['limit_source'] = 'req:R1'
+        self.assertEqual('PASS', self.run_audit()['status'], self.run_audit()['errors'])
+        for basis, source in (('standard', 'standard:'), ('guaranteed', 'calc:C1'), ('derived', 'req:R1')):
+            check.update(limit_basis=basis, limit_source=source)
+            self.assertIn('check_limit_without_source', self.codes(), basis)
+        check.update(limit_basis='standard', limit_source='standard:GB 4943.1-2022 5.4.2')
+        self.assertEqual('PASS', self.run_audit()['status'])
+
+    def test_a_limit_asg_set_itself_leaves_the_result_on_its_estimate(self):
+        check = self.v3(limit_basis='model')
+        self.assertIn('check_limit_without_source', self.codes())
+        check['limit_reason'] = '采购承认按 20 J 筛查，非器件额定'
+        self.assertIn('conclusion_not_derived', self.codes())
+        self.assertEqual(('conditional', 'estimate'), (self.basis()['conclusion'], self.basis()['rests_on']))
+        self.assertIn('门槛 output ripple', self.basis()['reasons'])
+        check.update(limit_basis='typical', limit_source=self.SHEET)
+        self.assertEqual('vendor_data', self.basis()['rests_on'])
+
+    def test_version_3_checks_every_requirement_or_says_why_not(self):
+        self.v3(limit_basis='requirement', limit_source='req:R1')
+        self.record['requirements'].append({'id': 'R-COST', 'status': 'conditional', 'refs': [], 'evidence': ['E1'],
+                                            'implementation': '整机物料目标 60 元', 'depends_on': []})
+        self.assertIn('requirement_without_check', self.codes())
+        self.record['requirements'][-1]['no_check_reason'] = '只定认证范围，不对应电路'
+        self.assertNotIn('requirement_without_check', self.codes())
+        self.record['parameter_version'] = 2
+        del self.record['requirements'][-1]['no_check_reason']
+        self.assertNotIn('requirement_without_check', self.codes())
+
+    def test_a_consistency_check_holds_only_when_equal(self):
+        self.calc('guaranteed', 'design_choice')
+        check = self.record['calculations'][0]['checks'][0]
+        check.update(name='每日能量配对', value=217.5, operator='==', limit=217.5, unit='Wh')
+        self.assertEqual('PASS', self.run_audit()['status'], self.run_audit()['errors'])
+        check['value'] = 216
+        self.assertEqual('failed', self.basis()['conclusion'])
+
+    def test_a_datasheet_is_cited_by_its_library_path_not_this_machines(self):
+        c = self.calc('guaranteed', 'design_choice')
+        c['parameters'][0]['source'] = 'datasheet:/Users/x/资料依据/原厂资料/NCP1343.pdf#p6'
+        self.assertIn('citation_not_in_library', self.codes())
+
+
 class DataGapTests(unittest.TestCase):
     """An open external item says what the datasheet gives, what is missing, what to ask and a fallback of its own."""
     setUp = DesignClosureTests.setUp
@@ -636,6 +692,41 @@ class DataGapTests(unittest.TestCase):
         self.assertIn('gap_missing_fields', self.codes())
         item['no_calculation_reason'] = '只确认固件上电默认行为，没有数值计算依赖它'
         self.assertNotIn('gap_missing_fields', self.codes())
+
+    def test_version_2_gaps_say_what_kind_of_data_is_missing(self):
+        # R8: an ESD test, a quote and an inrush comparison were all filed as datasheet gaps.
+        item = self.gap_board()
+        self.record['gap_version'] = 2
+        self.assertIn('gap_kind_missing', self.codes())
+        gap = item['missing'][0]
+        gap['kind'] = 'test'
+        self.assertIn('gap_not_external', self.codes())
+        gap['kind'] = 'firmware'
+        self.assertEqual([], [e for e in self.run_audit()['errors'] if e['code'].startswith('gap_')])
+
+    def test_an_unguaranteed_value_rules_out_the_parts_that_guarantee_it(self):
+        item = self.gap_board()
+        self.record['gap_version'] = 2
+        gap = item['missing'][0]
+        gap['kind'] = 'typical_only'
+        self.assertIn('gap_without_alternatives', self.codes())
+        gap['alternatives'] = [{'approach': '换手册保证最大延迟的比较器', 'specified': True, 'feasible': True,
+                                'reason': 'TLV1805 给出最大传播延迟'}]
+        self.assertIn('gap_alternative_feasible', self.codes())
+        gap['alternatives'][0].update(feasible=False, reason='同封装同供电的候选都只给典型延迟')
+        self.assertEqual([], [e for e in self.run_audit()['errors'] if e['code'].startswith('gap_')])
+
+    def test_one_reason_for_every_external_item_is_no_reason(self):
+        item = self.gap_board()
+        self.record['gap_version'] = 2
+        item['missing'][0]['kind'] = 'internal'
+        other = copy.deepcopy(item)
+        other.update(id='W2', fallback='改用带公开驱动能力的独立高边驱动')
+        self.record['work_items'].append(other)
+        self.record['requirements'][0]['depends_on'].append('W2')
+        self.assertIn('gap_reason_repeated', self.codes())
+        other['why_external'] = '短路后的重试间隔由固件决定'
+        self.assertNotIn('gap_reason_repeated', self.codes())
 
     def test_gap_cites_where_it_was_found(self):
         item = self.gap_board()

@@ -73,6 +73,10 @@ def _shown(value, text):
 
 def check(path, page, values=(), extra=()):
     """{status: PASS|FAIL|NOT_CHECKED, reason, unshown: [values the page text does not show]}."""
+    if path.startswith(('/', '~')):
+        # R8 cited /Users/.../资料依据/原厂资料/NCP1343.pdf: the citation names the library file, not this machine's copy.
+        return {'status': 'FAIL', 'reason': '手册 %s 写的是本机路径，要写知识库里的路径（Datasheet/<分类>/<子类>/<文件>）' % path,
+                'unshown': [], 'not_library': True}
     pdf = locate(path, extra)
     if pdf is None:
         if not library_present():

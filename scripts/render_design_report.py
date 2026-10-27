@@ -15,7 +15,7 @@ from collections import Counter, OrderedDict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from audit_design_closure import calculation_basis, severity_of, vendor_items_of  # noqa: E402
+from audit_design_closure import calculation_basis, derating_items_of, severity_of, vendor_items_of  # noqa: E402
 from schematic_layout.citations import check as check_citation, check_source  # noqa: E402
 from schematic_layout import lifecycle, part_classes  # noqa: E402
 from schematic_layout.sexpr import all_nodes, first, parse  # noqa: E402
@@ -49,7 +49,10 @@ STAGES = {'requirement': '用户暂缓的需求', 'design': '设计未完成', '
 REQUIREMENTS = OrderedDict([('design_supported', '有设计依据'), ('conditional', '有条件成立'), ('open', '还没有设计')])
 # parameter_version 2: what a calculation rests on, derived from its inputs.
 TIERS = OrderedDict([('supported', '设计成立'), ('estimate', '依赖工程估计'), ('vendor_data', '依赖厂家资料'),
-                     ('user_deferred', '依赖暂缓的需求'), ('failed', '不满足')])
+                     ('user_deferred', '依赖暂缓的需求'), ('derating', '超过降额值'), ('failed', '不满足')])
+# Tiers shown only when a calculation falls in them.
+OPTIONAL_TIERS = ('user_deferred', 'derating')
+LEVEL_NAMES = {'I': 'I 级', 'II': 'II 级', 'III': 'III 级'}
 DECISIONS = {'DECIDED': '用户给定', 'ADOPTED_PROPOSAL': '采纳建议', 'DEFERRED': '用户暂缓'}
 RESPONSES = OrderedDict([
     ('REDESIGN', ('改图', 'changes')), ('CALC_DOC', ('补计算/补文档', 'changes')), ('DESIGN', ('补设计', 'work_items')),
@@ -71,6 +74,8 @@ CAUSE_WORDS = {'rule_missing': '缺规则', 'rule_not_enforced': '规则没执�
 CAUSE_TARGETS = {'rule_missing': ('scripts/',), 'rule_not_enforced': ('scripts/',),
                  'knowledge_missing': ('references/', 'wiki/', 'raw/'), 'knowledge_wrong': ('references/', 'wiki/', 'raw/'),
                  'judgment': ('SKILL.md', 'references/')}
+# A lesson's change made in the delivery folder is not a change to the skill (R8 wrote its new patterns there).
+DELIVERY_PATH = re.compile(r'(?:^|[\s:：，,；;（(])(?:设计资料|record|原理图)/')
 SOURCE_PATTERN = re.compile(r'^(review:[^/\s]+/\S+|datasheet:.+#p\d+|test:\S+|user:\d{4}-\d{2}-\d{2})$')
 SELECTION_STATUS = ('selected', 'rejected', 'alternate')
 OPS = ('<=', '>=', 'covers', 'equals', 'has')
@@ -93,7 +98,7 @@ def text(value):
     return isinstance(value, str) and bool(value.strip())
 
 
-OPERATOR_SIGNS = {'<=': '≤', '<': '<', '>=': '≥', '>': '>'}
+OPERATOR_SIGNS = {'<=': '≤', '<': '<', '>=': '≥', '>': '>', '==': '='}
 SIDE_WORDS = {'no_false_trip': '不误动作', 'protection': '能保护'}
 
 
@@ -508,6 +513,9 @@ def check_lessons(data):
         change = e.get('change') if text(e.get('change')) else ''
         if not any(t in change for t in CAUSE_TARGETS[cause]):
             problems.append('lessons.json 第 %d 条归因 %s，change 要指向 %s 下的具体文件' % (i, cause, '/'.join(CAUSE_TARGETS[cause])))
+        elif DELIVERY_PATH.search(change):
+            problems.append('lessons.json 第 %d 条的 change 写在交付目录里：学到的东西要改技能的 references/、scripts/ 或知识库，'
+                            '交付目录里的文件不算技能改动' % i)
         if cause == 'judgment' and not text(e.get('why_not_rule')):
             problems.append('lessons.json 第 %d 条归因 judgment 要写 why_not_rule：为什么规则和知识都拦不住' % i)
     return problems, by_source
@@ -550,6 +558,8 @@ def num(value):
         return str(value)
     if isinstance(value, int) or value == 0 or value != value:
         return str(value)
+    if abs(value) < 1e-3:
+        return '%.3g' % value          # 3.79e-07, not 0 (R8 showed 379 ns > 343 ns as "0 > 0 s")
     rounded = float('%.3g' % value)
     return str(int(rounded)) if rounded == int(rounded) and abs(rounded) >= 1 else ('%f' % rounded).rstrip('0').rstrip('.')
 
@@ -708,12 +718,20 @@ def render(root, notes=None, title=None):
     work = {w['id']: w for w in closure.get('work_items') or [] if isinstance(w, dict) and text(w.get('id'))}
     requirements = [r for r in closure.get('requirements') or [] if isinstance(r, dict)]
     calculations = [c for c in closure.get('calculations') or [] if isinstance(c, dict)]
-    if closure and closure.get('parameter_version') not in (1, 2):
-        problems.append('计算没有逐项登记参数来源：design-closure.json 要写 parameter_version 2，'
-                        '每条计算的 parameters 写明每个器件参数的值、依据和手册页码（见 design-closure.md）')
-    layered = closure.get('parameter_version') == 2
+    if closure and closure.get('parameter_version') not in (1, 2, 3):
+        problems.append('计算没有逐项登记参数来源：design-closure.json 要写 parameter_version 3，'
+                        '每条计算的 parameters 写明每个器件参数的值、依据和手册页码，每条检查写明门槛的依据和出处（见 design-closure.md）')
+    layered = closure.get('parameter_version') in (2, 3)
+    if closure.get('parameter_version') == 3:
+        reasons = Counter(' '.join(p['reason'].split()) for c in calculations for p in c.get('parameters') or []
+                          if isinstance(p, dict) and p.get('basis') == 'model' and text(p.get('reason')))
+        for reason, n in reasons.items():
+            if n > 3:
+                problems.append('%d 个工程估计参数共用同一句理由“%s”：每个估计写它自己的依据（见 design-closure.md）' % (n, reason[:40]))
     vendor_items, deferred_items = vendor_items_of(work), vendor_items_of(work, 'requirement')
-    basis = {c.get('id'): calculation_basis(c, vendor_items.get(c.get('id'), []), deferred_items.get(c.get('id'), []))
+    derating_open = derating_items_of(work)[0] if 'derating_version' in closure else {}
+    basis = {c.get('id'): calculation_basis(c, vendor_items.get(c.get('id'), []), deferred_items.get(c.get('id'), []),
+                                            derating_open.get(c.get('id'), []))
              for c in calculations} if layered else {}
     clarifications = [q for q in closure.get('clarifications') or [] if isinstance(q, dict)]
     unanswered = [q.get('id') for q in clarifications if not q.get('answer')]
@@ -721,10 +739,11 @@ def render(root, notes=None, title=None):
         problems.append('需求澄清 %s 还没有答复：要当场问用户，答复写回需求清单后再往下设计（见 requirement-clarifications.md）'
                         % '、'.join(map(str, unanswered)))
     tier = {cid: rests or conclusion for cid, (conclusion, rests, _) in basis.items()}
-    if closure.get('gap_version') != 1 and any(isinstance(w, dict) and w.get('stage') == 'external' and w.get('status') != 'closed'
-                                               for w in closure.get('work_items') or []):
-        problems.append('缺外部资料的待办没有写清缺口：design-closure.json 要写 gap_version 1，每件写明手册给了什么、'
-                        '还缺什么、影响哪些计算、要问的问题和本项的替代做法（见 design-closure.md）')
+    open_external = any(isinstance(w, dict) and w.get('stage') == 'external' and w.get('status') != 'closed'
+                        for w in closure.get('work_items') or [])
+    if closure.get('gap_version') not in (1, 2) and open_external:
+        problems.append('缺外部资料的待办没有写清缺口：design-closure.json 要写 gap_version 2，每件写明手册给了什么、'
+                        '还缺什么、缺的是哪一类、影响哪些计算、要问的问题和本项的替代做法（见 design-closure.md）')
     if visual and visual.get('status') not in VISUAL:
         problems.append('visual-review.json 的 status 必须是 %s 之一' % '/'.join(VISUAL))
     lessons, events = {}, None
@@ -805,7 +824,7 @@ def render(root, notes=None, title=None):
         tier_counts = Counter(tier.values())
         out.append('- **计算**：共 %d 项。%s。' % (len(calculations), '，'.join(
             '%s %d 项' % (label, tier_counts.get(key, 0)) for key, label in TIERS.items()
-            if key != 'user_deferred' or tier_counts.get(key))))
+            if key not in OPTIONAL_TIERS or tier_counts.get(key))))
         # A conditional requirement rests on the vendor when any of its calculations or dependencies does.
         rests = Counter()
         for r in requirements:
@@ -818,13 +837,26 @@ def render(root, notes=None, title=None):
             elif 'user_deferred' in tiers or any(work.get(d, {}).get('stage') == 'requirement' and work[d].get('status') == 'open'
                                                  for d in r.get('depends_on') or []):
                 rests['user_deferred'] += 1
+            elif 'derating' in tiers:
+                rests['derating'] += 1
             elif 'estimate' in tiers:
                 rests['estimate'] += 1
         if rests:
             out[-2] = out[-2][:-1] + '（有条件成立的需求中%s）。' % '、'.join(
-                '%s %d 条' % (TIERS[k], rests[k]) for k in ('vendor_data', 'user_deferred', 'estimate') if rests.get(k))
+                '%s %d 条' % (TIERS[k], rests[k]) for k in ('vendor_data', 'user_deferred', 'derating', 'estimate') if rests.get(k))
     else:
         out.append('- **计算**：共 %d 项，记录是 parameter_version 1，结论没有按依据分层。' % len(calculations))
+    old = (['parameter_version 2（检查门槛的出处、每条需求有没有检查没核对）'] if closure.get('parameter_version') == 2 else []) + \
+          (['gap_version 1（外部资料缺口没有分类）'] if closure.get('gap_version') == 1 and open_external else []) + \
+          (['没有 derating_version（器件应力没有按降额等级核对）'] if closure and layered and 'derating_version' not in closure else [])
+    if old:
+        out.append('- **记录版本**：%s。新设计按 parameter_version 3、gap_version 2、derating_version 1 写。' % '；'.join(old))
+    derating = audit.get('derating') if isinstance(audit.get('derating'), dict) else None
+    if derating:
+        devs = derating.get('deviations') or []
+        out.append('- **降额等级**：%s（%s，见 derating-rules.md）。%s' % (
+            LEVEL_NAMES.get(derating.get('level'), '未定'), derating.get('source') or '没有写来源',
+            '超过降额值 %d 处，见“降额偏离”。' % len(devs) if devs else '没有超过降额值的应力。'))
     if clarifications:
         asked = Counter((q.get('answer') or {}).get('decision') for q in clarifications)
         out.append('- **需求澄清**：问过用户 %d 个问题。%s。' % (len(clarifications), '，'.join(
@@ -1067,6 +1099,16 @@ def render(root, notes=None, title=None):
                                             '、'.join(owed)))
         out.append('')
 
+    deviations = (derating or {}).get('deviations') or []
+    if deviations:
+        out += ['## 降额偏离', '',
+                '这些应力在器件额定之内，但超过了本项目降额等级的降额值；改设计，或经用户确认接受（见 derating-rules.md）。', '',
+                '| 计算 | 位号 | 降额规则 | 应力 / 降额值 / 额定 | 处理 |', '|---|---|---|---|---|']
+        for d in deviations:
+            done = ('用户接受（%s）' % '、'.join(d['accepted'])) if d.get('accepted') else ('待办 %s' % '、'.join(d.get('items') or []))
+            out.append('| %s | %s | %s | %s / %s / %s %s | %s |' % (d['calculation'], d.get('ref') or '', d['rule'], num(d.get('value')),
+                                                              num(d.get('limit')), num(d.get('rating')), d.get('unit') or '', done))
+        out.append('')
     unspecified = [p for p in closure.get('operating_points') or [] if isinstance(p, dict) and p.get('specified') is False]
     if unspecified:
         out += ['## 手册未规定的工作点', '',
@@ -1127,7 +1169,7 @@ def render(root, notes=None, title=None):
     cov = Counter(c.get('coverage') for c in calculations)
     con = Counter(c.get('conclusion') for c in calculations)
     stage_status = Counter((w.get('stage'), w.get('status')) for w in work.values())
-    shown_tiers = [k for k in TIERS if k != 'user_deferred' or 'user_deferred' in tier.values()]
+    shown_tiers = [k for k in TIERS if k not in OPTIONAL_TIERS or k in tier.values()]
     out += ['## 统计', '', '| 项目 | 数量 |', '|---|---|',
             '| 器件 / 图纸页数 | %d / %d |' % (parts, sheets),
             '| 需求：%s | %s |' % (' / '.join(REQUIREMENTS.values()), ' / '.join(str(req_counts.get(k, 0)) for k in REQUIREMENTS)),

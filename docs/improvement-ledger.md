@@ -8,6 +8,58 @@ in the library and have the cited page); `Changed:` the files touched.
 entry that changes the ASG 纲要 or the 绘图纲要 O1–O8 also carries `Approved:
 user:<date>` and `Outline:` the hash from `check_ledger.py --outline-hash`.
 
+## 纲要 1.1/2.2：问降额等级，关键与特殊器件按等级核对应力 (2026-10-27)
+
+降额规范写好后，用户确认纲要草案：任务 1.1 把降额等级（I/II/III）当作一条需求，需求没写时与其他需求澄清一并问用户，
+附建议等级，暂缓的按建议等级作为写明的假设；任务 2.2 让关键器件与特殊器件在工作包络角点和瞬态下的应力按
+`derating-rules.json` 中本项目等级那一列核对，常规件的规格写出的最低额定 = 最坏应力 ÷ 本级降额系数；超过额定为不成立，
+在额定内但超过降额值为有条件成立并挂降额待办（改设计或用户接受）。两件待定按建议：常规件不逐颗核对；未关闭的降额待办不拦交付。
+实现：`derating_version: 1` 记录 `derating {level, source, parts}`；降额检查写 `derating_rule`、`ref`、`rating`、`rating_source`，
+门槛由规则推出并核对（`derating_limit_mismatch` 等 10 个审计码）；降额偏离有未关闭待办时计算为 `conditional`/`derating`
+（报告“超过降额值”），用户接受（`accepted: user:<日期>`）后不再有条件，超过额定为 `failed`；关键与特殊器件声明降额类型，
+每条规则有检查或不适用理由。报告写降额等级与来源、列出降额偏离，旧记录在“记录版本”一行说明没有核对降额。
+需求澄清表把降额从“不问的设计约束”移出，加一行问降额等级。
+
+- Event: user:2026-10-27
+- Approved: user:2026-10-27
+- Outline: d56c1d2a6ad48ddd
+- Causes: rule_missing 1
+- Changed: SKILL.md, scripts/audit_design_closure.py, scripts/render_design_report.py, references/design-closure.md, references/requirement-clarifications.md, references/requirements-to-intent.md, tests/test_derating_audit.py, tests/test_design_report.py, docs/improvement-ledger.md
+
+## 元器件降额规范：I/II/III 三级，与 schematic-review 共用一份 (2026-10-27)
+
+R8 复查时用户问 ASG 何时做裕量检查，决定建立“建立在电路知识和器件基础上”的裕量规则，第一批只做器件应力降额；
+超过降额但在额定内为有条件成立并挂待办，超过额定为不成立。用户下载 T/CPSS 1013—2021、T/CPSS 1006—2024、GJB/Z 35—93
+放入知识库 `raw/Standard/`（IPC-9592B 只有目录，未收录），并要求按 I/II/III 三级给值、ASG 与 SR 都按项目的降额等级取值、
+不只用于消费类产品。用户确认的取值规则：来源按 1013 → GJB → 1006 优先；1006 只有一级，三级同值；GJB 给范围的取保守端；
+1013 已控电感绕组温度和磁饱和时不叠加 GJB 表29 的工作电流系数；只给一个系数时对稳态与瞬态的最坏组合生效，手册单列的冲击、
+脉冲额定按表中比例比较。新增 `references/derating-rules.json`（223 条，每条写器件类型、参数、工况、判据、三级取值和 PDF 页码）
+与同内容的 `derating-rules.md`（等级从哪来、取值规则、各类器件的表），两份与 schematic-review 逐字相同。
+测试核对每条的类型属于器件类型词表、判据与工况已定义、页码在来源页数内、三级从 I 到 III 降额递减、未分级来源三级同值、
+文档列出每条、来源文件的 SHA-256 与知识库一致、两个仓库的文件相同。ASG 计算按等级取值、任务 1.1 问降额等级要改纲要，另行提案。
+
+- Event: user:2026-10-27
+- Causes: knowledge_missing 1
+- Changed: references/derating-rules.json, references/derating-rules.md, SKILL.md, tests/test_derating_rules.py, docs/improvement-ledger.md
+
+## R8 暴露的记录问题：缺口分类、门槛出处、需求检查、经验落点、本机路径引用、小数显示 (2026-10-27)
+
+用户让 Codex 按 ASG 做完 R8 后，查报告发现：7 件未关闭项都记成外部资料缺口且共用一句“为什么是外部依赖”，其中系统级 ESD 试验、
+采购报价和可以拿手册额定比对的冲击电流并不是资料缺口；65 个工程估计参数共用一句理由，需求里的数（264 Vac、220 V、87600 h）
+标成估计值，“20 J 采购资格”“60 V 筛查值”这类自定门槛和额定写法一样；成本需求写“在选型记录中估算”却没算；补写的电路模式写在
+交付目录里，技能没学到；手册引用写本机绝对路径；报告把 379 ns > 343 ns 显示成“0 > 0 s”。
+用户确认的改法：`gap_version 2` 给每条缺口写 `kind`（手册没给 / 只有典型值 / 固件 / 芯片内部），试验、认证、承认、报价改记
+validation，只有典型值或没给的要写已评估的替代做法，几件待办共用一句理由报 `gap_reason_repeated`；`parameter_version 3`
+给每条检查写门槛的依据与出处（自定门槛使结论依赖工程估计），每条需求要有检查或写 `no_check_reason`；报告对共用理由的估计、
+写在交付目录的经验列为记录问题，结论一行写明旧版本没核对的内容；审计拒绝本机绝对路径的手册引用；
+需求澄清加“成本估算超目标”“答复只定一侧界限”两种要问的情况；同步整流模式加 VCC 经二极管取电的启动门限已知坑。
+旧记录（parameter_version 1/2、gap_version 1）照旧可读，缺版本号时报告要求写新版本。
+检查加 `==` 比较符写一致性核对（R8 C-LIFE 把每日能量配对写成“218 ≤ 218 Wh”）。草案里列出裕量不到 5% 的检查的报告一节，试跑时把这条一致性核对算成裕量 0%，用户决定去掉这一节（用户：这一点本来就不应该进入到裕量计算的过程中）。
+
+- Event: user:2026-10-27
+- Causes: rule_missing 6, knowledge_missing 1
+- Changed: scripts/audit_design_closure.py, scripts/render_design_report.py, scripts/schematic_layout/citations.py, references/design-closure.md, references/requirement-clarifications.md, references/delivery-report.md, references/terminology.md, references/circuit-patterns/synchronous-rectification.md, tests/test_design_closure.py, tests/test_design_report.py, docs/improvement-ledger.md
+
 ## 器件类型对齐 schematic-review 的“器件类型的依据”：共模扼流圈、耦合电感、整词 fuse 与压制规则 (2026-10-27)
 
 SR 在 main（c806601）落地“器件类型的依据”后，ASG 的类型词表对齐测试失败：SR 新增的 `common_mode_choke`、`coupled_inductor` ASG 没有。
