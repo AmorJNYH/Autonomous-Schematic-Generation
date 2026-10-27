@@ -8,6 +8,23 @@ in the library and have the cited page); `Changed:` the files touched.
 entry that changes the ASG 纲要 or the 绘图纲要 O1–O8 also carries `Approved:
 user:<date>` and `Outline:` the hash from `check_ledger.py --outline-hash`.
 
+## 器件分级：核心器件和料号件必须写确切料号和数据手册 (2026-10-26)
+
+对比 R6 与 R7 的设计结果时发现，R7 从需求重新设计后设计网表的料号精度倒退：电容的 MPN 全部丢失（C-LIFE 却按 BXW、PZJ 系列算寿命），
+BAT54、S3J 只写系列名，压敏、安规电容、USB-C 插座等没有数据手册，而自动检查全部 PASS。按“计算或选型引用了某个系列”触发的检查
+抓不到这些：R7 的计算只有 7 个位号引用了手册且都对得上，系列名只出现在检查名、`model` 参数和不带位号的资料缺口里。
+用户要求分类有依据而不是自由选择，于是在 `part-roles.md` 第 1 节定义三级：核心器件（U/Q/T）、料号件（设计依赖的参数只有具体料号的手册保证：
+分立半导体、保护件、安规电容、电解电容、电感与共模扼流圈、连接器）、规格件（值加通用规格即可），级别由符号库与位号判定
+（`schematic_layout/part_classes.py`）。规则一：核心器件和料号件要写 `mpn` 和能找到的 `datasheet`（定制磁件用 `fields.DesignSheet`），
+新设计缺了是记录问题、拒绝打包；有 `change-contract.json` 时只拦本版新增或改动的器件，沿用基线的列入未完成项。
+规则二：引用器件手册的计算参数要写 `ref`、资料缺口要写 `refs`，且该位号在设计网表里的 `datasheet` 是同一份手册（同字节或型号名相同），
+标准与定制磁件的磁芯手册除外。R1–R7 试算：七版核心器件都不缺；料号件缺料号或手册 R7 21 个、R1–R6 3–7 个（J101 交流输入端子每版都缺）；
+R6 有 43 处引用未写位号，R7 有 6 处。“确切订货型号”无法从手册正文自动判定（R6 45 个正确料号中 10 个按编码表拼成，正文查不到原样），仍由任务 2.1 人工核对。
+
+- Event: test:R6与R7设计结果对比R7有21个料号件缺料号或数据手册
+- Causes: rule_missing 2
+- Changed: references/part-roles.md, references/design-closure.md, references/requirements-to-intent.md, scripts/schematic_layout/part_classes.py, scripts/render_design_report.py, tests/test_part_classes.py, tests/test_design_report.py, docs/improvement-ledger.md
+
 ## 术语统一与步骤–任务分解 (2026-10-26)
 
 用户要求像 schematic-review 那样把 ASG 的名词统一成专业术语，并按“步骤–任务”分解。同一概念此前有几种叫法

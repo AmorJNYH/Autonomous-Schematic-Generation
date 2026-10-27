@@ -17,7 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from audit_design_closure import calculation_basis, severity_of, vendor_items_of  # noqa: E402
 from schematic_layout.citations import check as check_citation, check_source  # noqa: E402
-from schematic_layout import lifecycle  # noqa: E402
+from schematic_layout import lifecycle, part_classes  # noqa: E402
 from schematic_layout.sexpr import all_nodes, first, parse  # noqa: E402
 
 REPORT = '设计报告.md'
@@ -726,6 +726,18 @@ def render(root, notes=None, title=None):
         if not text(f['reason']):
             problems.append('位号 %s 的料号 %s 在手册 %s 里列在“%s”下（停产或不推荐新设计）：换在售料号，'
                             '或在设计网表该器件写 lifecycle_reason 说明为什么保留' % (f['ref'], f['mpn'], f['datasheet'], f['marker']))
+    # Parts whose parameters only a datasheet guarantees are named exactly (part-roles.md section 1).
+    contract = None
+    if (record / 'change-contract.json').exists():
+        contract, problem = load(record / 'change-contract.json')
+        if problem:
+            problems.append(problem)
+    bases = [root, record]
+    identity, inherited = part_classes.audit_identity(intent, bases, part_classes.touched_refs(contract))
+    if identity:
+        problems.append('核心器件和料号件要写确切料号和数据手册（见 part-roles.md 第 1 节）：' + '；'.join(identity[:6])
+                        + ('；等共 %d 个' % len(identity) if len(identity) > 6 else ''))
+    problems += part_classes.audit_citations(intent, closure, bases)
     cite_problems, cite_review, cite_unchecked = check_citations(selection, data['lessons.json'], root)
     problems += cite_problems
     cite_review = list((audit.get('citations') or {}).get('review') or []) + cite_review
@@ -803,6 +815,9 @@ def render(root, notes=None, title=None):
         missing.append('外围电路按手册核对：未执行')
     if visual.get('status') != 'REVIEWED':
         missing.append('图面审阅%s' % VISUAL.get(visual.get('status'), '没有记录'))
+    if inherited:
+        missing.append('%d 个沿用基线的器件缺确切料号或数据手册：%s' % (len(inherited), '、'.join(
+            line.split('（')[0].split(' ')[-1] for line in inherited)))
     by_stage = Counter(w.get('stage') for w in open_work)
     if open_work:
         missing.append('%d 件未关闭项（%s）' % (len(open_work), '，'.join(

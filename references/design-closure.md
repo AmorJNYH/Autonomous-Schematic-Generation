@@ -136,6 +136,9 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
     （`HARDWARE_WIKI/raw`）或声明的资料里、页码超出文档页数，记 `citation_wrong`，审计 FAIL。`guaranteed`/`typical`
     的数值在所引页的文字里找不到（含 SI 前缀换算、百分数、尾随 0、Unicode 负号）时列入报告“引用待人工核对”，不拦。
     `locator` 文字不核。找不到知识库或没有 poppler（`pdfinfo`/`pdftotext`）时记为“没核对”并写明原因。
+  - 引用器件手册（`datasheet:Datasheet/…`）的参数，不论依据，都要写 `ref`，且设计网表里该位号的 `datasheet` 必须是同一份手册
+    （同字节，或文件名去掉厂商前缀后型号相同）；定制磁件写了 `fields.DesignSheet` 的，引用其磁芯、材料手册不受此限。
+    规格件因此被引用时，按 [part-roles.md](part-roles.md) 第 1 节升为料号件。`render_design_report.py` 核对，不一致是记录问题。
   - `derived`：由其他值推出，写 `derivation`，`source` 是手册页或 `calc:<计算 id>`。
   - `design_choice`：本设计选定的值（电阻阻值、容差档、匝数），写 `ref`。
   - `model`：工程假设或折减（CTR 保持系数、效率包络等），写 `reason`。
@@ -158,6 +161,8 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
   每件未关闭的 external 待办写：
   - `missing`：非空列表，每项 `{source, given, needed}`。`source` 是发现缺口的位置：`datasheet:<库内路径>#p<页>`、
     `review:<审查目录>/<待办编号>` 或 `user:<日期>`；`given` 写手册给了什么（含测试条件），`needed` 写设计还需要什么。
+    `source` 是器件手册（`datasheet:Datasheet/…`）时加 `refs`：缺口说的是哪些位号，它们在设计网表里的 `datasheet` 必须是这份手册；
+    标准、应用笔记不写。
   - `why_external`：为什么只能由这个负责方给，例如行为在芯片内部或固件里，外部推不出来。
   - `calculations`：依赖这项资料的计算 id，非空，且都是 `conditional`；报告在待办下列出这些计算依赖的参数（版本 1 为 `missing_guarantee`），
     并在“依赖厂家资料的计算”表（版本 1 为“有条件成立的计算”）里反查对应待办。确实没有计算依赖它（固件行为确认、安规资格这类）时写空列表，

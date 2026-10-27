@@ -36,7 +36,8 @@ class Delivery:
             (self.root / '原理图' / name).write_text('x')
         (self.root / '设计资料' / '方案与选型依据.md').write_text('# basis')
         (self.record / 'evidence' / 'design.md').write_text('regulator design basis')
-        self.write('electrical-intent.json', {'components': [{'ref': 'U1', 'value': 'XYZ100'}, {'ref': 'R1'}]})
+        self.write('electrical-intent.json', {'components': [{'ref': 'U1', 'value': 'XYZ100', 'mpn': 'XYZ100',
+                                                                   'datasheet': '设计资料/X - XYZ100.pdf'}, {'ref': 'R1'}]})
         (self.root / '设计资料' / 'X - XYZ100.pdf').write_bytes(pdf(['VIN 4.5 V to 18 V  IOUT 3.5 A  EN', 'SOIC-8  OVP 25 C']))
         (self.root / '设计资料' / 'Y - ABC200.pdf').write_bytes(pdf(['IOUT 2 A']))
         self.selection = {'schema_version': 1, 'library_root': str(self.root), 'roles': [
@@ -297,6 +298,15 @@ class DesignReportTests(unittest.TestCase):
                          problems)
         self.assertIn('## 引用待人工核对', text)
         self.assertIn('| 候选 XYZ100 的“输出电流” | 设计资料/X - XYZ100.pdf#p1 | 3.8 |', text)
+
+    def test_unnamed_core_part_is_a_record_problem_unless_kept_from_the_baseline(self):
+        self.d.write('electrical-intent.json', {'components': [{'ref': 'U1', 'value': 'XYZ100'}, {'ref': 'R1'}]})
+        text, problems = self.d.report()
+        self.assertTrue(any(p.startswith('核心器件和料号件要写确切料号和数据手册') and 'U1' in p for p in problems), problems)
+        self.d.write('change-contract.json', {'schema_version': 1, 'add_components': {}, 'component_changes': {}})
+        text, problems = self.d.report()
+        self.assertFalse(any('核心器件和料号件' in p for p in problems), problems)
+        self.assertIn('1 个沿用基线的器件缺确切料号或数据手册：U1', text)
 
     def test_selection_is_required_and_checked(self):
         (self.d.record / 'selection.json').unlink()
