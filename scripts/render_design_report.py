@@ -735,7 +735,7 @@ def render(root, notes=None, title=None):
     bases = [root, record]
     identity, inherited = part_classes.audit_identity(intent, bases, part_classes.touched_refs(contract))
     if identity:
-        problems.append('核心器件和料号件要写确切料号和数据手册（见 part-roles.md 第 1 节）：' + '；'.join(identity[:6])
+        problems.append('关键器件和特殊器件要写确切料号、数据手册和类型声明，常规件要写规格（见 part-roles.md 第 1 节）：' + '；'.join(identity[:6])
                         + ('；等共 %d 个' % len(identity) if len(identity) > 6 else ''))
     problems += part_classes.audit_citations(intent, closure, bases)
     cite_problems, cite_review, cite_unchecked = check_citations(selection, data['lessons.json'], root)
@@ -816,7 +816,7 @@ def render(root, notes=None, title=None):
     if visual.get('status') != 'REVIEWED':
         missing.append('图面审阅%s' % VISUAL.get(visual.get('status'), '没有记录'))
     if inherited:
-        missing.append('%d 个沿用基线的器件缺确切料号或数据手册：%s' % (len(inherited), '、'.join(
+        missing.append('%d 个沿用基线的器件缺确切料号、数据手册、类型声明或规格：%s' % (len(inherited), '、'.join(
             line.split('（')[0].split(' ')[-1] for line in inherited)))
     by_stage = Counter(w.get('stage') for w in open_work)
     if open_work:

@@ -103,8 +103,11 @@
 - 每个物理引脚要么在一个网络里，要么在 `no_connect`；NC 要有手册依据。
 - `fields.Circuit` 是页面 ID，`pages.page_intents()` 据此拆页。
 - `mpn`、`datasheet`、`fields` 会作为隐藏属性写进原理图，`verify_schematic.py` 逐字段比对，值一律写字符串。
-- 哪些器件必须写确切 `mpn` 和 `datasheet` 由 [part-roles.md](part-roles.md) 第 1 节的分级决定：核心器件和料号件必须写，
-  定制磁件用 `fields.DesignSheet` 指向磁件设计单代替 `datasheet`；规格件写 `value` 和规格字段（容差、功率或耐压、介质）。
+- 哪些器件必须写确切 `mpn` 和 `datasheet` 由 [part-roles.md](part-roles.md) 第 1 节的分级决定（与 schematic-review 对齐）：
+  关键器件和特殊器件必须写，并用 `fields.Kind`、`fields.KindSource`、`fields.KindQuote` 按本器件手册声明器件类型；
+  定制磁件用 `fields.DesignSheet` 指向磁件设计单代替 `datasheet` 和类型声明；常规件写 `value` 和规格字段，写出算得的最低额定
+  （每个电容写耐压，每个电感写额定电流）。工作电压高于 30 V 或接市电的网络列在顶层 `high_voltage_nets`，
+  据此判定高压连接器、继电器和电源路径上的 NTC。
   `Requirement`、`Evidence`、`Status` 是建议字段，便于追溯，工具不解释其内容。
 - 电源轨和地网络的网络名就是图上电源符号的 Value；不同地网络（初级地、次级地、端口地）用不同网络名，
   不能为了好看合并。跨页网络在每页用同名全局标签。

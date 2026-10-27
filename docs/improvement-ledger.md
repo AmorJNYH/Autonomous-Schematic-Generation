@@ -8,6 +8,25 @@ in the library and have the cited page); `Changed:` the files touched.
 entry that changes the ASG 纲要 or the 绘图纲要 O1–O8 also carries `Approved:
 user:<date>` and `Outline:` the hash from `check_ledger.py --outline-hash`.
 
+## 纲要 P3 与器件分级对齐 schematic-review：只有关键器件和特殊器件要写料号 (2026-10-26)
+
+用户指出 ASG 作为设计方不应要求所有器件都有料号，P3“电路以确切 MPN 的数据手册为准”管得太宽，两个技能在器件分类上要对齐：
+SR 对常规件不索要料号，按最弱档定界，超出的最低额定写进 DEV-D04 的 BOM 约束。上一版分级按位号和符号直接定级，
+没有回答“这是什么器件”。现在分两步：先定器件类型（词表与 SR `device_kinds.py` 相同，另加 `mechanical`；关键器件和特殊器件按本器件手册
+用 `fields.Kind`/`KindSource`/`KindQuote` 声明，常规件按符号与型号关键词、最后才按位号推断，矛盾或认不出都是记录问题），
+再由类型和位置定级：关键器件（集成电路、晶体管、光耦、变压器与定制磁件、稳压管、TVS、整流桥）、特殊器件（安规件、
+接在 `high_voltage_nets` 上的连接器与继电器、电源路径上的 NTC、计算引用了其手册的器件；未声明 `high_voltage_nets` 时连接器、继电器和 NTC
+一律按特殊器件）要写 `mpn`、`datasheet` 和类型声明；常规件写值和规格，每个电容写耐压、每个电感写额定电流。用户定了四处：
+高压连接器和电源路径 NTC 算特殊器件，继电器、电池、晶体算常规件，寿命需求下的电解电容写规格要求（按某系列寿命公式算的仍升为特殊器件）。
+R6 需要料号的器件从 52 个降到 35 个；R7 缺料号或手册的从 24 个降到 8 个（另有 31 个关键/特殊器件要补类型声明）；
+20 个公开工程的 2774 个器件中 11 个认不出类型（扬声器、麦克风、蜂鸣器、天线、振动马达、自定义机械件），须声明。
+需求指定了系列或料号的器件按特殊器件写，脚本不读需求原文，由任务 1.1 核对。
+
+- Event: user:2026-10-26
+- Approved: user:2026-10-26
+- Outline: 957c22f0f9387fc0
+- Changed: SKILL.md, references/part-roles.md, references/requirements-to-intent.md, references/design-closure.md, references/terminology.md, scripts/schematic_layout/part_classes.py, scripts/render_design_report.py, tests/test_part_classes.py, tests/test_design_report.py, docs/improvement-ledger.md
+
 ## 器件分级改为位号前缀与符号家族都算、规格件白名单 (2026-10-26)
 
 用 `part_classes.py` 给 GitHub 上 20 个公开 KiCad 工程的 2774 个器件分级，按器件实际类型逐组核对，错判 153 个，其中 150 个是该写料号的器件落成了规格件。

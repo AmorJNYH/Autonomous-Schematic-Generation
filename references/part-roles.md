@@ -10,27 +10,53 @@
 
 ## 1. 器件分级：哪些器件要写确切料号
 
-判据只有一条：**设计依赖的器件参数，能不能只靠“值 + 通用规格”确定**。能，满足规格的料都可以互换；不能，这个参数只有某个料号的
-数据手册保证（半导体电气特性、钳位与击穿电压、保护动作曲线、安规认证、寿命与纹波电流、饱和电流、连接器额定与引脚定义）。
-级别由器件在设计网表里的位号前缀和符号家族决定（两者任一命中即算），不由设计者另选；`scripts/schematic_layout/part_classes.py` 按下表
-从上到下判定，`render_design_report.py` 核对。规格件是白名单：认不出的器件一律按料号件处理，宁可多要料号，不漏。
+分级与 schematic-review（SR）对齐：只有设计依赖“只有某个料号的手册才保证的参数”的器件要写确切料号，常规件按值加规格，
+规格写出设计算得的最低额定（对应 SR `references/commodity-floors.md` 写进 BOM 约束的那些项）。
+分两步：先定**器件类型**，再由类型和所在位置定**级别**。`scripts/schematic_layout/part_classes.py` 按本节判定，`render_design_report.py` 核对。
 
-| 级别 | 定义 | 判定（设计网表的位号前缀与 `lib_id` 符号名） | 设计网表要求 |
+**器件类型**
+
+类型词表与 SR `scripts/device_kinds.py` 一致（ASG 另有 `mechanical`：安装孔、Fiducial、Logo 等）：
+`ic`（集成电路与模块）、`mosfet`（含 IGBT）、`bjt`、`opto`、`transformer`、`zener`、`tvs`、`bridge_rectifier`、`diode`（含 LED）、
+`varistor`、`fuse`（含自恢复保险丝）、`ntc`、`resistor`、`capacitor`、`inductor`、`ferrite`、`crystal`、`connector`、`relay`、`battery`、
+`switch`、`jumper`、`testpoint`、`mechanical`。
+
+- **关键器件和特殊器件**（`ic` 和带 `fields.DesignSheet` 的定制磁件除外）在设计网表里声明类型：`fields.Kind` 写类型，
+  `fields.KindSource` 写本器件数据手册的页（`datasheet:<库内路径>#p<页>`，与 `datasheet` 是同一份手册），`fields.KindQuote`
+  照抄那一页说明器件类型的原文（如 “Unidirectional TVS”“N-Channel MOSFET”“X2 capacitor”）。原文要说出所声明的类型；
+  能取出该页文字时，原文要在那一页上（空格不计）。
+- 常规件可以不声明，由符号与型号的关键词（`D_TVS`、`SMBJ`、`Transistor_FET:`、`Crystal`……）推断，最后才看位号前缀
+  （与 SR 相同：位号是最弱的依据；`RV` 既是电位器也是压敏电阻，不按位号推断）。
+- 声明的类型与符号、型号关键词矛盾（例如声明 `diode` 而符号是 `D_TVS`）是记录问题：选错了符号或填错了型号。
+  `diode` 可以声明为更具体的 `tvs`、`zener`，反过来不行。
+- 认不出类型、也没有声明的器件是记录问题，要补 `fields.Kind`；不默认归入某一级。
+
+**级别**
+
+| 级别 | 包含 | 设计网表要求 | 对应 SR |
 |---|---|---|---|
-| 核心器件 | 决定架构或带来固件/配置依赖：控制器、协议 IC、MCU 与主控模块、功率开关、主磁件、隔离与反馈器件（选型见 [core-part-selection.md](core-part-selection.md)） | 位号 U、Q、T、A、MODULE、REF；或符号名以 `Q_`、`Transformer` 开头，或在 `Transistor*` 库 | 选型比较、确切 `mpn`、`datasheet`、引脚表 |
-| 规格件 | 值加通用规格就能确定：通用电阻与电位器、无极性电容、测试点、跳线、开关、键盘轴、安装孔等机械件 | 符号 `TestPoint`；位号 TP、JP、H、MB、FID、HS、LOGO、SW、MX，或符号名以 `MountingHole`、`Fiducial`、`SolderJumper`、`Jumper`、`Heatsink`、`SW_`、`KEYSW`、`MX-` 开头；位号 R、RV（符号 `Thermistor*`、`Varistor*` 除外）；位号 C（符号 `C_Polarized*`、`CP*` 除外） | `value` 加规格字段（容差、功率或耐压、介质）；不要求 `mpn` |
-| 料号件 | 设计依赖的参数只有具体料号的手册保证：二极管/LED/TVS/ESD、整流桥、晶体与振荡器、保险丝与自恢复保险丝、压敏与热敏电阻、安规电容（CX、CY）、电解/聚合物/钽电容、电感/磁珠/共模扼流圈、连接器、继电器、电池、蜂鸣器/扬声器/麦克风、天线 | 其余器件 | 确切 `mpn`、`datasheet` |
+| 关键器件 | `ic`、`mosfet`、`bjt`、`opto`、`transformer`、`zener`、`tvs`、`bridge_rectifier`；带 `fields.DesignSheet` 的定制磁件 | 确切 `mpn`、`datasheet`（定制磁件写 `fields.DesignSheet`）、类型声明；核心器件角色另做选型比较（[core-part-selection.md](core-part-selection.md)） | 有自己的器件检查项：手册规定了多维工作区（SOA、栅压、CTR、VZ@IZ、钳位、绕组） |
+| 特殊器件 | 安规件：`varistor`、`fuse`、安规电容（位号 CX/CY，或值与规格写了 X1/X2/Y1/Y2）；高压连接器与继电器：有引脚接在 `high_voltage_nets` 上的 `connector`、`relay`；串在电源路径上的 `ntc`：有引脚接在 `high_voltage_nets` 上，或两脚都接电源/地网络（`net_roles` 为 power/return）；计算引用了其手册参数的器件 | 确切 `mpn`、`datasheet`、类型声明 | 按位置与配合审（PRO 防护、隔离），超出常规件最弱档的按具体资料审 |
+| 常规件 | 其余：`resistor`、`capacitor`、`inductor`、`ferrite`、`diode`、`crystal`、低压 `connector` 与 `relay`、`battery`、`switch`、`jumper`、`testpoint`、`mechanical`、测温用 `ntc` | `value` 加规格字段（见下），不要求 `mpn`；写了 `mpn` 的按该料号手册 | 常规件只排查风险：按最弱档定界，超出的最低额定写进 DEV-D04 的 BOM 约束 |
 
-- 按符号判定有一处做不到：电解电容画成无极性符号（`Device:C`）时会被判成规格件，所以电解、聚合物、钽电容必须用有极性符号。
-
-- **定制磁件**（变压器、PFC 电感、共模扼流圈等按磁件设计单定制的器件）用 `fields.DesignSheet` 指向磁件设计单，代替 `datasheet`；
+- **`high_voltage_nets`**：设计网表顶层列出工作电压高于 30 V（直流或峰值）或接市电的网络。没有这一项时，所有连接器、继电器和 NTC
+  按特殊器件处理。
+- **常规件的规格**写出设计算得的最低额定，没写的按 SR 的最弱档理解（例如电阻按 0402 的额定）：
+  电阻写功率与耐压，检流电阻另写容差和 TCR；电容写耐压（**每个电容都要写**，SR 把没写耐压的电容列为设计输入要改的写法），
+  陶瓷电容在手册给了有效容量要求时写偏压后的有效容量；电解电容写耐压、纹波电流，有寿命需求的写“耐久 ≥ X h @ T”（规格要求，不强制料号）；
+  二极管写 VRRM、IF、IFSM；电感写 L 与额定电流（Isat、Irms；**每个电感都要写额定电流**）；磁珠写最大 DCR 与额定电流；
+  连接器写系列与触点电流；晶体写频率、负载电容 CL、ESR 与精度；继电器写线圈电压与触点额定。电容耐压和电感额定电流由脚本核对，
+  其余由任务 2.2 的计算和 SR 核对。
+- **升为特殊器件**：计算参数引用了某个常规件的手册（`source` 为 `datasheet:`，例如按某个电解电容系列的寿命公式算寿命），
+  这个器件就依赖该料号，设计网表要写它的 `mpn` 和同一份 `datasheet`（见 [design-closure.md](design-closure.md) 的参数与资料缺口）。
+  需求指定了系列或料号的器件同样按特殊器件写，由任务 1.1 的需求追溯核对（脚本不判断需求原文）。
+- **定制磁件**（变压器、PFC 电感、共模扼流圈等按磁件设计单定制的器件）用 `fields.DesignSheet` 指向磁件设计单，代替 `datasheet` 和类型声明；
   `mpn` 写设计单编号。
-- **规格件升级**：计算参数引用了某个规格件的手册（`source` 为 `datasheet:`），这个器件就依赖该料号，设计网表要写它的 `mpn` 和
-  同一份 `datasheet`（见 [design-closure.md](design-closure.md) 的参数与资料缺口）。
-- **改版与重画**：有 `record/change-contract.json` 时，只有本版新增或改动的器件缺料号/手册才算记录问题；从基线原样沿用的器件列入
+- **改版与重画**：有 `record/change-contract.json` 时，只有本版新增或改动的器件缺料号、手册、类型声明或规格才算记录问题；从基线原样沿用的器件列入
   “设计完成状态”的未完成项，不拦打包。新设计没有基线，缺了就是记录问题。
 - “确切”指订货型号（如 BAT54HT1G、S3J-E3/57T），不是系列名；很多料号按编码表拼成，在手册正文里查不到原样，
   所以这一层由任务 2.1 人工核对，脚本只查有没有写。
+- 电解、聚合物、钽电容必须用有极性符号：按符号推断类型时，无极性符号认不出电解电容。
 
 ## 2. 按功能找类（倒排索引）
 

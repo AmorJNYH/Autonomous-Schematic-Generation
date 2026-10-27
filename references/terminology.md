@@ -30,6 +30,7 @@ SKILL.md 和 references 写同一概念只用一个词。“不用的词”一�
 
 | 用词 | 指什么 | 不用的词 |
 |---|---|---|
+| 关键器件、特殊器件、常规件 | [part-roles.md](part-roles.md) 第 1 节的三级器件分级（与 schematic-review 对齐）；“核心器件”另指要做选型比较的器件角色，属于关键器件 | 料号件、规格件 |
 | 设计网表 | `electrical-intent.json`：从需求和数据手册独立写出的器件、网络与 NC；与 KiCad 导出的“导出网表”`netlist.xml` 对照 | 设计要求表 |
 | 自动检查、检查项 | `verify_schematic.py` 一次运行叫自动检查，其中每一项（ERC、网表、几何……）叫检查项 | 一键验证、一键自动检查 |
 | 图面待审对象 | `geometry.render_review_items` 列出、留给图面审阅逐条处置的引脚文字等对象 | 待看图 |

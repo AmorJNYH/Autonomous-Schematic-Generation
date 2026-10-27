@@ -302,11 +302,11 @@ class DesignReportTests(unittest.TestCase):
     def test_unnamed_core_part_is_a_record_problem_unless_kept_from_the_baseline(self):
         self.d.write('electrical-intent.json', {'components': [{'ref': 'U1', 'value': 'XYZ100'}, {'ref': 'R1'}]})
         text, problems = self.d.report()
-        self.assertTrue(any(p.startswith('核心器件和料号件要写确切料号和数据手册') and 'U1' in p for p in problems), problems)
+        self.assertTrue(any(p.startswith('关键器件和特殊器件要写确切料号、数据手册和类型声明') and 'U1' in p for p in problems), problems)
         self.d.write('change-contract.json', {'schema_version': 1, 'add_components': {}, 'component_changes': {}})
         text, problems = self.d.report()
-        self.assertFalse(any('核心器件和料号件' in p for p in problems), problems)
-        self.assertIn('1 个沿用基线的器件缺确切料号或数据手册：U1', text)
+        self.assertFalse(any('关键器件和特殊器件' in p for p in problems), problems)
+        self.assertIn('1 个沿用基线的器件缺确切料号、数据手册、类型声明或规格：U1', text)
 
     def test_selection_is_required_and_checked(self):
         (self.d.record / 'selection.json').unlink()
