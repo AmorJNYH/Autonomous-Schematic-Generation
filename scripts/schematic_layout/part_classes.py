@@ -28,26 +28,28 @@ Kind = namedtuple('Kind', 'title prefixes words cues')
 # The kind vocabulary of schematic-review's scripts/device_kinds.py (plus ASG's `mechanical`). Words are matched
 # on "<lib_id> <value> <mpn>" in this order, the first kind wins; prefixes are the weakest evidence. Cues are what a
 # datasheet quote must say, lowercase with spaces removed; they include schematic-review's cues for the kind.
+# A part-number family (B) never starts inside a longer part number: PS2[5-9]xx is not the PS2663 in TPS26630.
+B = r'(?<![A-Z0-9])'
 KINDS = OrderedDict([
     ('relay', Kind('继电器', ('K',), (r'RELAY|继电器',), ('relay',))),
     ('varistor', Kind('压敏电阻', (), (r'VARISTOR|\bMOV\b|压敏',), ('varistor', 'siov', 'mov'))),
     ('ntc', Kind('热敏电阻', ('TH', 'RT', 'NTC'), (r'NTC|THERMISTOR',),
                  ('ntcthermistor', 'thermistor', 'inrushcurrentlimiter'))),
-    ('opto', Kind('光耦', (), (r'OPTO|PC81[07]|LTV\d|TLP\d|6N13[57]|HCPL|ACPL|FOD\d|CNY17|VO6\d|SFH6\d{2,3}|EL8\d\d|'
-                             r'PS2[5-9]\d\d|TCMT\d|KPC\d|H11[A-Z]\d|光耦',),
+    ('opto', Kind('光耦', (), (r'OPTO|' + B + r'(?:PC81[07]|LTV-?\d|TLP\d|6N13[57]|HCPL|ACPL|FOD\d|CNY17|VO6\d|SFH6\d{2,3}|EL8\d\d|'
+                             r'PS2[5-9]\d\d|TCMT\d|KPC\d|H11[A-Z]\d)|光耦',),
                   ('optocoupler', 'photocoupler', 'optoisolator', 'opticallycoupled', 'opticalisolator', 'opticalcoupler'))),
-    ('tvs', Kind('TVS', ('TVS',), (r'TVS|POWER_PROTECTION:|SMAJ|SMBJ|SMCJ|SMF\d|P6KE|1\.5KE|ESD\d|PESD|SM712',),
+    ('tvs', Kind('TVS', ('TVS',), (r'TVS|POWER_PROTECTION:|' + B + r'(?:SMAJ|SMBJ|SMCJ|SMF\d|P6KE|1\.5KE|ESD\d|PESD|SM712)',),
                  ('tvs', 'esdprotection', 'transientvoltagesuppress', 'transientsuppress'))),
-    ('zener', Kind('稳压管', ('ZD',), (r'ZENER|BZX|BZT5\d|MMSZ|1N47\d|稳压二极管',), ('zener',))),
-    ('bjt', Kind('双极晶体管', (), (r'TRANSISTOR_BJT:|Q_NPN|Q_PNP|\bNPN\b|\bPNP\b|BC[PXW]?\d{2,3}|2N\d{4}|MMBT|PBSS|S8050|S8550|三极管',),
+    ('zener', Kind('稳压管', ('ZD',), (r'ZENER|' + B + r'(?:BZX|BZT5\d|MMSZ|1N47\d)|稳压二极管',), ('zener',))),
+    ('bjt', Kind('双极晶体管', (), (r'TRANSISTOR_BJT:|Q_NPN|Q_PNP|\bNPN\b|\bPNP\b|' + B + r'(?:BC[PXW]?\d{2,3}|2N\d{4}|MMBT|PBSS|S8050|S8550)|三极管',),
                  ('npn', 'pnp', 'bipolar'))),
-    ('mosfet', Kind('MOSFET', ('Q',), (r'TRANSISTOR_FET:|TRANSISTOR_IGBT:|Q_NMOS|Q_PMOS|MOSFET|\bFET\b|NMOS|PMOS|IRF|IRLML|'
-                                       r'AO\d{4}|SI\d{4}|BSS\d|2N7002|IGBT',),
+    ('mosfet', Kind('MOSFET', ('Q',), (r'TRANSISTOR_FET:|TRANSISTOR_IGBT:|Q_NMOS|Q_PMOS|MOSFET|\bFET\b|NMOS|PMOS|IGBT|'
+                                       + B + r'(?:IRF|IRLML|AO\d{4}|SI\d{4}|BSS\d|2N7002)',),
                    ('mosfet', 'nchannel', 'pchannel', 'superjunction', 'igbt'))),
-    ('bridge_rectifier', Kind('整流桥', ('BR',), (r'BRIDGE|GBU\d|KBP\d|DB10\d',), ('bridgerectifier', 'bridge'))),
-    ('diode', Kind('二极管', ('D', 'LED', 'CR'), (r':D(?:_|\s|$)|:LED|SCHOTTKY|DIODE|SS\d{2}|BAT\d|1N4\d{3}|1N58\d|二极管',),
+    ('bridge_rectifier', Kind('整流桥', ('BR',), (r'BRIDGE|' + B + r'(?:GBU\d|KBP\d|DB10\d)',), ('bridgerectifier', 'bridge'))),
+    ('diode', Kind('二极管', ('D', 'LED', 'CR'), (r':D(?:_|\s|$)|:LED|SCHOTTKY|DIODE|' + B + r'(?:SS\d{2}|BAT\d|1N4\d{3}|1N58\d)|二极管',),
                    ('rectifier', 'diode', 'schottky', 'led'))),
-    ('ferrite', Kind('磁珠', ('FB',), (r'FERRITE|BEAD|BLM\d|MPZ\d|磁珠',), ('ferrite', 'bead'))),
+    ('ferrite', Kind('磁珠', ('FB',), (r'FERRITE|BEAD|' + B + r'(?:BLM\d|MPZ\d)|磁珠',), ('ferrite', 'bead'))),
     ('inductor', Kind('电感', ('L', 'FL'), (r':L(?:_|\s|$)|:CMC|INDUCTOR|CHOKE|电感',), ('inductor', 'choke'))),
     ('crystal', Kind('晶体', ('Y', 'X'), (r'CRYSTAL|XTAL|\bOSC(?:ILLATOR)?\b|晶振|晶体',), ('crystal', 'oscillator', 'resonator'))),
     ('transformer', Kind('变压器', ('T', 'TR'), (r'TRANSFORMER|变压器',), ('transformer',))),
@@ -72,6 +74,141 @@ REFINES = {'diode': ('tvs', 'zener'), 'inductor': ('transformer', 'ferrite')}
 SAFETY_CLASS = re.compile(r'(?<![A-Za-z0-9])[XY][12](?![A-Za-z0-9])')
 VOLTAGE = re.compile(r'\d\s*k?V(?![A-Za-z])|\d\s*k?V(?:ac|dc|AC|DC|rms)', re.I)
 CURRENT = re.compile(r'\d\s*m?A(?![A-Za-z])|\d\s*m?A(?:rms|pk|dc)', re.I)
+
+
+# Subcategories are the library's second level (raw/Datasheet/<category>/<subcategory>); only resistors and
+# capacitors are subdivided for the level. Tiers are the commodity bounds of the catalogs checked on 2026-10-26
+# (part-roles.md section 1): within a tier a part is common, beyond it special.
+R_CAT, C_CAT = '22_电阻器/', '20_电容器/'
+GENERAL_R, THIN_R, SENSE_R, POWER_R, POT_R, NETWORK_R = (R_CAT + n for n in (
+    '厚膜贴片电阻 (通用)', '薄膜贴片电阻', '电流检测电阻 (分流)', '功率电阻 (线绕_金属板)', '电位器_微调', '电阻网络_分压器'))
+MLCC, ALUMINUM, POLYMER, TANTALUM, FILM, SAFETY_C = (C_CAT + n for n in (
+    'MLCC多层陶瓷电容', '铝电解电容', '聚合物电容', '钽电容', '薄膜电容', '安规电容(X_Y)'))
+SUBCATEGORIES = {'resistor': (GENERAL_R, THIN_R, SENSE_R, POWER_R, POT_R, NETWORK_R),
+                 'capacitor': (MLCC, ALUMINUM, POLYMER, TANTALUM, FILM, SAFETY_C)}
+PULSE = re.compile(r'pulse|脉冲|浪涌|surge', re.I)
+DV_DT = re.compile(r'dv/dt|snubber|吸收', re.I)
+# Current-sense tiers: (lowest Ω, highest Ω, highest power W at 70 °C, weakest TCR ppm/K); ±1 % throughout.
+# Vishay WSL p1-p2, Panasonic ERJ low resistance p2-p3, Bourns CRL p1 and CRA p1.
+SENSE_TIERS = ((0.001, 0.0019999, 1.0, 275), (0.002, 0.0029999, 2.0, 275), (0.003, 0.0049999, 2.0, 150),
+               (0.005, 0.0099999, 2.0, 300), (0.010, 0.100, 3.0, 300), (0.100001, 0.999999, 1.0, 300))
+# Power-resistor tiers: (highest power W at 70 °C, lowest Ω, highest Ω, tightest tolerance %, weakest TCR ppm/K).
+# Vishay PR01/PR02/PR03 p1-p2 (metal film, ±1 %) and AC01-AC10 p1 (wirewound, ±5 %).
+POWER_TIERS = ((3.0, 0.22, 1e6, 1.0, 250), (3.0, 0.1, 27e3, 5.0, 250), (8.4, 0.1, 27e3, 5.0, 180))
+
+
+def spec_text(comp):
+    return '%s %s %s' % (comp.get('value') or '', fields(comp).get('Specification') or '', fields(comp).get('Rating') or '')
+
+
+def ohms(value):
+    """Resistance of a value such as 0R30, 4k7, R10, 10m, 0.10/1%/1W or 2.4k 1%; None when it is not one."""
+    head = re.split(r'[/\s]', str(value or '').strip())[0].replace(',', '.').replace('Ω', '').replace('ohm', '')
+    scale = {'R': 1, 'r': 1, '': 1, 'K': 1e3, 'k': 1e3, 'M': 1e6, 'm': 1e-3}
+    m = re.fullmatch(r'(\d*)([RrKkMm])(\d+)', head)          # letter as the decimal point: 0R30, 4k7, R10
+    if m:
+        return float('%s.%s' % (m.group(1) or '0', m.group(3))) * scale[m.group(2)]
+    m = re.fullmatch(r'(\d+(?:\.\d+)?)([mkKM]?)[Rr]?', head)
+    return float(m.group(1)) * scale[m.group(2)] if m else None
+
+
+def watts(text_):
+    found = [float(a) / float(b) if b else float(a) for a, b in re.findall(r'(\d+(?:\.\d+)?)(?:/(\d+))?\s*W(?![A-Za-z])', text_)]
+    return max(found) if found else None
+
+
+def tolerance(text_):
+    found = [float(x) for x in re.findall(r'(\d+(?:\.\d+)?)\s*%', text_)]
+    return min(found) if found else None
+
+
+def tcr(text_):
+    found = [float(x) for x in re.findall(r'(\d+(?:\.\d+)?)\s*ppm', text_, re.I)]
+    return min(found) if found else None
+
+
+def datasheet_category(comp):
+    """The library subcategory a part's datasheet is filed under (…/Datasheet/<category>/<subcategory>/…)."""
+    parts = Path(str(comp.get('datasheet') or '')).parts
+    for i, part in enumerate(parts[:-3]):
+        if part == 'Datasheet':
+            return parts[i + 1] + '/' + parts[i + 2]
+    return None
+
+
+def category(comp, kind=None):
+    """(subcategory, problem): declared, else the datasheet's library folder, else read off value and symbol."""
+    kind = kind or kind_of(comp)[0]
+    declared = fields(comp).get('Category')
+    known = SUBCATEGORIES.get(kind, ())
+    if text(declared):
+        if known and declared not in known:
+            return None, 'fields.Category 写的 %s 不是%s的子类（可选：%s）' % (declared, KINDS[kind].title, '、'.join(known))
+        return declared, None
+    filed = datasheet_category(comp)
+    if filed and (not known or filed in known):
+        return filed, None
+    if not known:
+        return None, None
+    spec, lib = spec_text(comp), str(comp.get('lib_id', ''))
+    if kind == 'resistor':
+        r, w = ohms(comp.get('value')), watts(spec)
+        if re.search(r'R_Potentiometer|POT', lib, re.I):
+            return POT_R, None
+        if re.search(r'R_Pack|R_Network', lib, re.I):
+            return NETWORK_R, None
+        if (r is not None and 0 < r < 1) or re.search(r'检流|分流|shunt|sense|开尔文|kelvin', spec, re.I):
+            return SENSE_R, None
+        if (w and w > 1) or re.search(r'线绕|wirewound|metal film power', spec, re.I):
+            return POWER_R, None
+        return (THIN_R if re.search(r'thin film|薄膜', spec, re.I) else GENERAL_R), None
+    if prefix(comp) in ('CX', 'CY') or SAFETY_CLASS.search(spec):
+        return SAFETY_C, None
+    if re.search(r'polymer|固态|POSCAP|OS-CON', spec, re.I):
+        return POLYMER, None
+    if re.search(r'tantal|钽|TAJ', spec + ' ' + str(comp.get('mpn') or ''), re.I):
+        return TANTALUM, None
+    if re.search(r'film|薄膜|MKP|MKT|CBB', spec, re.I):
+        return FILM, None
+    return (ALUMINUM if re.search(r':C_Polarized|:CP', lib, re.I) else MLCC), None
+
+
+def beyond_tier(comp, cat):
+    """Why a sense or power resistor lies outside every commodity tier, or None when one tier holds it."""
+    spec = spec_text(comp)
+    r, w, tol, ppm = ohms(comp.get('value')), watts(spec), tolerance(spec), tcr(spec)
+    if r is None:
+        return None
+    if cat == SENSE_R:
+        tier = next((t for t in SENSE_TIERS if t[0] <= r <= t[1]), None)
+        if tier is None:
+            return '阻值 %g Ω 不在检流电阻档位内' % r
+        if w and w > tier[2]:
+            return '功率 %g W 超过该档上限 %g W' % (w, tier[2])
+        if tol is not None and tol < 1:
+            return '容差 ±%g%% 比档位的 ±1%% 更紧' % tol
+        if ppm is not None and ppm < tier[3]:
+            return 'TCR %g ppm/K 比档位最弱值 %g ppm/K 更严' % (ppm, tier[3])
+        return None
+    if cat == POWER_R:
+        fits = [t for t in POWER_TIERS if (w or 0) <= t[0] and t[1] <= r <= t[2]
+                and (tol is None or tol >= t[3]) and (ppm is None or ppm >= t[4])]
+        return None if fits else '功率 %s W、阻值 %g Ω、容差 %s、TCR %s 不在功率电阻档位内' % (
+            w, r, '±%g%%' % tol if tol is not None else '未写', '%g ppm/K' % ppm if ppm is not None else '未写')
+    return None
+
+
+def special_spec(comp, kind):
+    """Why a resistor or capacitor's own specification makes it special, or None."""
+    if kind not in SUBCATEGORIES:
+        return None
+    spec = spec_text(comp)
+    cat, _ = category(comp, kind)
+    if PULSE.search(spec):
+        return '规格要求脉冲或浪涌能力'
+    if cat == FILM and DV_DT.search(spec):
+        return '薄膜电容用于吸收或承受 dv/dt'
+    return beyond_tier(comp, cat)
 
 
 def prefix(comp):
@@ -139,8 +276,9 @@ def part_class(comp, ctx=None):
         return KEY
     if kind in ('varistor', 'fuse'):
         return SPECIAL
-    if kind == 'capacitor' and (prefix(comp) in ('CX', 'CY') or SAFETY_CLASS.search(
-            '%s %s' % (comp.get('value') or '', fields(comp).get('Specification') or ''))):
+    if kind == 'capacitor' and category(comp, kind)[0] == SAFETY_C:
+        return SPECIAL
+    if special_spec(comp, kind):
         return SPECIAL
     if kind in ('connector', 'relay') and high:
         return SPECIAL
@@ -191,45 +329,72 @@ def touched_refs(contract):
     return set(contract.get('add_components') or {}) | set(contract.get('component_changes') or {})
 
 
-def _squash(value):
-    return re.sub(r'[^0-9a-z\u4e00-\u9fff]', '', str(value or '').lower())
+def squash(value):
+    return re.sub(r'[^0-9a-z]', '', str(value or '').lower())
 
 
-def declaration_lack(comp, kind, bases, check_files):
-    """What a key or special part's kind declaration lacks: fields.Kind, its own datasheet page, a quote naming the kind."""
+SPECIFIC_DIODES = ('tvs', 'zener', 'bridge_rectifier')     # a quote naming these is not evidence for a plain diode
+
+
+def cues(value, specific=True):
+    """Kinds a datasheet text names, as schematic-review's datasheet_kinds.cues: long cues in the text with spaces and
+    punctuation removed (extraction drops spaces), cues of three letters or fewer as whole words."""
+    flat, low = squash(value), str(value or '').lower()
+    found = {kind for kind, k in KINDS.items() for cue in k.cues
+             if (re.search(r'(?<![a-z0-9])%s(?![a-z0-9])' % cue, low) if len(cue) <= 3 else cue in flat)}
+    if specific and found & set(SPECIFIC_DIODES):
+        found.discard('diode')
+    if specific and 'opto' in found:
+        found -= {'diode', 'bjt'}       # an optocoupler names its emitter diode and phototransistor too
+    return found
+
+
+def verify_declaration(comp, kind, bases, check_files):
+    """(status, detail) of a kind declaration, with schematic-review's statuses: VERIFIED, QUOTE_NOT_FOUND,
+    QUOTE_LACKS_TYPE, QUOTE_CONFLICT, NO_DOCUMENT, NO_TEXT; ('MISSING', what) when a field is not written."""
     f = fields(comp)
     if not text(f.get('Kind')):
-        return ['类型声明（fields.Kind、KindSource、KindQuote，按本器件手册）']
-    lack = []
+        return 'MISSING', '类型声明（fields.Kind、KindSource、KindQuote，按本器件手册；propose_part_kinds.py 给候选）'
     cited = parse(f.get('KindSource'))
     if not cited:
-        lack.append('类型声明的手册页（fields.KindSource 写 datasheet:<库内路径>#p<页>）')
-    elif text(comp.get('datasheet')) and not same_document(comp['datasheet'], cited[0], bases):
-        lack.append('类型声明引用本器件的手册（KindSource %s 与 datasheet %s 不是同一份）' % (cited[0], comp['datasheet']))
-    elif check_files:
+        return 'MISSING', '类型声明的手册页（fields.KindSource 写 datasheet:<库内路径>#p<页>）'
+    if not text(f.get('KindQuote')):
+        return 'MISSING', '类型声明的手册原文（fields.KindQuote）'
+    if text(comp.get('datasheet')) and not same_document(comp['datasheet'], cited[0], bases):
+        return 'NO_DOCUMENT', 'KindSource %s 与 datasheet %s 不是同一份手册' % (cited[0], comp['datasheet'])
+    quote = f['KindQuote']
+    if check_files:
         result = check(cited[0], cited[1], (), bases)
         if result['status'] == 'FAIL':
-            lack.append('能核对的类型声明手册页（%s）' % result['reason'])
-    quote = _squash(f.get('KindQuote'))
-    if not quote:
-        lack.append('类型声明的手册原文（fields.KindQuote）')
-    elif KINDS[kind].cues and not any(c in quote for c in KINDS[kind].cues):
-        lack.append('说出类型的手册原文（KindQuote 没有说出 %s）' % kind)
-    elif cited and check_files:
+            return 'NO_DOCUMENT', result['reason']
         pdf = locate(cited[0], bases)
-        page = _squash(page_text(pdf, cited[1])) if pdf else ''
-        if len(page) > 100 and quote not in page:
-            lack.append('手册上的原文（KindQuote 不在 %s 第 %d 页）' % (cited[0], cited[1]))
-    return lack
+        page = page_text(pdf, cited[1]) if pdf else None
+        if pdf is None or result['status'] == 'NOT_CHECKED' or len(squash(page)) < 20:
+            return 'NO_TEXT', '%s 第 %d 页取不出文字（%s）' % (cited[0], cited[1], result['reason'] or '扫描版或没有 pdftotext')
+        if squash(quote) not in squash(page):
+            return 'QUOTE_NOT_FOUND', 'KindQuote 不在 %s 第 %d 页' % (cited[0], cited[1])
+    else:
+        return 'NO_TEXT', '找不到知识库，%s 没核对' % cited[0]
+    named = cues(quote)
+    if kind not in cues(quote, specific=False):
+        return 'QUOTE_LACKS_TYPE', 'KindQuote 没有说出 %s（说的是 %s）' % (kind, '、'.join(sorted(named)) or '无器件类型')
+    if named - {kind}:
+        return 'QUOTE_CONFLICT', 'KindQuote 还说出了 %s' % '、'.join(sorted(named - {kind}))
+    return 'VERIFIED', ''
+
+
+def needs_declaration(comp, kind, level):
+    return level in (KEY, SPECIAL) and kind not in (None, 'ic') and not design_sheet(comp)
 
 
 def audit_identity(intent, bases, touched=None):
-    """(problems, inherited): parts whose kind is unknown or contradicted, key and special parts lacking an MPN,
-    a datasheet or a kind declaration, and common capacitors and inductors without their rating.
+    """(problems, inherited, unchecked): parts whose kind or subcategory is unknown or contradicted, key and special
+    parts lacking an MPN, a datasheet or a verified kind declaration, and common parts without their ratings;
+    unchecked lists kind declarations whose page text could not be read (NO_TEXT), which do not block.
 
     With a change contract only parts the revision adds or changes are problems; parts kept from the
     baseline are listed as inherited."""
-    problems, inherited = [], []
+    problems, inherited, unchecked = [], [], []
     check_files = library_present()
     ctx = context(intent)
     for comp in intent.get('components') or []:
@@ -237,6 +402,7 @@ def audit_identity(intent, bases, touched=None):
             continue
         ref = comp.get('ref')
         kind, conflict = kind_of(comp)
+        conflict = conflict or (category(comp, kind)[1] if kind else None)
         kind_cls = part_class(comp, ctx)
         lack = [conflict] if conflict else []
         if kind is None:
@@ -250,21 +416,32 @@ def audit_identity(intent, bases, touched=None):
                 lack.append('数据手册（datasheet%s）' % ('；定制磁件写 fields.DesignSheet' if magnetic else ''))
             elif check_files and not find(sheet, bases):
                 lack.append('能找到的数据手册（%s 不在交付目录或知识库里）' % sheet)
-            if kind != 'ic' and not design_sheet(comp):
-                lack += declaration_lack(comp, kind, bases, check_files)
+            if needs_declaration(comp, kind, kind_cls):
+                status, detail = verify_declaration(comp, kind, bases, check_files)
+                if status == 'NO_TEXT':
+                    unchecked.append('%s：%s' % (ref, detail))
+                elif status != 'VERIFIED':
+                    lack.append(detail if status == 'MISSING' else '核对通过的类型声明（%s：%s）' % (status, detail))
         else:
             rating = '%s %s %s' % (comp.get('value') or '', fields(comp).get('Specification') or '', fields(comp).get('Rating') or '')
             if kind == 'capacitor' and not VOLTAGE.search(rating):
                 lack.append('耐压（写在值或 fields.Specification 里）')
             if kind == 'inductor' and not CURRENT.search(rating):
                 lack.append('额定电流（写在值或 fields.Specification 里）')
+            cat = category(comp, kind)[0]
+            if cat in (SENSE_R, POWER_R):
+                need = (('阻值', ohms(comp.get('value')) is not None),) if cat == SENSE_R else ()
+                need += (('容差', tolerance(rating) is not None), ('功率', watts(rating) is not None))
+                lack += ['%s（%s要写）' % (name, cat.split('/')[1]) for name, ok in need if not ok]
         if not lack:
             continue
         lack = [x for x in lack if x != conflict]
         said = ([conflict] if conflict else []) + (['缺' + '、'.join(lack)] if lack else [])
-        line = '%s %s（%s）%s' % (CLASS_NAMES.get(kind_cls, '器件'), ref, comp.get('value', ''), '；'.join(said))
+        why = special_spec(comp, kind) if kind_cls == SPECIAL else None
+        line = '%s %s（%s%s）%s' % (CLASS_NAMES.get(kind_cls, '器件'), ref, comp.get('value', ''),
+                                  '；升为特殊器件：' + why if why else '', '；'.join(said))
         (problems if touched is None or ref in touched else inherited).append(line)
-    return problems, inherited
+    return problems, inherited, unchecked
 
 
 def audit_citations(intent, closure, bases):
@@ -305,3 +482,93 @@ def audit_citations(intent, closure, bases):
                 refs = gap.get('refs') if isinstance(gap.get('refs'), list) else []
                 bound('待办 %s 的第 %d 项资料缺口' % (item.get('id'), i), gap.get('source'), [r for r in refs if text(r)])
     return problems
+
+
+# Parts that do not conduct DC between their pins when nets are grouped into DC domains (schematic-review
+# checkers/domains.py); an unknown part merges nothing.
+NON_CONDUCTING = ('capacitor', 'transformer', 'opto', 'relay', 'crystal', 'connector', 'testpoint', 'battery', None)
+PROTECTION_KINDS = ('fuse', 'varistor', 'tvs', 'zener')
+MAINS_SIDE_KINDS = ('fuse', 'varistor', 'connector', 'relay')
+APPROVAL = re.compile(r'IEC|EN\s?\d|UL|GB|CQC|VDE|T[ÜU]V|CSA|ENEC|CCC|datasheet:.+#p\d+')
+SAFETY_RELEVANT = ('fuse', 'varistor', 'transformer', 'opto')
+
+
+def domains(intent, ctx=None):
+    """{net: domain root}: nets joined through every part that conducts DC between its pins."""
+    ctx = ctx or context(intent)
+    parent = {}
+
+    def root(n):
+        parent.setdefault(n, n)
+        while parent[n] != n:
+            parent[n] = parent[parent[n]]
+            n = parent[n]
+        return n
+
+    for comp in intent.get('components') or []:
+        nets = sorted(n for n in ctx['pins'].get(comp.get('ref'), ()) if n)
+        for n in nets:
+            root(n)
+        if isinstance(comp, dict) and kind_of(comp)[0] not in NON_CONDUCTING:
+            for n in nets[1:]:
+                parent[root(n)] = root(nets[0])
+    return {n: root(n) for n in list(parent)}
+
+
+def safety_positions(intent, ctx=None):
+    """{ref: 'isolation' | 'mains'}: parts bridging a hazardous-voltage domain and another, and safety parts on
+    high_voltage_nets. Empty when high_voltage_nets is not declared."""
+    ctx = ctx or context(intent)
+    if ctx['hv'] is None:
+        return {}
+    dom = domains(intent, ctx)
+    hazardous = {dom[n] for n in ctx['hv'] if n in dom}
+    out = {}
+    for comp in intent.get('components') or []:
+        if not isinstance(comp, dict):
+            continue
+        nets = ctx['pins'].get(comp.get('ref'), set())
+        groups = {dom[n] for n in nets if n in dom}
+        kind = kind_of(comp)[0]
+        if groups & hazardous and groups - hazardous:
+            out[comp['ref']] = 'isolation'
+        elif nets & ctx['hv'] and (kind in MAINS_SIDE_KINDS or (kind == 'capacitor' and category(comp, kind)[0] == SAFETY_C)):
+            out[comp['ref']] = 'mains'
+    return out
+
+
+def protection_part(comp, ctx):
+    kind = kind_of(comp)[0]
+    return kind in PROTECTION_KINDS or (kind == 'ntc' and part_class(comp, ctx) == SPECIAL)
+
+
+def audit_safety(intent, closure, touched=None):
+    """(problems, inherited): protection parts without a two-sided threshold calculation, parts at safety positions
+    without an approval, safety capacitors without their discharge or touch-current calculation, and a design with
+    safety parts but no high_voltage_nets."""
+    ctx = context(intent)
+    calcs = [c for c in (closure or {}).get('calculations') or [] if isinstance(c, dict)]
+    in_calc = {r for c in calcs for r in c.get('refs') or []}
+    in_threshold = {r for c in calcs if c.get('kind') == 'threshold' for r in c.get('refs') or []}
+    positions = safety_positions(intent, ctx)
+    problems, inherited = [], []
+
+    def add(ref, line):
+        (problems if touched is None or ref in touched else inherited).append(line)
+
+    comps = [c for c in intent.get('components') or [] if isinstance(c, dict)]
+    if ctx['hv'] is None and any(kind_of(c)[0] in SAFETY_RELEVANT or category(c)[0] == SAFETY_C for c in comps):
+        line = '设计网表没写 high_voltage_nets（工作电压高于 30 V 或接市电的网络），判不出安全防护位置'
+        (problems if touched is None else inherited).append(line)
+    for comp in comps:
+        ref, value = comp.get('ref'), comp.get('value', '')
+        if protection_part(comp, ctx) and ref not in in_threshold:
+            add(ref, '保护器件 %s（%s）要进一条两侧都算的阈值计算（kind: threshold，含 no_false_trip 与 protection）' % (ref, value))
+        where = positions.get(ref)
+        if where and not APPROVAL.search(str(fields(comp).get('Approval') or '')):
+            add(ref, '%s %s（%s）缺认证（fields.Approval：认证标准与证书号，或手册认证页 datasheet:<路径>#p<页>）' % (
+                '跨隔离的器件' if where == 'isolation' else '市电/高压侧的安规件', ref, value))
+        if category(comp)[0] == SAFETY_C and ref not in in_calc:
+            y = where == 'isolation' or prefix(comp) == 'CY' or re.search(r'(?<![A-Za-z0-9])Y[12]', spec_text(comp))
+            add(ref, '%s %s（%s）要进%s计算的 refs' % ('Y 电容' if y else 'X 电容', ref, value, '接触电流' if y else '放电'))
+    return problems, inherited

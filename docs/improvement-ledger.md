@@ -8,6 +8,26 @@ in the library and have the cited page); `Changed:` the files touched.
 entry that changes the ASG 纲要 or the 绘图纲要 O1–O8 also carries `Approved:
 user:<date>` and `Outline:` the hash from `check_ledger.py --outline-hash`.
 
+## 器件分级细化：电阻电容子类与档位、保护器件阈值计算、安全防护位置认证、类型声明照 SR 核对 (2026-10-26)
+
+评估上一版分级时找出三处不完整，用户逐项定了改法（草案 `docs/proposals/2026-10-26-器件分级第3-5-6项草案.md`）。
+一、常规件的规格只核电容耐压和电感电流，也不知道规格是否超出常规范围：电阻、电容按知识库二级类分子类（`fields.Category`，
+依据为声明、手册所在库目录或推断），检流电阻和功率电阻按知识库目录核出的档位定级（WSL、ERJ 低阻、CRL、CRA、PR0x、AC 系列，注明页码），
+档内为常规件、超档或要求脉冲/浪涌为特殊器件；检流电阻要写阻值、容差、功率，功率电阻要写容差、功率。
+二、特殊器件的配合计算按保护作用、安规认证按安全防护位置：保险丝、压敏、TVS、稳压管和电源路径 NTC 要进两侧都算的阈值计算；
+按 SR `domains.py` 的口径划分直流域，跨危险电压域的器件和 `high_voltage_nets` 上的安规件要写 `fields.Approval`，X/Y 电容要进放电/接触电流计算，
+有安规器件而没写 `high_voltage_nets` 是记录问题。
+三、类型声明核得粗、写得累：核对照 SR `datasheet_kinds.verify` 的六种结果（取不到文字列为“类型声明没核对”，不算通过也不拦），
+具体类型优先，三个字母以内的关键词按整词匹配；`propose_part_kinds.py` 从手册首页前 8 行给候选（R6/R7 实测前 8 行 39/51 个唯一且正确、0 个给错，
+整页约一半）。型号族关键词加边界：R7 U701 TPS26630（eFuse）曾被 `PS2[5-9]\d\d` 认成光耦（SR 同样，已在 SR 另开 session 修），
+20 个公开工程重跑另修正 10 个（BSS138 被 `SS\d{2}` 认成二极管、LTV-817/827 光耦漏认）。
+R6 试算：R303（0.30 Ω 1% 2 W 超 S4）和 R403、R407、R504、R604（脉冲）升为特殊器件，R304/R305 缺容差，F101、RV101、TH101、D303 缺阈值计算，
+CX101、CY301 缺放电/接触电流计算；R7：R106、R201、R303、R503 只写了阻值，CY301 缺接触电流计算；两版都没写 `high_voltage_nets`。
+
+- Event: user:2026-10-26
+- Causes: rule_missing 3
+- Changed: references/part-roles.md, references/requirements-to-intent.md, references/design-closure.md, scripts/schematic_layout/part_classes.py, scripts/render_design_report.py, scripts/propose_part_kinds.py, tests/test_part_classes.py, tests/test_design_report.py, docs/proposals/2026-10-26-器件分级第3-5-6项草案.md, docs/improvement-ledger.md
+
 ## 纲要 P3 与器件分级对齐 schematic-review：只有关键器件和特殊器件要写料号 (2026-10-26)
 
 用户指出 ASG 作为设计方不应要求所有器件都有料号，P3“电路以确切 MPN 的数据手册为准”管得太宽，两个技能在器件分类上要对齐：

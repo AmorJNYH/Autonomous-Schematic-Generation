@@ -11,7 +11,8 @@ from schematic_layout import part_classes as pc
 
 BXW = 'Datasheet/20_电容器/铝电解电容/Rubycon - BXW.pdf'
 SR = Path.home() / '.agents' / 'skills' / 'schematic-review' / 'scripts'
-PAGE = 'SMBJ series 600 W surface mount transient voltage suppressor. Unidirectional TVS, peak pulse power 600 W, ' * 2
+PAGE = ('SMBJ series 600 W surface mount transient voltage suppressor. Unidirectional TVS, peak pulse power 600 W. '
+        'Replaces Zener diode clamps. ') * 2
 
 
 def part(ref, lib, value='', mpn='', datasheet='', **fields):
@@ -117,7 +118,7 @@ class IdentityTests(unittest.TestCase):
             part('T301', 'PD100:Transformer', '300uH 56:7:21', mpn='R7-ETD39', DesignSheet='T301设计单.md'),
             part('L201', 'Device:L', '300uH'),
             part('D302', 'Device:D_Schottky', 'BAT54'),
-            part('R303', 'Device:R', '0R30', Specification='2W'),
+            part('R303', 'Device:R', '0R30', Specification='1%/1W'),
             part('BZ1', 'Device:Buzzer', 'Buzzer'),
             declared('D706', 'PD100:D_TVS_Uni', 'tvs', 'Unidirectional TVS', 'SMBJ24A')]}
 
@@ -125,8 +126,9 @@ class IdentityTests(unittest.TestCase):
         return [line.split('（')[0].split(' ')[-1] for line in lines]
 
     def test_new_design_lists_every_incomplete_part_as_a_problem(self):
-        problems, inherited = pc.audit_identity(self.intent(), [self.root])
+        problems, inherited, unchecked = pc.audit_identity(self.intent(), [self.root])
         self.assertEqual([], inherited)
+        self.assertEqual([], unchecked)
         self.assertEqual(['C201', 'D712', 'CX101', 'L201', 'BZ1'], self.refs(problems))
         self.assertIn('常规件 C201（120u）缺耐压', problems[0])
         self.assertIn('关键器件 D712（SMBJ24A）缺类型声明', problems[1])
@@ -134,10 +136,32 @@ class IdentityTests(unittest.TestCase):
         self.assertIn('缺额定电流', problems[3])
         self.assertIn('器件类型（认不出，写 fields.Kind', problems[4])
 
-    def test_the_quote_names_the_kind_and_is_on_the_cited_page(self):
-        for quote, said in (('Schottky barrier rectifier', '没有说出 tvs'), ('Bidirectional TVS 400 W', '不在 SMBJ24A.pdf 第 1 页')):
-            intent = {'nets': {}, 'components': [declared('D706', 'PD100:D_TVS_Uni', 'tvs', quote)]}
-            self.assertIn(said, pc.audit_identity(intent, [self.root])[0][0])
+    def status(self, kind, quote, lib='PD100:D_TVS_Uni'):
+        return pc.verify_declaration(declared('D706', lib, kind, quote), kind, [self.root], True)[0]
+
+    def test_declarations_get_schematic_reviews_statuses(self):
+        self.assertEqual('VERIFIED', self.status('tvs', 'Unidirectional TVS'))
+        self.assertEqual('QUOTE_NOT_FOUND', self.status('tvs', 'Bidirectional TVS 400 W'))
+        # A Zener or TVS quote is not evidence for a plain diode, and naming a second kind is a conflict.
+        self.assertEqual('QUOTE_LACKS_TYPE', self.status('tvs', 'Replaces Zener diode clamps'))
+        self.assertEqual('QUOTE_LACKS_TYPE', self.status('diode', 'Unidirectional TVS', 'Device:D'))
+        self.assertEqual('QUOTE_CONFLICT', self.status('tvs', 'Unidirectional TVS, peak pulse power 600 W. Replaces Zener diode'))
+        problems = pc.audit_identity({'nets': {}, 'components': [declared('D706', 'PD100:D_TVS_Uni', 'tvs', 'Bidirectional TVS')]},
+                                     [self.root])[0]
+        self.assertIn('QUOTE_NOT_FOUND', problems[0])
+
+    def test_a_page_without_text_is_listed_not_passed_or_blocked(self):
+        with mock.patch.object(pc, 'page_text', return_value=''):
+            problems, _, unchecked = pc.audit_identity(
+                {'nets': {}, 'components': [declared('D706', 'PD100:D_TVS_Uni', 'tvs', 'Unidirectional TVS')]}, [self.root])
+        self.assertEqual([], problems)
+        self.assertEqual(1, len(unchecked))
+        self.assertIn('取不出文字', unchecked[0])
+
+    def test_short_cues_are_whole_words(self):
+        self.assertEqual(set(), pc.cues('Thermally controlled; remove the cover'))
+        self.assertEqual({'diode'}, pc.cues('Red LED, 0603'))
+        self.assertEqual({'mosfet'}, pc.cues('N-ChannelMOSFET'))
 
     def test_the_declaration_cites_the_parts_own_datasheet(self):
         comp = declared('D706', 'PD100:D_TVS_Uni', 'tvs', 'Unidirectional TVS')
@@ -150,7 +174,7 @@ class IdentityTests(unittest.TestCase):
 
     def test_revision_blocks_only_parts_it_adds_or_changes(self):
         touched = pc.touched_refs({'add_components': {'D712': {}}, 'component_changes': {'C201': {}}})
-        problems, inherited = pc.audit_identity(self.intent(), [self.root], touched)
+        problems, inherited, _ = pc.audit_identity(self.intent(), [self.root], touched)
         self.assertEqual(['C201', 'D712'], self.refs(problems))
         self.assertEqual(['CX101', 'L201', 'BZ1'], self.refs(inherited))
 
@@ -196,6 +220,137 @@ class CitationTests(unittest.TestCase):
         self.assertEqual([], self.problems(
             params=[{'name': 'Bsat', 'ref': 'T301', 'source': 'datasheet:Datasheet/21_电感器与磁件/铁氧体磁芯/TDK - N87.pdf#p2'}],
             gaps=[{'source': 'datasheet:Standard/GB 4943.1 - 2022.pdf#p40'}]))
+
+
+class KeywordTests(unittest.TestCase):
+    def test_a_family_never_starts_inside_a_longer_part_number(self):
+        # R7 U701 TPS26630RGER (eFuse) read as a PS25xx optocoupler; schematic-review reads it the same way.
+        self.assertEqual('ic', pc.kind_of(part('U701', 'PD100:TPS26630RGER', 'TPS26630RGER'))[0])
+        for p in (part('U2', 'x:PS2501-1'), part('U3', 'x:TLP291'), part('U4', 'x:X', 'LTV-817'), part('U5', 'x:SFH6186-4')):
+            self.assertEqual('opto', pc.kind_of(p)[0], p['lib_id'])
+        self.assertEqual('tvs', pc.kind_of(part('D2', 'x:X', 'SMBJ24A'))[0])
+        self.assertEqual('zener', pc.kind_of(part('D3', 'Device:D', 'BZT52H-B18'))[0])
+
+
+class TierTests(unittest.TestCase):
+    # R6: R303 0.30 Ω 1 % 2 W exceeds the sense tier S4 (1 W); R403/R504/R604 are pulse resistors.
+    def level(self, ref, lib, value, spec=''):
+        p = part(ref, lib, value, Specification=spec)
+        return pc.category(p)[0], pc.part_class(p, pc.context({'high_voltage_nets': []}))
+
+    def test_resistors_and_capacitors_by_subcategory_and_tier(self):
+        cases = [
+            (('R503', 'Device:R', '10m/1%/1W'), (pc.SENSE_R, 'common')),
+            (('R201', 'Device:R', '0.10/1%/1W'), (pc.SENSE_R, 'common')),
+            (('R303', 'Device:R', '0.30/1%/2W'), (pc.SENSE_R, 'special')),
+            (('R9', 'Device:R', '0.0005'), (pc.SENSE_R, 'special')),
+            (('R8', 'Device:R', '10m/1%/1W', '50ppm'), (pc.SENSE_R, 'special')),
+            (('R304', 'Device:R', '33k/3W'), (pc.POWER_R, 'common')),
+            (('R7', 'Device:R', '1k', '10W'), (pc.POWER_R, 'special')),
+            (('R403', 'Device:R', '4.7k/1%/0.5W/pulse'), (pc.GENERAL_R, 'special')),
+            (('R1', 'Device:R', '10k'), (pc.GENERAL_R, 'common')),
+            (('RV3', 'Device:R_Potentiometer_Trim', '10k'), (pc.POT_R, 'common')),
+            (('C1', 'Device:C', '1n/630V', 'MKP snubber dv/dt'), (pc.FILM, 'special')),
+            (('C2', 'Device:C', '100n/50V/X7R'), (pc.MLCC, 'common')),
+            (('C3', 'Device:C_Polarized', '100u/35V'), (pc.ALUMINUM, 'common')),
+            (('C4', 'Device:C_Polarized', '330u/35V', 'polymer ESR≤20mΩ'), (pc.POLYMER, 'common')),
+            (('CY1', 'Device:C', '1n/400Vac'), (pc.SAFETY_C, 'special'))]
+        for args, expected in cases:
+            self.assertEqual(expected, self.level(*args), args[0])
+
+    def test_the_library_folder_and_a_declaration_set_the_subcategory(self):
+        filed = part('R5', 'Device:R', '10k', datasheet='raw/Datasheet/22_电阻器/电流检测电阻 (分流)/Vishay - WSL.pdf')
+        self.assertEqual(pc.SENSE_R, pc.category(filed)[0])
+        self.assertIn('不是电阻的子类', pc.category(part('R6', 'Device:R', '10k', Category='20_电容器/铝电解电容'))[1])
+
+    def test_common_sense_and_power_resistors_state_their_ratings(self):
+        # R7 kept only the values of its sense resistors (R106 0R68, R201 0R10, R303 0R30, R503 10m).
+        intent = {'components': [part('R106', 'Device:R', '0R68'), part('R304', 'Device:R', '33k/3W')]}
+        with mock.patch.object(pc, 'library_present', return_value=False):
+            problems = pc.audit_identity(intent, [])[0]
+        self.assertIn('容差（电流检测电阻 (分流)要写）、功率', problems[0])
+        self.assertIn('容差（功率电阻 (线绕_金属板)要写）', problems[1])
+
+
+def safety_intent(**extra):
+    nets = {'L_IN': ['J1.1', 'F1.1'], 'N_IN': ['J1.2', 'RV1.2', 'CX1.2', 'BR1.3'], 'L_F': ['F1.2', 'RV1.1', 'CX1.1', 'BR1.2'],
+            'RECT': ['BR1.1', 'T1.1'], 'PGND': ['BR1.4', 'CY1.1', 'U1.4'], 'SW': ['T1.2', 'Q1.3'], 'SEC': ['T1.3', 'D1.2'],
+            'VOUT': ['D1.1', 'U1.1', 'R1.1'], 'SGND': ['T1.4', 'CY1.2', 'R2.2'], 'FB': ['U1.2', 'R1.2', 'R2.1'],
+            'COMP': ['U1.3', 'Q1.1'], 'GATE': ['Q1.2']}
+    comps = [part('J1', 'Connector:Conn_01x02'), part('F1', 'Device:Fuse', 'T3.15A/250Vac'), part('RV1', 'Device:Varistor', 'S14K275'),
+             part('CX1', 'Device:C', '220n/X2/310Vac'), part('BR1', 'PD100:GBU4M'), part('T1', 'PD100:Transformer'),
+             part('Q1', 'Transistor_FET:IPD80R280P7'), part('D1', 'Device:D_Schottky'), part('CY1', 'Device:C', '1n/Y1/400Vac'),
+             part('U1', 'x:SFH6186-4'), part('R1', 'Device:R', '1k'), part('R2', 'Device:R', '10k')]
+    intent = {'nets': nets, 'high_voltage_nets': ['L_IN', 'N_IN', 'L_F', 'RECT'], 'components': comps}
+    intent.update(extra)
+    return intent
+
+
+class SafetyTests(unittest.TestCase):
+    def test_positions_follow_dc_domains_and_high_voltage_nets(self):
+        self.assertEqual({'J1': 'mains', 'F1': 'mains', 'RV1': 'mains', 'CX1': 'mains', 'T1': 'isolation', 'CY1': 'isolation',
+                          'U1': 'isolation'}, pc.safety_positions(safety_intent()))
+
+    def test_protection_needs_a_two_sided_threshold_and_safety_positions_an_approval(self):
+        problems, _ = pc.audit_safety(safety_intent(), {'calculations': [{'id': 'FUSE', 'refs': ['F1', 'RV1']}]})
+        text = '\n'.join(problems)
+        for said in ('保护器件 F1', '保护器件 RV1', '跨隔离的器件 T1', '跨隔离的器件 CY1', '跨隔离的器件 U1',
+                     '市电/高压侧的安规件 J1', 'X 电容 CX1（220n/X2/310Vac）要进放电', 'Y 电容 CY1（1n/Y1/400Vac）要进接触电流'):
+            self.assertIn(said, text)
+        intent = safety_intent()
+        for c in intent['components']:
+            c['fields']['Approval'] = 'IEC 60384-14；UL E123456'
+        closure = {'calculations': [{'id': 'INPUT', 'kind': 'threshold', 'refs': ['F1', 'RV1', 'CX1']},
+                                    {'id': 'TOUCH', 'refs': ['CY1']}]}
+        self.assertEqual(([], []), pc.audit_safety(intent, closure))
+
+    def test_a_design_with_safety_parts_declares_its_high_voltage_nets(self):
+        intent = safety_intent()
+        del intent['high_voltage_nets']
+        problems, inherited = pc.audit_safety(intent, {})
+        self.assertIn('没写 high_voltage_nets', problems[0])
+        self.assertIn('没写 high_voltage_nets', pc.audit_safety(intent, {}, touched=set())[1][0])
+
+
+class ProposeTests(unittest.TestCase):
+    def test_candidates_come_from_the_title_lines_of_page_one(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
+        import propose_part_kinds
+        with tempfile.TemporaryDirectory() as tmp:
+            sheet = Path(tmp) / 'Datasheet' / '23_分立半导体' / 'TVS二极管' / 'Vishay - SMBJ.pdf'
+            sheet.parent.mkdir(parents=True)
+            sheet.write_bytes(b'%PDF')
+            title = 'SMBJ5.0A thru SMBJ188CA\nSurface Mount TRANSZORB Transient Voltage Suppressors\n' + 'body diode text\n' * 20
+            intent = {'components': [part('D706', 'PD100:D_TVS_Uni', 'SMBJ24A', 'SMBJ24A-E3/52', sheet.relative_to(tmp).as_posix())]}
+            with mock.patch.object(propose_part_kinds, 'page_text', return_value=title), \
+                    mock.patch.object(pc, 'library_present', return_value=False):
+                rows = propose_part_kinds.propose(intent, [Path(tmp)])
+        self.assertEqual('single', rows[0]['status'])
+        self.assertTrue(rows[0]['agrees'])
+        self.assertEqual({'Kind': 'tvs', 'KindSource': 'datasheet:Datasheet/23_分立半导体/TVS二极管/Vishay - SMBJ.pdf#p1',
+                          'KindQuote': 'Surface Mount TRANSZORB Transient Voltage Suppressors', 'Category': '23_分立半导体/TVS二极管'},
+                         rows[0]['candidates'][0])
+
+
+@unittest.skipUnless((SR / 'datasheet_kinds.py').is_file(), 'schematic-review not installed')
+class SchematicReviewParityTests(unittest.TestCase):
+    def test_declarations_get_the_same_status_in_both_skills(self):
+        sys.path.insert(0, str(SR))
+        try:
+            import datasheet_kinds
+        finally:
+            sys.path.remove(str(SR))
+        cases = [('tvs', 'Unidirectional TVS'), ('tvs', 'Bidirectional TVS 400 W'), ('tvs', 'Replaces Zener diode clamps'),
+                 ('diode', 'Unidirectional TVS'), ('tvs', 'Unidirectional TVS, peak pulse power 600 W. Replaces Zener diode')]
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / 'SMBJ24A.pdf').write_bytes(b'%PDF smbj')
+            with mock.patch.object(pc, 'check', return_value={'status': 'PASS', 'reason': '', 'unshown': []}), \
+                    mock.patch.object(pc, 'page_text', return_value=PAGE):
+                for kind, quote in cases:
+                    ours = pc.verify_declaration(declared('D706', 'PD100:D_TVS_Uni', kind, quote), kind, [Path(tmp)], True)[0]
+                    theirs = datasheet_kinds.verify({'kind': kind, 'page': 1, 'quote': quote}, 'SMBJ24A.pdf',
+                                                    read_page=lambda path, page: PAGE)['status']
+                    self.assertEqual(theirs, ours, (kind, quote))
 
 
 if __name__ == '__main__':

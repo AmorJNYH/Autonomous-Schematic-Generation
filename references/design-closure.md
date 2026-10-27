@@ -138,7 +138,9 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
     `locator` 文字不核。找不到知识库或没有 poppler（`pdfinfo`/`pdftotext`）时记为“没核对”并写明原因。
   - 引用器件手册（`datasheet:Datasheet/…`）的参数，不论依据，都要写 `ref`，且设计网表里该位号的 `datasheet` 必须是同一份手册
     （同字节，或文件名去掉厂商前缀后型号相同）；定制磁件写了 `fields.DesignSheet` 的，引用其磁芯、材料手册不受此限。
-    常规件因此被引用时，按 [part-roles.md](part-roles.md) 第 1 节升为特殊器件，要写 `mpn`。`render_design_report.py` 核对，不一致是记录问题。
+    常规件因此被引用时，按 [part-roles.md](part-roles.md) 第 1 节升为特殊器件，要写 `mpn`。
+  - 保护器件（保险丝、压敏、TVS、稳压管、电源路径上的 NTC）都要进一条 `kind: threshold` 计算的 `refs`，两侧都算；
+    X 电容要进放电计算、Y 电容要进接触电流计算的 `refs`（见 [part-roles.md](part-roles.md) 第 1 节“保护器件与安全防护位置”）。`render_design_report.py` 核对，不一致是记录问题。
   - `derived`：由其他值推出，写 `derivation`，`source` 是手册页或 `calc:<计算 id>`。
   - `design_choice`：本设计选定的值（电阻阻值、容差档、匝数），写 `ref`。
   - `model`：工程假设或折减（CTR 保持系数、效率包络等），写 `reason`。

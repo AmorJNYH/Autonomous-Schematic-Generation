@@ -733,10 +733,15 @@ def render(root, notes=None, title=None):
         if problem:
             problems.append(problem)
     bases = [root, record]
-    identity, inherited = part_classes.audit_identity(intent, bases, part_classes.touched_refs(contract))
+    touched = part_classes.touched_refs(contract)
+    identity, inherited, kinds_unchecked = part_classes.audit_identity(intent, bases, touched)
+    safety, safety_inherited = part_classes.audit_safety(intent, closure, touched)
     if identity:
         problems.append('关键器件和特殊器件要写确切料号、数据手册和类型声明，常规件要写规格（见 part-roles.md 第 1 节）：' + '；'.join(identity[:6])
                         + ('；等共 %d 个' % len(identity) if len(identity) > 6 else ''))
+    if safety:
+        problems.append('保护器件与安全防护位置（见 part-roles.md 第 1 节）：' + '；'.join(safety[:6])
+                        + ('；等共 %d 项' % len(safety) if len(safety) > 6 else ''))
     problems += part_classes.audit_citations(intent, closure, bases)
     cite_problems, cite_review, cite_unchecked = check_citations(selection, data['lessons.json'], root)
     problems += cite_problems
@@ -818,6 +823,8 @@ def render(root, notes=None, title=None):
     if inherited:
         missing.append('%d 个沿用基线的器件缺确切料号、数据手册、类型声明或规格：%s' % (len(inherited), '、'.join(
             line.split('（')[0].split(' ')[-1] for line in inherited)))
+    if safety_inherited:
+        missing.append('沿用基线的保护器件与安全防护位置有 %d 项未补：%s' % (len(safety_inherited), '；'.join(safety_inherited[:6])))
     by_stage = Counter(w.get('stage') for w in open_work)
     if open_work:
         missing.append('%d 件未关闭项（%s）' % (len(open_work), '，'.join(
@@ -1038,6 +1045,11 @@ def render(root, notes=None, title=None):
                                           '、'.join(num(v) for v in r.get('values') or [])) for r in cite_review]
             out.append('')
         out += ['- %s' % reason for reason in cite_unchecked] + ([''] if cite_unchecked else [])
+
+    if kinds_unchecked:
+        out += ['## 类型声明没核对', '',
+                '下面器件的类型声明所引手册页取不出文字（扫描版或没有 pdftotext），原文是否在页上没有核对，请对照原页确认。', '']
+        out += ['- %s' % line for line in kinds_unchecked] + ['']
 
     kept = [f for f in ordering['flagged'] if text(f['reason'])]
     if kept or ordering['not_checked']:

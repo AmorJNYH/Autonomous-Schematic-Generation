@@ -308,6 +308,17 @@ class DesignReportTests(unittest.TestCase):
         self.assertFalse(any('关键器件和特殊器件' in p for p in problems), problems)
         self.assertIn('1 个沿用基线的器件缺确切料号、数据手册、类型声明或规格：U1', text)
 
+    def test_protection_and_safety_positions_are_report_problems(self):
+        self.d.write('electrical-intent.json', {
+            'nets': {'L_IN': ['F1.1'], 'L_F': ['F1.2', 'U1.1']}, 'high_voltage_nets': ['L_IN', 'L_F'],
+            'components': [{'ref': 'U1', 'value': 'XYZ100', 'mpn': 'XYZ100', 'datasheet': '设计资料/X - XYZ100.pdf'},
+                           {'ref': 'F1', 'lib_id': 'Device:Fuse', 'value': 'T2A/250Vac'}]})
+        text, problems = self.d.report()
+        found = [p for p in problems if p.startswith('保护器件与安全防护位置')]
+        self.assertTrue(found, problems)
+        self.assertIn('保护器件 F1', found[0])
+        self.assertIn('市电/高压侧的安规件 F1', found[0])
+
     def test_selection_is_required_and_checked(self):
         (self.d.record / 'selection.json').unlink()
         _, problems = self.d.report()
