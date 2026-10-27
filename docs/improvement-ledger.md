@@ -8,6 +8,19 @@ in the library and have the cited page); `Changed:` the files touched.
 entry that changes the ASG 纲要 or the 绘图纲要 O1–O8 also carries `Approved:
 user:<date>` and `Outline:` the hash from `check_ledger.py --outline-hash`.
 
+## 器件类型对齐 schematic-review 的“器件类型的依据”：共模扼流圈、耦合电感、整词 fuse 与压制规则 (2026-10-27)
+
+SR 在 main（c806601）落地“器件类型的依据”后，ASG 的类型词表对齐测试失败：SR 新增的 `common_mode_choke`、`coupled_inductor` ASG 没有。
+补齐：两类放在 `diode` 之后、`ferrite`/`inductor` 之前，词与线索照 SR；`fuse` 加线索 `pptc`；短线索与 `fuse` 按 SR 的 `named_by` 整词匹配
+（可带复数，小写接大写算分词，“Littelfuse”不命中）；原文说出 IC 角色时压掉分立器件、`fuse`、`relay`（ASG 照 SR `catalog.DEVICE_ROLES`
+抄一份 IC 角色线索，只用于压制，对齐测试核对不少于 SR），说出 `ntc`/`varistor` 时压掉 `fuse`，去空格后含 `relaydriver` 时压掉 `relay`；
+ASG 的电感线索有 inductor/choke 而 SR 没有，所以说出两种多绕组磁件时压掉 `inductor`。以前认成电感的这两类照电感处理：
+可作为 `inductor` 符号上的更具体声明、带磁件设计单为关键器件、常规件要写额定电流。新增逐句与 SR 比对线索结果的测试。
+
+- Event: user:2026-10-27
+- Causes: rule_missing 1
+- Changed: scripts/schematic_layout/part_classes.py, references/part-roles.md, tests/test_part_classes.py, docs/improvement-ledger.md
+
 ## 需求澄清定下后问用户要不要直接改原始需求文件 (2026-10-27)
 
 R8 的两条需求澄清答复后只写回了 `design-closure.json` 的需求清单，用户需求.md 和工程规格.md 没动，因为规则写着“用户的需求文档本身不改”。

@@ -49,11 +49,15 @@ KINDS = OrderedDict([
     ('bridge_rectifier', Kind('整流桥', ('BR',), (r'BRIDGE|' + B + r'(?:GBU\d|KBP\d|DB10\d)',), ('bridgerectifier', 'bridge'))),
     ('diode', Kind('二极管', ('D', 'LED', 'CR'), (r':D(?:_|\s|$)|:LED|SCHOTTKY|DIODE|' + B + r'(?:SS\d{2}|BAT\d|1N4\d{3}|1N58\d)|二极管',),
                    ('rectifier', 'diode', 'schottky', 'led'))),
+    # Multi-winding magnetics by what they do, above the CHOKE and ferrite words (schematic-review 2026-10-27 A1b).
+    ('common_mode_choke', Kind('共模扼流圈', (), (r'COMMON[-_ ]?MODE|共模',),
+                               ('commonmodechoke', 'commonmodefilter', 'commonmodeinductor', 'commonmodecoil'))),
+    ('coupled_inductor', Kind('耦合电感', (), (r'COUPLED[-_ ]?INDUCTOR|耦合电感',), ('coupledinductor',))),
     ('ferrite', Kind('磁珠', ('FB',), (r'FERRITE|BEAD|' + B + r'(?:BLM\d|MPZ\d)|磁珠',), ('ferrite', 'bead'))),
     ('inductor', Kind('电感', ('L', 'FL'), (r':L(?:_|\s|$)|:CMC|INDUCTOR|CHOKE|电感',), ('inductor', 'choke'))),
     ('crystal', Kind('晶体', ('Y', 'X'), (r'CRYSTAL|XTAL|\bOSC(?:ILLATOR)?\b|晶振|晶体',), ('crystal', 'oscillator', 'resonator'))),
     ('transformer', Kind('变压器', ('T', 'TR'), (r'TRANSFORMER|变压器',), ('transformer',))),
-    ('fuse', Kind('保险丝', ('F',), (r'FUSE|PTC|保险',), ('fuse', 'ptc', 'resettable', 'polyswitch'))),
+    ('fuse', Kind('保险丝', ('F',), (r'FUSE|PTC|保险',), ('fuse', 'pptc', 'ptc', 'resettable', 'polyswitch'))),
     ('battery', Kind('电池', ('BT', 'BAT'), (r'(?:^|[\s:_])BATTERY|电池',), ('battery',))),
     ('testpoint', Kind('测试点', ('TP',), (r'TEST_?POINT|TEST-?PAD',), ('testpoint',))),
     ('connector', Kind('连接器', ('J', 'P', 'CN'), (r'CONNECTOR[A-Z_]*:|CONN_\d|USB_C_|RECEPTACLE|BARREL_?JACK|PINHEADER|'
@@ -70,7 +74,8 @@ KINDS = OrderedDict([
 KEY_KINDS = ('ic', 'mosfet', 'bjt', 'opto', 'transformer', 'zener', 'tvs', 'bridge_rectifier')
 IC_PREFIXES = KINDS['ic'].prefixes
 # A more specific declared kind than the symbol shows is not a conflict.
-REFINES = {'diode': ('tvs', 'zener'), 'inductor': ('transformer', 'ferrite')}
+REFINES = {'diode': ('tvs', 'zener'), 'inductor': ('transformer', 'ferrite', 'common_mode_choke', 'coupled_inductor')}
+MAGNETICS = ('inductor', 'transformer', 'common_mode_choke', 'coupled_inductor')
 SAFETY_CLASS = re.compile(r'(?<![A-Za-z0-9])[XY][12](?![A-Za-z0-9])')
 VOLTAGE = re.compile(r'\d\s*k?V(?![A-Za-z])|\d\s*k?V(?:ac|dc|AC|DC|rms)', re.I)
 CURRENT = re.compile(r'\d\s*m?A(?![A-Za-z])|\d\s*m?A(?:rms|pk|dc)', re.I)
@@ -270,7 +275,7 @@ def part_class(comp, ctx=None):
         return None
     nets = ctx['pins'].get(comp.get('ref'), set())
     high = ctx['hv'] is None or bool(nets & ctx['hv'])
-    if design_sheet(comp) and kind in ('inductor', 'transformer'):
+    if design_sheet(comp) and kind in MAGNETICS:
         return KEY
     if kind in KEY_KINDS:
         return KEY
@@ -334,18 +339,68 @@ def squash(value):
 
 
 SPECIFIC_DIODES = ('tvs', 'zener', 'bridge_rectifier')     # a quote naming these is not evidence for a plain diode
+# Cues of schematic-review's integrated-circuit roles (catalog.DEVICE_ROLES). ASG declares no IC role; a text naming one
+# describes an IC, and the discretes, fuses and relays it names are its load or its function ("Industrial eFuse" is a
+# load switch, "relay driver" drives a coil). A kind is what the part does at its pins, not what is inside it.
+IC_ROLE_CUES = (
+    'pwmcontroller', 'pfccontroller', 'flybackcontroller', 'currentmodecontroller', 'voltagemodecontroller',
+    'switchingcontroller', 'offlinecontroller', 'quasiresonantcontroller', 'boostcontroller', 'buckcontroller',
+    'powerfactorcorrectioncontroller', 'powerfactorcontroller', 'resonantcontroller', 'llccontroller',
+    'switchmodecontroller', 'pwmcontrol',
+    'gatedriver', 'mosfetdriver', 'igbtdriver', 'bridgedriver', 'fetdriver',
+    'synchronousrectif', 'srcontroller',
+    'pdcontroller', 'powerdelivery', 'usbpd', 'typeccontroller', 'usbccontroller',
+    'voltageregulator', 'lowdropout', 'ldoregulator', 'dcdcconverter', 'buckconverter', 'boostconverter',
+    'switchingregulator', 'stepdownconverter', 'stepupconverter', 'powermanagementic', 'pmic', 'chargepump',
+    'supervisor', 'supervisory', 'voltagemonitor', 'resetcircuit', 'resetic', 'watchdog',
+    'operationalamplifier', 'opamp', 'comparator', 'erroramplifier', 'instrumentationamplifier',
+    'currentsenseamplifier', 'currentshuntmonitor', 'differenceamplifier', 'audioamplifier',
+    'shuntregulator', 'voltagereference', 'shuntreference',
+    'microcontroller', 'microprocessor', 'systemonchip', 'mcu',
+    'transceiver', 'ethernetphy', 'linedriver', 'busdriver',
+    'digitalisolator', 'isolatedgatedriver', 'isolator',
+    'loadswitch', 'hotswap', 'efuse', 'idealdiode', 'powerdistributionswitch', 'currentlimitswitch', 'highsideswitch',
+    'batterycharger', 'chargecontroller', 'chargemanagement', 'switchingcharger', 'linearcharger', 'chargeric',
+    'analogtodigital', 'digitaltoanalog', 'bitadc', 'bitdac', 'channeladc', 'channeldac', 'audiodac', 'audioadc',
+    'sigmadeltaadc', 'deltasigmaadc',
+    'crystaloscillator', 'clockgenerator', 'clockbuffer', 'clocksynthesizer', 'jittercleaner', 'oscillator',
+    'clockdistribution', 'realtimeclock', 'clockmultiplier',
+    'flashmemory', 'serialflash', 'spiflash', 'eeprom', 'sdram', 'lpddr', 'ddr2', 'ddr3', 'ddr4', 'ddr5', 'nandflash',
+    'norflash', 'sram', 'emmc',
+    'leveltranslat', 'levelshifter', 'voltagetranslat', 'voltageleveltranslat',
+    'motordriver', 'steppermotor', 'brushlessdc', 'bldc', 'brusheddc', 'hbridgedriver', 'fullbridgedriver',
+    'halfbridgedriver')
+ROLE_LOADS = {'mosfet', 'bjt', 'diode', 'zener', 'tvs', 'bridge_rectifier', 'fuse', 'relay'}
+WORD_CUES = ('fuse',)   # squashed, "Littelfuse" (a maker's name) holds fuse: read as a word too
+
+
+def named_by(cue, value, flat):
+    """As schematic-review's datasheet_kinds.named_by: a long cue anywhere in the squashed text, a cue of three letters
+    or fewer (or a word cue) as a word of its own; a lowercase-to-capital join counts as a space and a plural s is
+    allowed."""
+    if len(cue) > 3 and cue not in WORD_CUES:
+        return cue in flat
+    spaced = re.sub(r'(?<=[a-z])(?=[A-Z])', ' ', str(value or ''))
+    return re.search(r'(?<![A-Za-z0-9])(?:%s(?![0-9])|(?i:%s)s?(?![a-z0-9]))' % (cue.upper(), cue), spaced) is not None
 
 
 def cues(value, specific=True):
-    """Kinds a datasheet text names, as schematic-review's datasheet_kinds.cues: long cues in the text with spaces and
-    punctuation removed (extraction drops spaces), cues of three letters or fewer as whole words."""
-    flat, low = squash(value), str(value or '').lower()
-    found = {kind for kind, k in KINDS.items() for cue in k.cues
-             if (re.search(r'(?<![a-z0-9])%s(?![a-z0-9])' % cue, low) if len(cue) <= 3 else cue in flat)}
+    """Kinds a datasheet text names, as schematic-review's datasheet_kinds.cues (extraction drops spaces, so long cues
+    are looked for in the squashed text)."""
+    flat = squash(value)
+    found = {kind for kind, k in KINDS.items() for cue in k.cues if named_by(cue, value, flat)}
     if specific and found & set(SPECIFIC_DIODES):
         found.discard('diode')
+    if specific and found & {'common_mode_choke', 'coupled_inductor'}:
+        found.discard('inductor')       # "coupled inductor", "common mode choke": the specific magnetic is the kind
     if specific and 'opto' in found:
         found -= {'diode', 'bjt'}       # an optocoupler names its emitter diode and phototransistor too
+    if specific and any(named_by(cue, value, flat) for cue in IC_ROLE_CUES):
+        found -= ROLE_LOADS
+    if specific and found & {'ntc', 'varistor'}:
+        found.discard('fuse')           # a thermistor or varistor datasheet names its thermally fused (ThermoFuse) types
+    if specific and 'relaydriver' in flat:
+        found.discard('relay')          # a relay driver drives the coil
     return found
 
 
@@ -409,7 +464,7 @@ def audit_identity(intent, bases, touched=None):
             lack.append('器件类型（认不出，写 fields.Kind：%s）' % '、'.join(KINDS))
         elif kind_cls in (KEY, SPECIAL):
             sheet = design_sheet(comp) or comp.get('datasheet')
-            magnetic = kind in ('inductor', 'transformer')
+            magnetic = kind in MAGNETICS
             if not text(comp.get('mpn')):
                 lack.append('料号（mpn）')
             if not text(sheet):
@@ -426,7 +481,7 @@ def audit_identity(intent, bases, touched=None):
             rating = '%s %s %s' % (comp.get('value') or '', fields(comp).get('Specification') or '', fields(comp).get('Rating') or '')
             if kind == 'capacitor' and not VOLTAGE.search(rating):
                 lack.append('耐压（写在值或 fields.Specification 里）')
-            if kind == 'inductor' and not CURRENT.search(rating):
+            if kind in ('inductor', 'common_mode_choke', 'coupled_inductor') and not CURRENT.search(rating):
                 lack.append('额定电流（写在值或 fields.Specification 里）')
             cat = category(comp, kind)[0]
             if cat in (SENSE_R, POWER_R):

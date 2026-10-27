@@ -18,8 +18,9 @@
 
 类型词表与 SR `scripts/device_kinds.py` 一致（ASG 另有 `mechanical`：安装孔、Fiducial、Logo 等）：
 `ic`（集成电路与模块）、`mosfet`（含 IGBT）、`bjt`、`opto`、`transformer`、`zener`、`tvs`、`bridge_rectifier`、`diode`（含 LED）、
-`varistor`、`fuse`（含自恢复保险丝）、`ntc`、`resistor`、`capacitor`、`inductor`、`ferrite`、`crystal`、`connector`、`relay`、`battery`、
-`switch`、`jumper`、`testpoint`、`mechanical`。
+`varistor`、`fuse`（含自恢复保险丝）、`ntc`、`resistor`、`capacitor`、`common_mode_choke`（共模扼流圈）、`coupled_inductor`（耦合电感）、
+`inductor`、`ferrite`、`crystal`、`connector`、`relay`、`battery`、`switch`、`jumper`、`testpoint`、`mechanical`。
+类型按器件对外的功能定，内部构成不是类型：eFuse 是负载开关（`ic`），集成开关管的 DC-DC 是稳压器（`ic`），只有对外露出 G/D/S 的才是 `mosfet`。
 
 - **关键器件和特殊器件**（`ic` 和带 `fields.DesignSheet` 的定制磁件除外）在设计网表里声明类型：`fields.Kind` 写类型，
   `fields.KindSource` 写本器件数据手册的页（`datasheet:<库内路径>#p<页>`，与 `datasheet` 是同一份手册），`fields.KindQuote`
@@ -38,13 +39,16 @@
   | NO_TEXT | 有手册但该页取不出文字（扫描版或没有 pdftotext） | 不算通过：列入报告“类型声明没核对”，不拦打包 |
 
   具体类型优先：原文说出 TVS、稳压管或整流桥时，不算普通 `diode` 的证据；原文是光耦时，不算 `diode`、`bjt` 的证据。
-  三个字母以内的关键词（`led`、`mov`、`ptc`、`x2`……）按整词匹配，较长的在去掉空格和标点的文字里匹配（PDF 抽取常丢空格）；
-  SR 现在全部按子串匹配，这一处 ASG 更严。
+  说出共模扼流圈或耦合电感时，不算普通 `inductor` 的证据。原文说出 IC 的角色（控制器、驱动、eFuse、负载开关……，词表与 SR
+  `catalog.DEVICE_ROLES` 一致）时，其中的分立器件、保险丝和继电器是它的负载或功能，不算证据（“Industrial eFuse”不是 `fuse`）；
+  说出热敏电阻或压敏电阻时不算 `fuse`（ThermoFuse 型号）；说的是继电器驱动（relay driver）时不算 `relay`。
+  三个字母以内的关键词（`led`、`mov`、`ptc`、`x2`……）和 `fuse` 按整词匹配（可带复数 s，小写接大写算分词：“Littelfuse”不是 `fuse`），
+  较长的在去掉空格和标点的文字里匹配（PDF 抽取常丢空格），与 SR 相同。
 - 常规件可以不声明，由符号与型号的关键词（`D_TVS`、`SMBJ`、`Transistor_FET:`、`Crystal`……）推断，最后才看位号前缀
   （与 SR 相同：位号是最弱的依据；`RV` 既是电位器也是压敏电阻，不按位号推断）。型号族关键词前面不能紧挨字母或数字：
   TPS26630（eFuse）里的 “PS2663” 不是 PS25xx 光耦。
 - 声明的类型与符号、型号关键词矛盾（例如声明 `diode` 而符号是 `D_TVS`）是记录问题：选错了符号或填错了型号。
-  `diode` 可以声明为更具体的 `tvs`、`zener`，反过来不行。
+  `diode` 可以声明为更具体的 `tvs`、`zener`，`inductor` 可以声明为 `transformer`、`ferrite`、`common_mode_choke`、`coupled_inductor`，反过来不行。
 - 认不出类型、也没有声明的器件是记录问题，要补 `fields.Kind`；不默认归入某一级。
 
 **级别**
@@ -53,14 +57,14 @@
 |---|---|---|---|
 | 关键器件 | `ic`、`mosfet`、`bjt`、`opto`、`transformer`、`zener`、`tvs`、`bridge_rectifier`；带 `fields.DesignSheet` 的定制磁件 | 确切 `mpn`、`datasheet`（定制磁件写 `fields.DesignSheet`）、类型声明；核心器件角色另做选型比较（[core-part-selection.md](core-part-selection.md)） | 有自己的器件检查项：手册规定了多维工作区（SOA、栅压、CTR、VZ@IZ、钳位、绕组） |
 | 特殊器件 | 规格超出档位或要求脉冲/浪涌能力的电阻与电容（见下“子类与档位”）；安规件：`varistor`、`fuse`、安规电容（位号 CX/CY，或值与规格写了 X1/X2/Y1/Y2）；高压连接器与继电器：有引脚接在 `high_voltage_nets` 上的 `connector`、`relay`；串在电源路径上的 `ntc`：有引脚接在 `high_voltage_nets` 上，或两脚都接电源/地网络（`net_roles` 为 power/return）；计算引用了其手册参数的器件 | 确切 `mpn`、`datasheet`、类型声明 | 按位置与配合审（PRO 防护、隔离），超出常规件最弱档的按具体资料审 |
-| 常规件 | 其余：`resistor`、`capacitor`、`inductor`、`ferrite`、`diode`、`crystal`、低压 `connector` 与 `relay`、`battery`、`switch`、`jumper`、`testpoint`、`mechanical`、测温用 `ntc` | `value` 加规格字段（见下），不要求 `mpn`；写了 `mpn` 的按该料号手册 | 常规件只排查风险：按最弱档定界，超出的最低额定写进 DEV-D04 的 BOM 约束 |
+| 常规件 | 其余：`resistor`、`capacitor`、`inductor`、`common_mode_choke`、`coupled_inductor`、`ferrite`、`diode`、`crystal`、低压 `connector` 与 `relay`、`battery`、`switch`、`jumper`、`testpoint`、`mechanical`、测温用 `ntc` | `value` 加规格字段（见下），不要求 `mpn`；写了 `mpn` 的按该料号手册 | 常规件只排查风险：按最弱档定界，超出的最低额定写进 DEV-D04 的 BOM 约束 |
 
 - **`high_voltage_nets`**：设计网表顶层列出工作电压高于 30 V（直流或峰值）或接市电的网络。没有这一项时，所有连接器、继电器和 NTC
   按特殊器件处理。
 - **常规件的规格**写出设计算得的最低额定，没写的按 SR 的最弱档理解（例如电阻按 0402 的额定）：
   电阻写功率与耐压，检流电阻另写容差和 TCR；电容写耐压（**每个电容都要写**，SR 把没写耐压的电容列为设计输入要改的写法），
   陶瓷电容在手册给了有效容量要求时写偏压后的有效容量；电解电容写耐压、纹波电流，有寿命需求的写“耐久 ≥ X h @ T”（规格要求，不强制料号）；
-  二极管写 VRRM、IF、IFSM；电感写 L 与额定电流（Isat、Irms；**每个电感都要写额定电流**）；磁珠写最大 DCR 与额定电流；
+  二极管写 VRRM、IF、IFSM；电感（含共模扼流圈、耦合电感）写 L 与额定电流（Isat、Irms；**每个电感都要写额定电流**）；磁珠写最大 DCR 与额定电流；
   连接器写系列与触点电流；晶体写频率、负载电容 CL、ESR 与精度；继电器写线圈电压与触点额定。电容耐压、电感额定电流、
   检流电阻的阻值/容差/功率和功率电阻的容差/功率由脚本核对，其余由任务 2.2 的计算和 SR 核对。
 - **升为特殊器件**：计算参数引用了某个常规件的手册（`source` 为 `datasheet:`，例如按某个电解电容系列的寿命公式算寿命），

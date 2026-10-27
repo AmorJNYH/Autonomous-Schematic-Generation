@@ -163,6 +163,30 @@ class IdentityTests(unittest.TestCase):
         self.assertEqual({'diode'}, pc.cues('Red LED, 0603'))
         self.assertEqual({'mosfet'}, pc.cues('N-ChannelMOSFET'))
 
+    def test_fuses_and_relays_named_by_an_ic_or_a_thermistor_are_not_the_part(self):
+        # schematic-review 2026-10-27: a kind is what the part does at its pins, not what is inside it.
+        self.assertEqual(set(), pc.cues('Littelfuse Inc.'))
+        self.assertEqual({'fuse'}, pc.cues('Surface mount fuses'))
+        self.assertEqual({'fuse'}, pc.cues('PPTC resettable device'))
+        self.assertEqual(set(), pc.cues('Industrial eFuse with integrated N-channel MOSFET'))
+        self.assertEqual({'varistor'}, pc.cues('Metal oxide varistor, ThermoFuse types'))
+        self.assertEqual(set(), pc.cues('Low-side relay driver'))
+        self.assertEqual({'fuse'}, pc.cues('Industrial eFuse', specific=False) & {'fuse'})
+
+    def test_multi_winding_magnetics_by_what_they_do(self):
+        self.assertEqual({'common_mode_choke'}, pc.cues('SMD Common Mode Filter'))
+        self.assertEqual({'coupled_inductor'}, pc.cues('Coupled Inductor'))
+        cmc = part('L101', 'PD100:Common_Mode_Choke', '10mH')
+        self.assertEqual('common_mode_choke', pc.kind_of(cmc)[0])
+        self.assertEqual('coupled_inductor', pc.kind_of(part('L3', 'PD100:Coupled_Inductor'))[0])
+        self.assertEqual('inductor', pc.kind_of(part('FL1', 'tesla_smps-rescue:F_CHOKE'))[0])
+        # Declared on an inductor symbol it refines the symbol; with a design sheet it is a custom magnetic.
+        self.assertIsNone(pc.kind_of(declared('L5', 'Device:L', 'common_mode_choke', 'Common mode choke'))[1])
+        self.assertEqual('key', pc.part_class(part('L101', 'PD100:Common_Mode_Choke', DesignSheet='设计资料/L101.md')))
+        self.assertEqual('common', pc.part_class(cmc))
+        problems = pc.audit_identity({'nets': {}, 'components': [cmc]}, [self.root])[0]
+        self.assertIn('额定电流', problems[0])
+
     def test_the_declaration_cites_the_parts_own_datasheet(self):
         comp = declared('D706', 'PD100:D_TVS_Uni', 'tvs', 'Unidirectional TVS')
         comp['fields']['KindSource'] = 'datasheet:Datasheet/23_分立半导体/TVS/Littelfuse - SMAJ.pdf#p1'
@@ -351,6 +375,21 @@ class SchematicReviewParityTests(unittest.TestCase):
                     theirs = datasheet_kinds.verify({'kind': kind, 'page': 1, 'quote': quote}, 'SMBJ24A.pdf',
                                                     read_page=lambda path, page: PAGE)['status']
                     self.assertEqual(theirs, ours, (kind, quote))
+
+    def test_quotes_name_the_same_kinds_in_both_skills(self):
+        sys.path.insert(0, str(SR))
+        try:
+            import catalog
+            import datasheet_kinds
+        finally:
+            sys.path.remove(str(SR))
+        sr_roles = {cue for role in catalog.DEVICE_ROLES.values() for cue in role.cues}
+        self.assertLessEqual(sr_roles, set(pc.IC_ROLE_CUES))
+        for quote in ('Littelfuse Inc.', 'Surface mount fuses', 'PPTC resettable device', 'Industrial eFuse',
+                      'Metal oxide varistor, ThermoFuse types', 'Low-side relay driver', 'Power relay, 16 A',
+                      'SMD Common Mode Filter', 'Coupled Inductor', 'Common mode choke', 'MOSFET gate driver', 'BidirectionalTVSDiode',
+                      'N-Channel MOSFET', 'Optocoupler, phototransistor output', 'Unidirectional TVS'):
+            self.assertEqual(datasheet_kinds.cues(quote) & set(pc.KINDS), pc.cues(quote), quote)
 
 
 if __name__ == '__main__':
