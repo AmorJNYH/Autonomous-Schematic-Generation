@@ -8,6 +8,18 @@ in the library and have the cited page); `Changed:` the files touched.
 entry that changes the ASG 纲要 or the 绘图纲要 O1–O8 also carries `Approved:
 user:<date>` and `Outline:` the hash from `check_ledger.py --outline-hash`.
 
+## 需求澄清定下后问用户要不要直接改原始需求文件 (2026-10-27)
+
+R8 的两条需求澄清答复后只写回了 `design-closure.json` 的需求清单，用户需求.md 和工程规格.md 没动，因为规则写着“用户的需求文档本身不改”。
+用户指出 ASG 和 SR 都要提示用户是否直接改原始需求文件，确认后直接改。改为：给定或采纳的答复，问用户要不要改原始需求文件
+（点名文件、位置和要写入的文字），确认后直接改；答复里记 `requirement_files`（`UPDATED` 列改过的文件，或 `KEPT`），
+暂缓的不问。没记的审计报 `requirement_files_not_asked`，记了已改却没列文件的报 `requirement_files_without_files`；
+报告的需求澄清记录加“原始需求文件”一列。纲要文字不变。
+
+- Event: user:2026-10-27
+- Causes: rule_missing 1
+- Changed: references/requirement-clarifications.md, references/workflow-handoff.md, scripts/audit_design_closure.py, scripts/render_design_report.py, tests/test_design_closure.py, tests/test_design_report.py, docs/improvement-ledger.md
+
 ## 需求没说清时当场问用户，答复写回需求清单，对齐 schematic-review (2026-10-27)
 
 用户要求 SR 遇到需求不明时及时问用户、改需求清单后，指出 ASG 设计中遇到需求未明也应及时沟通。原做法只在任务 1.1 问会改变架构的缺口，

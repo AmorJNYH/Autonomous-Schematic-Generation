@@ -18,7 +18,7 @@
 | `design` | 前一版设计交付目录及其哈希；首轮可为 null |
 | `previous_review` | 收到的审查意见（任何格式），首轮可为 null；按 [处理审查意见](review-comments.md) 逐条登记 |
 | `open_items` | 前一轮留下的待办 |
-| `clarification_answers` | 可选：对 ASG 上一轮提出的需求澄清的答复，每项 `{id, decision, text, by, date, source}`，按澄清编号对上（见 [需求澄清](requirement-clarifications.md)） |
+| `clarification_answers` | 可选：对 ASG 上一轮提出的需求澄清的答复，每项 `{id, decision, text, by, date, source, requirement_files}`，按澄清编号对上；`requirement_files` 写是否让 ASG 直接改原始需求文件（见 [需求澄清](requirement-clarifications.md)） |
 | `output` | 本任务 result.json 的绝对路径 |
 
 需求文档保留原文与未决项。设计网表（`electrical-intent.json`）由 ASG 从需求和手册独立写出，

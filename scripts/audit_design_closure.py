@@ -63,6 +63,8 @@ GAP_FIELDS = ('missing', 'why_external', 'calculations', 'consequence', 'questio
 DECISIONS = ('DECIDED', 'ADOPTED_PROPOSAL', 'DEFERRED')
 CLARIFICATION_ID = re.compile(r'^CL-\S+$')
 DATE = re.compile(r'^\d{4}-\d{2}-\d{2}$')
+# Whether the user let ASG write a decided requirement into the original requirement files.
+FILE_DECISIONS = ('UPDATED', 'KEPT')
 
 
 def text(value):
@@ -191,6 +193,12 @@ def audit_clarifications(record, requirements, work, error):
         if answer['decision'] != 'DEFERRED':
             if requirements.get(key, {}).get('text') != answer['text']:
                 error('clarification_not_written_back', key)
+            files = answer.get('requirement_files')
+            if not isinstance(files, dict) or files.get('decision') not in FILE_DECISIONS:
+                error('requirement_files_not_asked', key)
+            elif files['decision'] == 'UPDATED' and not (
+                    isinstance(files.get('files'), list) and files['files'] and all(text(f) for f in files['files'])):
+                error('requirement_files_without_files', key)
             continue
         if not any(w.get('stage') == 'requirement' and w.get('status') == 'open' and w.get('clarification') == key
                    for w in work.values()):

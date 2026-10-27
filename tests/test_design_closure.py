@@ -171,6 +171,8 @@ class DesignClosureTests(unittest.TestCase):
         if decision:
             q['answer'] = {'decision': decision, 'text': answer or q['proposed_requirement'], 'by': '用户', 'date': '2026-10-27',
                            'source': {'source': '对话记录', 'locator': '2026-10-27 需求澄清第 1 问'}}
+            if decision != 'DEFERRED':
+                q['answer']['requirement_files'] = {'decision': 'KEPT'}
         self.record['clarifications'] = [q]
         return q
 
@@ -216,6 +218,22 @@ class DesignClosureTests(unittest.TestCase):
         self.assertIn('adopted_text_differs', self.codes())
         self.clarification('DECIDED', '待机功耗 ≤0.2 W')
         self.assertEqual('PASS', self.run_audit()['status'], self.run_audit()['errors'])
+
+    def test_decided_answer_records_whether_the_requirement_files_were_changed(self):
+        # The user is asked whether to write the decided requirement into the original files (user 2026-10-27).
+        q = self.clarification('ADOPTED_PROPOSAL')
+        self.written_back(q['proposed_requirement'])
+        del q['answer']['requirement_files']
+        self.assertIn('requirement_files_not_asked', self.codes())
+        q['answer']['requirement_files'] = {'decision': 'MAYBE'}
+        self.assertIn('requirement_files_not_asked', self.codes())
+        q['answer']['requirement_files'] = {'decision': 'UPDATED', 'files': []}
+        self.assertIn('requirement_files_without_files', self.codes())
+        q['answer']['requirement_files'] = {'decision': 'UPDATED', 'files': ['需求/工程规格.md']}
+        self.assertEqual('PASS', self.run_audit()['status'], self.run_audit()['errors'])
+        self.clarification('DEFERRED', '先按建议设计')     # nothing is decided yet, so nothing to ask
+        self.deferred_item()
+        self.assertNotIn('requirement_files_not_asked', self.codes())
 
     def test_deferred_answer_needs_an_open_item_on_the_proposed_text(self):
         self.clarification('DEFERRED', '先按建议设计，量产前再定')

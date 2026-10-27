@@ -893,15 +893,18 @@ def render(root, notes=None, title=None):
     if clarifications:
         out += ['## 需求澄清记录', '',
                 '设计中问过用户的需求问题。给定和采纳的已写回需求清单并按它设计；暂缓的按建议条文设计，列在“未关闭项”。', '',
-                '| 编号 | 需求原文 | 问题 | 建议条文 | 答复 | 答复人与日期 | 涉及的需求 |', '|---|---|---|---|---|---|---|']
+                '| 编号 | 需求原文 | 问题 | 建议条文 | 答复 | 答复人与日期 | 涉及的需求 | 原始需求文件 |', '|---|---|---|---|---|---|---|---|']
         for q in clarifications:
             answer = q.get('answer') or {}
-            out.append('| %s | %s | %s | %s | %s | %s | %s |' % (
+            files = answer.get('requirement_files') or {}
+            out.append('| %s | %s | %s | %s | %s | %s | %s | %s |' % (
                 q.get('id'), cell(q.get('requirement_text') or ''), cell(q.get('question') or ''),
                 cell(q.get('proposed_requirement') or ''),
                 cell('%s：%s' % (DECISIONS.get(answer.get('decision'), answer.get('decision')), answer.get('text', '')) if answer else '还没有答复'),
                 cell('%s %s' % (answer.get('by', ''), answer.get('date', '')) if answer else ''),
-                '、'.join(q.get('requirement_ids') or [])))
+                '、'.join(q.get('requirement_ids') or []),
+                cell('已改：' + '、'.join(files.get('files') or []) if files.get('decision') == 'UPDATED'
+                     else '用户不让改' if files.get('decision') == 'KEPT' else '')))
         out.append('')
 
     roles = [r for r in selection.get('roles') or [] if isinstance(r, dict)]

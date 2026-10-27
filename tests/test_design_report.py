@@ -203,6 +203,19 @@ class DesignReportTests(unittest.TestCase):
         self.assertIn('用户定下需求后按定下的数值复算', section)
         self.assertIn('| C4 | R-OUT | 输出纹波：18 ≤ 30 mV | 待办 W-STBY | W-STBY |', section)
 
+    def test_clarification_record_shows_whether_requirement_files_were_changed(self):
+        self.ask_user()
+        c = self.d.closure
+        c['clarifications'][0]['answer'].update(decision='ADOPTED_PROPOSAL', text=c['clarifications'][0]['proposed_requirement'],
+                                                requirement_files={'decision': 'UPDATED', 'files': ['需求/工程规格.md']})
+        self.d.write('design-closure.json', c)
+        record = self.d.report()[0].split('## 需求澄清记录')[1].split('\n## ')[0]
+        self.assertIn('| 原始需求文件 |', record)
+        self.assertIn('| R-OUT | 已改：需求/工程规格.md |', record)
+        c['clarifications'][0]['answer']['requirement_files'] = {'decision': 'KEPT'}
+        self.d.write('design-closure.json', c)
+        self.assertIn('| R-OUT | 用户不让改 |', self.d.report()[0])
+
     def test_unanswered_clarification_is_a_problem(self):
         self.ask_user(decision=None)
         text, problems = self.d.report()

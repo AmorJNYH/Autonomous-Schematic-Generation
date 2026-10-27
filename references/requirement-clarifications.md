@@ -42,7 +42,10 @@
 | `DEFERRED` | 用户明确暂缓 | 建一件 `requirement` 待办：`clarification` 写澄清编号，`assumption` 照抄建议条文；`requirement_ids` 点名的需求不能是 `design_supported`；依赖它的计算写进该待办的 `calculations`，结论为有条件成立（`rests_on: user_deferred`） |
 
 用户一时定不下来时，只能采纳建议或明确暂缓，不能“先挂着”。暂缓时 ASG 仍要交出能画的电路，所以按建议条文设计。
-用户的需求文档本身不改：它是受控输入，在 manifest 里按哈希登记；“写回”是写进 ASG 的需求清单。
+**给定或采纳后，问用户要不要直接改原始需求文件**（2026-10-27，用户：ASG和SR都需要提示用户，是否直接更改原始的需求文件。用户确认后，直接改）。
+问的时候点名改哪个文件的哪一处（如工程规格 §4.1 某行、决定表新增一行），给出要写入的文字；用户确认后马上直接改，
+不确认就只写回需求清单。不论改不改，都在 `answer.requirement_files` 记下用户的决定。暂缓的不问：需求还没定。
+改过的需求文件在打包时按新的哈希登记进 manifest，没改的文件保持原样。
 暂缓的需求后来定下了，把答复改为 `DECIDED` 或 `ADOPTED_PROPOSAL`、写回需求清单、关闭待办，再按定下的数值复算。
 
 ## 字段
@@ -57,7 +60,8 @@
   "proposed_requirement": "5 V 输出最大连续电流 2 A（25～60 ℃），峰值 3 A 持续不超过 100 ms",
   "answer": {"decision": "ADOPTED_PROPOSAL", "text": "5 V 输出最大连续电流 2 A（25～60 ℃），峰值 3 A 持续不超过 100 ms",
              "by": "用户", "date": "2026-10-27",
-             "source": {"source": "对话记录", "locator": "2026-10-27 需求澄清第 1 问"}}
+             "source": {"source": "对话记录", "locator": "2026-10-27 需求澄清第 1 问"},
+             "requirement_files": {"decision": "UPDATED", "files": ["需求/需求规格.md"]}}
 }]
 ```
 
@@ -68,6 +72,8 @@
   `proposed_requirement` 写建议补进需求的条文，要具体到可验收的数值、工况或允许/禁止的行为，有多个口径时写推荐项并注明其他选项。
 - 还没答复时不写 `answer`。答复写 `decision`、`text`（定下的需求，或暂缓的原话）、`by`、`date` 和能定位的 `source`
   （对话记录或任务书 `clarification_answers` 里的一处）。`by` 写真实答复人或角色，不虚构。
+- 给定和采纳的答复还要写 `requirement_files`：`decision` 为 `UPDATED`（用户确认后已直接改原始需求文件，`files` 列改过的文件，非空）
+  或 `KEPT`（用户不让改，只写回需求清单）。暂缓的不写。
 
 `audit_design_closure.py` 核对：
 
@@ -80,8 +86,11 @@
 | `deferred_requirement_claimed_supported` | 暂缓涉及的需求写成了有设计依据 |
 | `requirement_without_clarification` | 未关闭的 `requirement` 待办没有指向一个暂缓的澄清（不再“随交付一起问”） |
 | `assumption_differs_from_proposal` | 暂缓待办的 `assumption` 与建议条文不一致 |
+| `requirement_files_not_asked` | 给定或采纳的答复没有记下用户是否让改原始需求文件（`requirement_files` 缺失或 `decision` 不是 `UPDATED`/`KEPT`） |
+| `requirement_files_without_files` | 记为已改原始需求文件，但 `files` 是空的 |
 
 ## 报告
 
-报告单列“需求澄清记录”一节，逐项写需求原文、问题、建议条文、答复（用户给定/采纳建议/用户暂缓）、答复人与日期、涉及的需求。
+报告单列“需求澄清记录”一节，逐项写需求原文、问题、建议条文、答复（用户给定/采纳建议/用户暂缓）、答复人与日期、涉及的需求，
+以及原始需求文件改了没有（改了哪些文件，或用户不让改）。
 定下的需求已经按它设计，结论在各计算和需求里；暂缓的需求列在“未关闭项”最前面，依赖它的计算列在“依赖暂缓的需求的计算”。
