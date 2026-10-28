@@ -140,7 +140,8 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
     - 降额检查是 `checks` 里的一项，另写 `derating_rule`（规则编号）、`ref`（位号）、`rating`（最坏温度下的保证额定）与
       `rating_source`（`datasheet:<库内路径>#p<页>`，或 `req:`、`calc:`）；`limit_basis` 写 `standard`，`limit_source` 写
       `standard:derating-rules#<规则编号>`（`derating_limit_source`）。`limit` 由规则推出：`ratio`/`pulse_ratio`/`min_ratio` 为
-      额定 × 取值，`margin_c` 为额定最高温度 − 取值，`tj_percent` 为 (Tjmax − 25) × 取值 + 25，`max_c` 等为取值本身；
+      额定 × 取值（额定为负时，如关断负栅压，按幅值：允许幅值 = |额定| × 取值，审计比较 |value| 与 |limit|，R8），
+      `margin_c` 为额定最高温度 − 取值，`tj_percent` 为 (Tjmax − 25) × 取值 + 25，`max_c` 等为取值本身；
       写错记 `derating_limit_mismatch`，这几种判据缺 `rating` 记 `derating_rating_missing`。规则编号不存在记 `derating_rule_unknown`，
       规则的器件类型与位号不符记 `derating_rule_kind`。
     - **结论**：超过额定为 `failed`；在额定内但超过降额值为合格但有风险（应力）：计算照常推出结论（不因此 `conditional`），

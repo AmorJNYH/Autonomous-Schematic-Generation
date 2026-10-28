@@ -112,6 +112,48 @@ class DeratingAuditTests(unittest.TestCase):
         self.assertEqual(('Q1', 'MOS-VDS-S', 600, 585, 650, '换 700 V 管或加钳位'),
                          (risk['ref'], risk['rule'], risk['value'], risk['limit'], risk['rating'], risk['improvement']))
 
+    def test_a_negative_rating_is_compared_by_magnitude(self):
+        # R8 (synthetic): a GaN off-state gate rated -10 V at 50% allows 5 V of magnitude; -8 V is over it, -4 V within.
+        self.intent.write_text(json.dumps({'components': [
+            {'ref': 'Q1', 'lib_id': 'Transistor_FET:Q_NMOS_GDS', 'value': 'GaN', 'mpn': 'X650G'}]}))
+        self.record['intent_sha256'] = sha256(self.intent)
+        self.check.update(name='关断负栅压', value=-8, limit=-5, rating=-10, derating_rule='GAN-VGS-OFF',
+                          limit_source='standard:derating-rules#GAN-VGS-OFF', improvement='负压改 -3 V')
+        result = self.run_audit()
+        self.assertEqual('PASS', result['status'], result['errors'])
+        self.assertEqual(['GAN-VGS-OFF'], [r['rule'] for r in result['derating']['stress_risks']])
+        self.check['limit'] = 5                              # the allowed magnitude may be written either way
+        self.assertNotIn('derating_limit_mismatch', self.codes())
+        self.check['value'] = -4
+        result = self.run_audit()
+        self.assertEqual([], result['derating']['stress_risks'])
+        self.assertEqual('supported', result['calculation_basis']['C-VDS']['conclusion'])
+        self.check['value'] = -12                            # over the rating's magnitude
+        self.assertEqual('failed', self.run_audit()['calculation_basis']['C-VDS']['conclusion'])
+
+    def test_the_relay_rules_set_their_limits(self):
+        # RLY-HOLD is a min_ratio (hold voltage >= 90% of the rated coil voltage); RLY-LIFE takes 1.0 at II and III
+        # (no derating); RLY-PARALLEL is a text rule with no number to compare.
+        self.intent.write_text(json.dumps({'components': [
+            {'ref': 'Q1', 'lib_id': 'Transistor_FET:Q_NMOS_GDS', 'value': 'NMOS', 'mpn': 'X650N'},
+            {'ref': 'K1', 'lib_id': 'Relay:G5LE-1', 'value': 'G5LE-1 12VDC', 'mpn': 'G5LE-1'}]}))
+        self.record['intent_sha256'] = sha256(self.intent)
+        self.record['derating']['level'] = 'II'
+        source = 'datasheet:Datasheet/31_Relay/X - G5LE.pdf#p2'
+        self.record['calculations'][0].update(refs=['K1'], checks=[
+            {'name': '维持电压', 'value': 11.4, 'operator': '>=', 'limit': 10.8, 'unit': 'V', 'derating_rule': 'RLY-HOLD',
+             'ref': 'K1', 'rating': 12, 'rating_source': source},
+            {'name': '动作次数', 'value': 5e4, 'operator': '<=', 'limit': 1e5, 'unit': '次', 'derating_rule': 'RLY-LIFE',
+             'ref': 'K1', 'rating': 1e5, 'rating_source': source},
+            {'name': '触点不并联', 'value': 1, 'operator': '==', 'limit': 1, 'unit': '组', 'derating_rule': 'RLY-PARALLEL',
+             'ref': 'K1'}])
+        for c in self.record['calculations'][0]['checks']:
+            c.update(limit_basis='standard', limit_source='standard:derating-rules#' + c['derating_rule'])
+        result = self.run_audit()
+        self.assertEqual('PASS', result['status'], result['errors'])
+        self.record['calculations'][0]['checks'][1]['limit'] = 5e4
+        self.assertIn('derating_limit_mismatch', self.codes())
+
     def test_over_the_rating_fails(self):
         self.deviate(700)
         self.check['improvement'] = '换 800 V 管'

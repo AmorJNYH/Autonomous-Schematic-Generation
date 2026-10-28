@@ -27,8 +27,10 @@ FALLING = {'margin_c', 'min_hours', 'min_years'}
 class DeratingSpecTests(unittest.TestCase):
     def test_header(self):
         self.assertEqual(SPEC['levels'], list(LEVELS))
-        self.assertEqual(sorted(SPEC['priority']), sorted(SPEC['sources']))
+        # NB/T 10297 is cited for comparison only and gives no default value (derating-rules.md, NB/T 10297 的差异).
+        self.assertEqual(sorted(SPEC['priority']), sorted(set(SPEC['sources']) - {'nbt10297'}))
         self.assertEqual(SPEC['priority'][0], 'cpss1013')
+        self.assertTrue({r['source'] for r in SPEC['rules']} <= set(SPEC['priority']))
 
     def test_every_rule_is_well_formed(self):
         kinds = set(pc.KINDS) | set(SPEC['extra_kinds'])
@@ -42,6 +44,15 @@ class DeratingSpecTests(unittest.TestCase):
             self.assertEqual(tuple(rule['values']), LEVELS, rid)
             numeric = all(isinstance(v, (int, float)) for v in rule['values'].values())
             self.assertEqual(numeric, rule['measure'] != 'text', rid)
+
+    def test_a_kind_holding_several_technologies_names_each_rules_subtype(self):
+        # R7: silicon MOS, IGBT, GaN and SiC share the mosfet kind, a crystal and an oscillator the crystal kind.
+        for rule in SPEC['rules']:
+            mixed = [k for k in rule['kinds'] if k in SPEC['subtypes']]
+            if mixed:
+                self.assertIn(rule.get('subtype'), SPEC['subtypes'][mixed[0]], rule['id'])
+            else:
+                self.assertNotIn('subtype', rule, rule['id'])
 
     def test_ids_are_unique_and_one_rule_per_type_parameter_condition(self):
         ids = [r['id'] for r in SPEC['rules']]

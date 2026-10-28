@@ -129,9 +129,12 @@ def audit_operating_points(record, work, refs, error, need):
 
 
 def holds(c, limit_key='limit'):
-    """Whether a well-formed check meets its limit (or its rating); None when it cannot be compared."""
+    """Whether a well-formed check meets its limit (or its rating); None when it cannot be compared.
+    Against a negative rating (an off-state gate voltage of -10 V) the magnitudes are compared (derating-rules.md R8)."""
     if not (isinstance(c, dict) and c.get('operator') in OPERATORS and finite(c.get('value')) and finite(c.get(limit_key))):
         return None
+    if finite(c.get('rating')) and c['rating'] < 0:
+        return OPERATORS[c['operator']](abs(c['value']), abs(c[limit_key]))
     return OPERATORS[c['operator']](c['value'], c[limit_key])
 
 
@@ -389,10 +392,13 @@ def load_derating(path=DERATING_RULES):
 
 
 def derated_limit(rule, level, rating):
-    """The limit a rule sets at this level, or None when the measure has no single number to compare."""
+    """The limit a rule sets at this level, or None when the measure has no single number to compare.
+    A ratio of a negative rating is the allowed magnitude (R8)."""
     v, m = rule['values'][level], rule['measure']
     if m in ('ratio', 'pulse_ratio', 'min_ratio', 'margin_c', 'tj_percent') and not finite(rating):
         return None
+    if m in ('ratio', 'pulse_ratio', 'min_ratio'):
+        rating = abs(rating)
     return {'ratio': lambda: rating * v, 'pulse_ratio': lambda: rating * v, 'min_ratio': lambda: rating * v,
             'margin_c': lambda: rating - v, 'tj_percent': lambda: (rating - 25) * v + 25,
             'max_c': lambda: v, 'max_rise_k': lambda: v, 'max_v': lambda: v, 'min_hours': lambda: v,
@@ -440,7 +446,8 @@ def audit_derating(record, intent, calculations, requirements, clarifications, e
             expected = derated_limit(rule, level, c.get('rating')) if level else None
             if rule['measure'] in ('ratio', 'pulse_ratio', 'min_ratio', 'margin_c', 'tj_percent') and not finite(c.get('rating')):
                 error('derating_rating_missing', where)
-            elif expected is not None and finite(c.get('limit')) and not math.isclose(c['limit'], expected, rel_tol=1e-6, abs_tol=1e-9):
+            elif expected is not None and finite(c.get('limit')) and not math.isclose(
+                    abs(c['limit']) if finite(c.get('rating')) and c['rating'] < 0 else c['limit'], expected, rel_tol=1e-6, abs_tol=1e-9):
                 error('derating_limit_mismatch', '%s：写的 %g，%s 级 %s 是 %g' % (where, c['limit'], level, rule['id'], expected))
             if derating_deviation(c):
                 risks.append({'calculation': key, 'check': c.get('name'), 'ref': ref, 'rule': rule['id'],
@@ -719,7 +726,7 @@ def audit(record, intent_path, artifact_root, inputs=None):
                     or c.get('operator') not in OPERATORS or not isinstance(c.get('unit'), str)):
                 error('schema', where + ' needs name, finite value/limit, operator (<=, <, >=, >, ==) and unit')
                 continue
-            results.append(OPERATORS[c['operator']](c['value'], c['limit']))
+            results.append(holds(c))
             if c.get('side') is not None:
                 if c['side'] not in WINDOW_SIDES:
                     error('schema', where + ':side must be no_false_trip or protection')
