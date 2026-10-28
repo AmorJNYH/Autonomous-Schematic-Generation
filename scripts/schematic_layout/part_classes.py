@@ -350,7 +350,7 @@ IC_ROLE_CUES = (
     'gatedriver', 'mosfetdriver', 'igbtdriver', 'bridgedriver', 'fetdriver',
     'synchronousrectif', 'srcontroller',
     'pdcontroller', 'powerdelivery', 'usbpd', 'typeccontroller', 'usbccontroller',
-    'voltageregulator', 'lowdropout', 'ldoregulator', 'dcdcconverter', 'buckconverter', 'boostconverter',
+    'voltageregulator', 'linearregulator', 'lowdropout', 'ldoregulator', 'dcdcconverter', 'buckconverter', 'boostconverter',
     'switchingregulator', 'stepdownconverter', 'stepupconverter', 'powermanagementic', 'pmic', 'chargepump',
     'supervisor', 'supervisory', 'voltagemonitor', 'resetcircuit', 'resetic', 'watchdog',
     'operationalamplifier', 'opamp', 'comparator', 'erroramplifier', 'instrumentationamplifier',

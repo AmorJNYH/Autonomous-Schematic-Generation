@@ -8,6 +8,15 @@ in the library and have the cited page); `Changed:` the files touched.
 entry that changes the ASG 纲要 or the 绘图纲要 O1–O8 also carries `Approved:
 user:<date>` and `Outline:` the hash from `check_ledger.py --outline-hash`.
 
+## IC 角色线索对齐 schematic-review：linearregulator (2026-10-27)
+
+SR 在 7b49463 给 IC 角色线索加了 `linearregulator`，ASG 的器件类型对齐测试（`test_quotes_name_the_same_kinds_in_both_skills`）
+因此失败；`part_classes.IC_ROLE_CUES` 补上同一条线索。
+
+- Event: user:2026-10-27
+- Causes: rule_not_enforced 1
+- Changed: scripts/schematic_layout/part_classes.py, docs/improvement-ledger.md
+
 ## 纲要 2.2：降额判法与覆盖统一到器件应力规范 (2026-10-27)
 
 SR 复查 R8、把共用降额规范接进 SR 后，用户定了三点：降额等级的来源“照 ASG”；“将共用规范R6和ASG统一到现在的“应力”规范下来，
