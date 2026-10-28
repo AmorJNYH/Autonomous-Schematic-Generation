@@ -109,7 +109,6 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
     | 任一 `checks` 不满足 | `failed` | — | 不满足 |
     | `typical`/`unspecified` 参数，或计算 id 出现在未关闭 external 待办的 `calculations` 里 | `conditional` | `vendor_data` | 依赖厂家资料 |
     | 否则，计算 id 出现在未关闭 requirement 待办（用户暂缓的需求）的 `calculations` 里 | `conditional` | `user_deferred` | 依赖暂缓的需求 |
-    | 否则，有降额偏离且计算 id 出现在未关闭 design 待办的 `derating` 里（`derating_version` 1） | `conditional` | `derating` | 超过降额值 |
     | 否则，有 `model` 参数或 `not_calculated` 的遗漏项 | `conditional` | `estimate` | 依赖工程估计 |
     | 都没有 | `supported` | — | 设计成立 |
 
@@ -130,23 +129,23 @@ ASG 对其方案、选型、参数和功能实现负责；审查方只提意见�
     - 每条需求至少出现在一条计算的 `requirements` 里，或写 `no_check_reason`（认证范围、取舍优先级这类不对应电路的需求）；
       否则记 `requirement_without_check`。成本需求要有一条物料成本估算：单价按 `model` 写，`reason` 写价格来源和日期；
       估算超过目标，或设计要拿成本换余量时，按[需求澄清](requirement-clarifications.md)停下来问用户。
-  - **`derating_version: 1`**（新设计，与 `parameter_version` 2 或 3 一起；用户 2026-10-27）：器件应力按[降额规范](derating-rules.md)
-    中本项目等级那一列核对，规则数据在 `derating-rules.json`。
-    - `derating`：`{level, source, parts}`。`level` 是 `I`/`II`/`III`（缺记 `derating_level_missing`）；`source` 写 `req:<需求编号>`，
+  - **`derating_version: 1`**（新设计，与 `parameter_version` 2 或 3 一起；用户 2026-10-27）：器件应力按[器件应力规范](stress-spec.md)
+    判，降额值取[降额规范](derating-rules.md)中本项目等级那一列，规则数据在 `derating-rules.json`。
+    - `derating`：`{level, source}`。`level` 是 `I`/`II`/`III`（缺记 `derating_level_missing`）；`source` 写 `req:<需求编号>`，
       或用户暂缓时 `clarification:<需求澄清编号>`（该澄清的答复是 `DEFERRED`），否则记 `derating_level_without_source`。
-    - `parts`：每颗关键器件与特殊器件（器件类型有降额规则的）写 `{ref: {types, not_applicable}}`：`types` 是它属于的降额类型
-      （规则的 `type` 原文，如 `硅 MOSFET`、`片状陶瓷电容`），`not_applicable` 是 `{规则编号: 不适用的理由}`。
-      没写记 `derating_part_undeclared`，类型不对记 `derating_type_unknown`；这些类型的每条规则都要有一条检查或不适用理由，
-      否则记 `derating_not_covered`。常规件不逐颗核对，规格写出的最低额定 = 最坏应力 ÷ 本级降额系数。
+    - **查到什么程度**：只审写出来的应力（用户 2026-10-27：每颗器件都有降额规则过于严苛，统一到余量审核规则上来），
+      不要求每颗器件、每条规则都有一条检查。一条检查写了 `ref` 和 `rating`（拿应力与额定比）却没写 `derating_rule`，
+      而降额规范有这类器件的规则时，审计在 `derating.hints` 里出提示 `derating_rule_available`，不记错。
+      常规件不逐颗核对，规格写出的最低额定 = 最坏应力 ÷ 本级降额系数。
     - 降额检查是 `checks` 里的一项，另写 `derating_rule`（规则编号）、`ref`（位号）、`rating`（最坏温度下的保证额定）与
       `rating_source`（`datasheet:<库内路径>#p<页>`，或 `req:`、`calc:`）；`limit_basis` 写 `standard`，`limit_source` 写
       `standard:derating-rules#<规则编号>`（`derating_limit_source`）。`limit` 由规则推出：`ratio`/`pulse_ratio`/`min_ratio` 为
       额定 × 取值，`margin_c` 为额定最高温度 − 取值，`tj_percent` 为 (Tjmax − 25) × 取值 + 25，`max_c` 等为取值本身；
       写错记 `derating_limit_mismatch`，这几种判据缺 `rating` 记 `derating_rating_missing`。规则编号不存在记 `derating_rule_unknown`，
       规则的器件类型与位号不符记 `derating_rule_kind`。
-    - **结论**：超过额定为 `failed`；在额定内但超过降额值（降额偏离）要有一件 `design` 待办，`derating` 列出这条计算的 id：
-      待办未关闭时计算为 `conditional`、`rests_on: derating`（报告用语“超过降额值”）；用户接受后关闭待办并写
-      `accepted: "user:<日期>"`，计算不再因此有条件。两者都没有记 `derating_without_item`。报告列出每处降额偏离。
+    - **结论**：超过额定为 `failed`；在额定内但超过降额值为合格但有风险（应力）：计算照常推出结论（不因此 `conditional`），
+      检查写 `improvement`（换额定更高的件或降低应力，缺记 `stress_risk_without_improvement`），不挂待办，也不要用户签认；
+      审计在 `derating.stress_risks` 列出每一处，报告的“应力风险”一节逐条列出，不挡交付。降额值以内是普通的满足。
     - 没有 `derating_version` 的记录照旧审计，报告在“记录版本”一行写明器件应力没有按降额等级核对。
   - `parameter_version: 1` 的旧记录照旧审计（下面两段），报告写明“结论没有按依据分层”；版本 2 的旧记录照旧审计，报告在“记录版本”一行写明门槛出处和需求检查没核对。
   - `refs`：这条计算决定了哪些位号的取值，非空，且都在设计网表里。

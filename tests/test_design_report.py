@@ -315,17 +315,20 @@ class DesignReportTests(unittest.TestCase):
         text, _ = self.d.report()
         self.assertIn('- **记录版本**：gap_version 1（外部资料缺口没有分类）。新设计按 parameter_version 3、gap_version 2、derating_version 1 写。', text)
 
-    def test_derating_level_and_deviations_are_reported(self):
-        # Task 2.2 (outline approved by user 2026-10-27): the level and every deviation from it are in the report.
+    def test_derating_level_and_stress_risks_are_reported(self):
+        # stress-spec.md (user 2026-10-27): the level and every stress risk with its improvement are in the report.
         audit_result = json.loads((self.d.record / 'design-closure-audit.json').read_text(encoding='utf-8'))
-        audit_result['derating'] = {'level': 'II', 'source': 'req:R-DER', 'deviations': [
+        audit_result['derating'] = {'level': 'II', 'source': 'req:R-DER', 'hints': ['derating_rule_available C2:x'],
+                                    'stress_risks': [
             {'calculation': 'C1', 'check': '漏源电压', 'ref': 'Q1', 'rule': 'MOS-VDS-S', 'value': 560, 'limit': 520,
-             'rating': 650, 'unit': 'V', 'items': [], 'accepted': ['W-DER']}]}
+             'rating': 650, 'unit': 'V', 'improvement': '换 700 V 管'}]}
         self.d.write('design-closure-audit.json', audit_result)
         text, _ = self.d.report()
-        self.assertIn('- **降额等级**：II 级（req:R-DER，见 derating-rules.md）。超过降额值 1 处，见“降额偏离”。', text)
-        section = text.split('## 降额偏离')[1].split('\n## ')[0]
-        self.assertIn('| C1 | Q1 | MOS-VDS-S | 560 / 520 / 650 V | 用户接受（W-DER） |', section)
+        self.assertIn('- **降额等级**：II 级（req:R-DER，见 stress-spec.md）。合格但有风险（应力）1 处，见“应力风险”。'
+                      '另有 1 处应力比较没点名降额规则（提示）。', text)
+        self.assertNotIn('降额偏离', text)
+        section = text.split('## 应力风险')[1].split('\n## ')[0]
+        self.assertIn('| C1 | Q1 | MOS-VDS-S | 560 / 520 / 650 V | 换 700 V 管 |', section)
 
     def test_kept_unspecified_operating_point_is_listed(self):
         c = self.d.closure

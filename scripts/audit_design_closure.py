@@ -77,7 +77,6 @@ FILE_DECISIONS = ('UPDATED', 'KEPT')
 # derating_version 1 (user 2026-10-27): stresses are checked against the I/II/III column of the shared derating spec.
 DERATING_RULES = Path(__file__).resolve().parent.parent / 'references' / 'derating-rules.json'
 DERATING_SOURCE = re.compile(r'^(req:|clarification:)(\S+)$')
-USER_DATE = re.compile(r'^user:\d{4}-\d{2}-\d{2}$')
 RATING_SOURCE = re.compile(r'^(datasheet:.+#p\d+|req:\S+|calc:\S+)$')
 
 
@@ -137,16 +136,16 @@ def holds(c, limit_key='limit'):
 
 
 def derating_deviation(c):
-    """A derating check beyond its derated limit but within the part's rating: conditional, not failed."""
+    """A derating check beyond its derated limit but within the part's rating: a pass with a stress risk (stress-spec.md)."""
     return bool(text(c.get('derating_rule')) and holds(c) is False and holds(c, 'rating') is True)
 
 
-def calculation_basis(row, vendor_items=(), deferred_items=(), derating_items=()):
+def calculation_basis(row, vendor_items=(), deferred_items=()):
     """(conclusion, rests_on, reasons) a parameter_version 2 calculation follows to.
 
     ``vendor_items`` are the open external work items whose ``calculations`` name this one;
-    ``deferred_items`` the open requirement work items (requirements the user deferred) that do;
-    ``derating_items`` the open design work items whose ``derating`` names it (a deviation not yet fixed or accepted).
+    ``deferred_items`` the open requirement work items (requirements the user deferred) that do.
+    A stress over the derated value but within the rating passes with a stress risk; it neither fails nor conditions.
     """
     checks = [c for c in row.get('checks') or [] if isinstance(c, dict)]
     failing = [c.get('name') for c in checks if holds(c) is False and not derating_deviation(c)]
@@ -160,15 +159,10 @@ def calculation_basis(row, vendor_items=(), deferred_items=(), derating_items=()
     estimate += ['没算：%s' % o.get('term') for o in row.get('omitted_terms') or []
                  if isinstance(o, dict) and o.get('kind') == 'not_calculated']
     deferred = ['待办 %s' % w for w in deferred_items]
-    # An accepted deviation (its item closed with the user's acceptance) no longer makes the calculation conditional.
-    deviations = ['降额 %s' % c.get('name') for c in checks if derating_deviation(c)]
-    derating = deviations + ['待办 %s' % w for w in derating_items] if deviations and derating_items else []
     if vendor:
-        return 'conditional', 'vendor_data', vendor + deferred + derating + estimate
+        return 'conditional', 'vendor_data', vendor + deferred + estimate
     if deferred:
-        return 'conditional', 'user_deferred', deferred + derating + estimate
-    if derating:
-        return 'conditional', 'derating', derating + estimate
+        return 'conditional', 'user_deferred', deferred + estimate
     if estimate:
         return 'conditional', 'estimate', estimate
     return 'supported', None, []
@@ -405,22 +399,11 @@ def derated_limit(rule, level, rating):
             'min_years': lambda: v, 'max_dvdt': lambda: v}.get(m, lambda: None)()
 
 
-def derating_items_of(work):
-    """({calculation id: [open design items whose derating names it]}, {calculation id: [accepted closed items]})."""
-    open_, accepted = {}, {}
-    for key, row in work.items():
-        if row.get('stage') != 'design' or not isinstance(row.get('derating'), list):
-            continue
-        target = open_ if row.get('status') == 'open' else accepted if (
-            row.get('status') == 'closed' and isinstance(row.get('accepted'), str) and USER_DATE.match(row['accepted'])) else None
-        for cid in row['derating'] if target is not None else ():
-            target.setdefault(cid, []).append(key)
-    return open_, accepted
-
-
-def audit_derating(record, intent, calculations, work, requirements, clarifications, error, loaded=None):
-    """derating_version 1: the level and where it was decided; each derating check uses its rule's limit for that level;
-    a deviation has an open design item or the user's acceptance; key and special parts check every rule of their type."""
+def audit_derating(record, intent, calculations, requirements, clarifications, error, loaded=None):
+    """derating_version 1, judged by stress-spec.md (user 2026-10-27): the level and where it was decided; each check that
+    names a rule uses that rule's limit for the level; over the derated value but within the rating is a stress risk with
+    an improvement; only the stresses written are checked, and a stress compared with a rating that names no rule while
+    the spec has rules for that kind is a hint."""
     rules, _ = loaded or load_derating()
     info = record.get('derating') if isinstance(record.get('derating'), dict) else {}
     level = info.get('level')
@@ -432,21 +415,24 @@ def audit_derating(record, intent, calculations, work, requirements, clarificati
             m.group(1) == 'clarification:' and ((clarifications.get(m.group(2)) or {}).get('answer') or {}).get('decision') != 'DEFERRED'):
         error('derating_level_without_source', 'derating.source: req:<需求编号>，或 clarification:<用户暂缓的需求澄清>')
     comps = {c['ref']: c for c in intent.get('components') or []}
-    open_items, accepted = derating_items_of(work)
-    covered, deviations = set(), []
+    ruled = {k for r in rules.values() for k in r['kinds']}
+    risks, hints = [], []
     for key, row in calculations.items():
         for c in row.get('checks') or []:
-            if not (isinstance(c, dict) and text(c.get('derating_rule'))):
+            if not isinstance(c, dict):
                 continue
-            where, rule = '%s:%s' % (key, c.get('name')), rules.get(c['derating_rule'])
+            where, ref = '%s:%s' % (key, c.get('name')), c.get('ref')
+            kind = part_classes.kind_of(comps[ref])[0] if ref in comps else None
+            if not text(c.get('derating_rule')):
+                if c.get('rating') is not None and kind in ruled:
+                    hints.append('derating_rule_available %s：%s 是%s，降额规范有这类器件的规则' % (where, ref, kind))
+                continue
+            rule = rules.get(c['derating_rule'])
             if rule is None:
                 error('derating_rule_unknown', where + ':' + c['derating_rule'])
                 continue
-            ref = c.get('ref')
-            kind = part_classes.kind_of(comps[ref])[0] if ref in comps else None
             if not set(rule['kinds']) <= {'pcb', 'wire', 'enclosure'} and kind not in rule['kinds']:
                 error('derating_rule_kind', '%s: %s 是%s，规则 %s 用于 %s' % (where, ref, kind, rule['id'], '/'.join(rule['kinds'])))
-            covered.add((ref, rule['id']))
             if c.get('limit_basis') != 'standard' or c.get('limit_source') != 'standard:derating-rules#' + rule['id']:
                 error('derating_limit_source', where + '：limit_basis 写 standard，limit_source 写 standard:derating-rules#' + rule['id'])
             if c.get('rating') is not None and not (finite(c['rating']) and RATING_SOURCE.match(str(c.get('rating_source') or ''))):
@@ -457,32 +443,12 @@ def audit_derating(record, intent, calculations, work, requirements, clarificati
             elif expected is not None and finite(c.get('limit')) and not math.isclose(c['limit'], expected, rel_tol=1e-6, abs_tol=1e-9):
                 error('derating_limit_mismatch', '%s：写的 %g，%s 级 %s 是 %g' % (where, c['limit'], level, rule['id'], expected))
             if derating_deviation(c):
-                handled = open_items.get(key) or accepted.get(key)
-                deviations.append({'calculation': key, 'check': c.get('name'), 'ref': ref, 'rule': rule['id'],
-                                   'value': c.get('value'), 'limit': c.get('limit'), 'rating': c.get('rating'),
-                                   'unit': c.get('unit'), 'items': open_items.get(key, []), 'accepted': accepted.get(key, [])})
-                if not handled:
-                    error('derating_without_item', where)
-    ctx = part_classes.context(intent)
-    parts = info.get('parts') if isinstance(info.get('parts'), dict) else {}
-    for ref, comp in sorted(comps.items()):
-        kind = part_classes.kind_of(comp)[0]
-        if part_classes.part_class(comp, ctx) not in ('key', 'special') or not any(kind in r['kinds'] for r in rules.values()):
-            continue
-        part = parts.get(ref) if isinstance(parts.get(ref), dict) else None
-        types = part.get('types') if part else None
-        if not isinstance(types, list) or not types:
-            error('derating_part_undeclared', '%s：derating.parts 写它属于降额规范里的哪些类型' % ref)
-            continue
-        known = {r['type'] for r in rules.values() if kind in r['kinds']}
-        for t in types:
-            if t not in known:
-                error('derating_type_unknown', '%s：%s 不是%s的降额类型（可选：%s）' % (ref, t, kind, '、'.join(sorted(known))))
-        exempt = part.get('not_applicable') if isinstance(part.get('not_applicable'), dict) else {}
-        for rid, rule in rules.items():
-            if rule['type'] in types and kind in rule['kinds'] and (ref, rid) not in covered and not text(exempt.get(rid)):
-                error('derating_not_covered', '%s:%s %s' % (ref, rid, rule['parameter']))
-    return {'level': level, 'source': info.get('source'), 'deviations': deviations}
+                risks.append({'calculation': key, 'check': c.get('name'), 'ref': ref, 'rule': rule['id'],
+                              'value': c.get('value'), 'limit': c.get('limit'), 'rating': c.get('rating'),
+                              'unit': c.get('unit'), 'improvement': c.get('improvement')})
+                if not text(c.get('improvement')):
+                    error('stress_risk_without_improvement', where + '：写 improvement（换额定更高的件或降低应力）')
+    return {'level': level, 'source': info.get('source'), 'stress_risks': risks, 'hints': hints}
 
 
 def audit_citations(record, calculations, work, extra, error):
@@ -535,7 +501,7 @@ def resolve(p, root, inputs):
     return None
 
 
-def audit_calculation_v2(key, row, work, vendor_items, deferred_items, derived, error, need, derating_items=()):
+def audit_calculation_v2(key, row, work, vendor_items, deferred_items, derived, error, need):
     """The written conclusion, rests_on and coverage must be the ones the record follows to."""
     kinds = audit_omissions(key, row, work, error)
     assumptions = row.get('assumptions', [])
@@ -563,7 +529,7 @@ def audit_calculation_v2(key, row, work, vendor_items, deferred_items, derived, 
                 error('threshold_window_incomplete', key + ':' + side)
     elif row.get('kind') is not None:
         error('schema', key + ':kind must be threshold when present')
-    conclusion, rests_on, reasons = calculation_basis(row, vendor_items, deferred_items, derating_items)
+    conclusion, rests_on, reasons = calculation_basis(row, vendor_items, deferred_items)
     derived[key] = {'conclusion': conclusion, 'rests_on': rests_on, 'reasons': reasons}
     if (row.get('conclusion'), row.get('rests_on')) != (conclusion, rests_on):
         error('conclusion_not_derived', '%s: 写的 %s/%s，按记录是 %s/%s' % (
@@ -702,7 +668,6 @@ def audit(record, intent_path, artifact_root, inputs=None):
     version = record['parameter_version'] if parameters else None
     points = audit_operating_points(record, work, refs, error, need) if parameters else {}
     vendor_items, deferred_items, derived = vendor_items_of(work), vendor_items_of(work, 'requirement'), {}
-    derating_open = derating_items_of(work)[0] if 'derating_version' in record else {}
     for key, row in calculations.items():
         if parameters:
             audit_parameters(key, row, refs, points, calculations, error, version, requirements)
@@ -712,8 +677,7 @@ def audit(record, intent_path, artifact_root, inputs=None):
         if coverage not in ('bounded', 'partial') or conclusion not in ('supported', 'conditional', 'failed'):
             error('schema', key + ':invalid coverage/conclusion')
         if version in (2, 3):
-            audit_calculation_v2(key, row, work, vendor_items.get(key, []), deferred_items.get(key, []), derived, error, need,
-                                 derating_open.get(key, []))
+            audit_calculation_v2(key, row, work, vendor_items.get(key, []), deferred_items.get(key, []), derived, error, need)
             if version == 3:
                 audit_limits(key, row, requirements, calculations, error)
             continue
@@ -794,7 +758,7 @@ def audit(record, intent_path, artifact_root, inputs=None):
         if record['derating_version'] != 1 or version not in (2, 3):
             error('schema', 'derating_version must be 1, with parameter_version 2 or 3')
         else:
-            derating = audit_derating(record, intent, calculations, work, requirements, clarifications, error)
+            derating = audit_derating(record, intent, calculations, requirements, clarifications, error)
     gaps = 'gap_version' in record
     if gaps and record['gap_version'] not in (1, 2):
         error('schema', 'gap_version must be 1 or 2')

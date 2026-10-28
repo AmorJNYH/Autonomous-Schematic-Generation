@@ -75,7 +75,7 @@ class DeratingSpecTests(unittest.TestCase):
 
     @unittest.skipUnless((SR / 'derating-rules.json').is_file(), 'schematic-review not installed')
     def test_schematic_review_holds_the_same_files(self):
-        for name in ('derating-rules.json', 'derating-rules.md'):
+        for name in ('derating-rules.json', 'derating-rules.md', 'stress-spec.md'):
             self.assertEqual((SR / name).read_bytes(), (ROOT / 'references' / name).read_bytes(), name)
 
 

@@ -193,18 +193,19 @@ ASG 是五个步骤的流程，每个步骤下有几项任务（1.1、1.2 …）
   见 [设计待办记录](references/design-closure.md)。
 - 器件热可行性（功耗→结温）属于设计，在本任务算；散热实现才交 PCB。见 requirements-to-intent.md 第 4 节。
   损耗预算列出主要遗漏项及有依据的边界，不能用子总和证明达标。
-- **器件应力按降额等级核对**：关键器件与特殊器件在工作包络角点和瞬态下的电压、电流、功率与温度应力，
-  按 `derating-rules.json` 中本项目等级那一列逐项核对该器件类型适用的参数；额定取最坏温度下的保证值。
-  只给一个系数的项对稳态与瞬态的最坏组合生效，手册单列的冲击、脉冲额定按表中比例比较。
-  常规件的规格写出的最低额定 = 最坏应力 ÷ 本级降额系数。超过额定为 `failed`；在额定内但超过降额值为 `conditional`，
-  挂一件降额待办（改设计，或用户接受 `user:<日期>`）。
+- **器件应力按降额等级核对**（按[器件应力规范](references/stress-spec.md)）：关键器件与特殊器件在工作包络角点和瞬态下的
+  电压、电流、功率与温度应力，与额定比较的检查点名 `derating-rules.json` 里适用的规则，按本项目等级那一列取降额值；
+  额定取最坏温度下的保证值。只给一个系数的项对稳态与瞬态的最坏组合生效，手册单列的冲击、脉冲额定按表中比例比较。
+  常规件的规格写出的最低额定 = 最坏应力 ÷ 本级降额系数。只审写出来的应力，不要求每颗器件、每条规则都有一条比较。
+  超过额定为 `failed`；在额定内但超过降额值为合格但有风险（应力），写 `improvement`（换额定更高的件或降低应力），
+  列入报告的应力风险，不挡交付，不挂待办。
 - **参数逐项有来源**：每条计算在 `design-closure.json` 的 `parameters` 里列出用到的每个参数：值、单位、依据（`basis`）、
   位号和手册定位（`datasheet:<库内路径>#p<页>` 加表名/符号）。依据另有 `requirement`（来自需求，`source` 写 `req:<需求编号>`）
   和 `constant`（物理常数），不再归入 `model`。手册没给的器件参数标 `unspecified`，不能写成保证值，
   也不能支撑 `supported`。格式见 [设计待办记录](references/design-closure.md)，`audit_design_closure.py` 核对。
 
 做完的标志：`audit_design_closure.py` 无错误；没有 `failed` 的计算；每条计算的结论、`rests_on` 与 `coverage` 与参数依据推出的一致。
-每颗关键器件与特殊器件对适用的降额参数都有核对或写明不适用的理由；超过降额值的都有降额待办或用户的接受记录。
+与额定比较的应力都点名了适用的降额规则（没点名的审计出提示）；超过降额值的都写了改进。
 
 #### 2.3 设计网表
 
@@ -426,7 +427,7 @@ python3 <skill>/scripts/pack_design.py <交付目录> --input requirements=<需�
 | 选符号、引脚表、外围电路要求 | [symbol-and-peripheral-contracts.md](references/symbol-and-peripheral-contracts.md) |
 | 计算条件记录 | [calculation-preflight.md](references/calculation-preflight.md) |
 | 非线性极值、条件匹配与插值边界 | [worst-case-bounds.md](references/worst-case-bounds.md) |
-| 器件应力降额：I/II/III 级降额值、等级从哪来、取值规则（与 schematic-review 共用） | [derating-rules.md](references/derating-rules.md)、`references/derating-rules.json` |
+| 器件应力降额：I/II/III 级降额值、等级从哪来、取值规则、应力怎么判、查到什么程度（与 schematic-review 共用） | [stress-spec.md](references/stress-spec.md)、[derating-rules.md](references/derating-rules.md)、`references/derating-rules.json` |
 | 绘图纲要 O1–O8 与 recipes API | [drawing-recipes.md](references/drawing-recipes.md) |
 | 阅读路径、HR-01–HR-11、图面审阅 | [human-readable-routing.md](references/human-readable-routing.md) |
 | 拓扑结构、标签策略、检查项 | [schematic-drawing-standards.md](references/schematic-drawing-standards.md) |

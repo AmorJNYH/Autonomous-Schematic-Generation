@@ -8,6 +8,24 @@ in the library and have the cited page); `Changed:` the files touched.
 entry that changes the ASG 纲要 or the 绘图纲要 O1–O8 also carries `Approved:
 user:<date>` and `Outline:` the hash from `check_ledger.py --outline-hash`.
 
+## 纲要 2.2：降额判法与覆盖统一到器件应力规范 (2026-10-27)
+
+SR 复查 R8、把共用降额规范接进 SR 后，用户定了三点：降额等级的来源“照 ASG”；“将共用规范R6和ASG统一到现在的“应力”规范下来，
+制定单独的应力规范”；“ASG里面现在每颗器件都有降额规则，这个过于严苛了。请将其统一到余量审核规则上来”。
+新增与 SR 逐字相同的 `references/stress-spec.md`（器件应力规范），`derating-rules.md` 的 R6 改为指向它；`derating-rules.json` 不变。
+ASG 改法：在额定内但超过降额值不再是有条件成立加降额待办或用户接受，而是合格但有风险（应力）：计算照常推出结论，检查写
+`improvement`（缺记 `stress_risk_without_improvement`），审计在 `derating.stress_risks` 列出，报告“应力风险”一节逐条列出，不挡交付；
+超过额定仍为 `failed`。去掉 `rests_on: derating` 一档、design 待办的 `derating` 字段与 `derating_without_item`。覆盖按写出来的应力：
+去掉 `derating.parts` 声明与 `derating_part_undeclared`、`derating_type_unknown`、`derating_not_covered`；点名规则的检查照旧核规则、
+器件类型、等级与降额值；拿应力与额定比却没点名规则、而规范有这类器件的规则时，只在 `derating.hints` 出提示 `derating_rule_available`。
+降额等级的来源 `derating {level, source}` 不变。一致性测试加 `stress-spec.md`。
+
+- Event: user:2026-10-27
+- Approved: user:2026-10-27
+- Outline: 798c19acd30beee2
+- Causes: rule_wrong 1
+- Changed: SKILL.md, references/stress-spec.md, references/derating-rules.md, references/design-closure.md, references/delivery-report.md, references/requirements-to-intent.md, scripts/audit_design_closure.py, scripts/render_design_report.py, tests/test_derating_audit.py, tests/test_derating_rules.py, tests/test_design_report.py, docs/improvement-ledger.md
+
 ## 纲要 1.1/2.2：问降额等级，关键与特殊器件按等级核对应力 (2026-10-27)
 
 降额规范写好后，用户确认纲要草案：任务 1.1 把降额等级（I/II/III）当作一条需求，需求没写时与其他需求澄清一并问用户，

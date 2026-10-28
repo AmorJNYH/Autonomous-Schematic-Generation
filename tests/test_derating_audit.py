@@ -1,6 +1,7 @@
-"""Task 2.2 (outline approved by user 2026-10-27): key and special parts are checked against the derating column of the
-project's level; a stress over the derated value but within the rating is conditional with a derating item or the
-user's acceptance, one over the rating fails; the level is a requirement and says where it was decided."""
+"""Task 2.2, judged by stress-spec.md (user 2026-10-27): a check that names a derating rule uses the rule's value at the
+project's level; a stress over the derated value but within the rating passes with a stress risk and an improvement, one
+over the rating fails; only the stresses written are checked, and a stress against a rating that names no rule is a hint;
+the level is a requirement and says where it was decided."""
 import json
 from pathlib import Path
 import sys
@@ -9,10 +10,7 @@ import unittest
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from audit_design_closure import audit, load_derating, sha256
-
-RULES, _ = load_derating()
-MOS_RULES = sorted(rid for rid, r in RULES.items() if r['type'] == '硅 MOSFET')
+from audit_design_closure import audit, sha256
 
 
 def setUpModule():
@@ -38,9 +36,7 @@ class DeratingAuditTests(unittest.TestCase):
         self.record = {
             'schema_version': 1, 'coverage': 'complete', 'intent_sha256': sha256(self.intent),
             'parameter_version': 3, 'derating_version': 1,
-            'derating': {'level': 'III', 'source': 'req:R-DER',
-                         'parts': {'Q1': {'types': ['硅 MOSFET'],
-                                          'not_applicable': {r: '本例只核漏源电压' for r in MOS_RULES if r != 'MOS-VDS-S'}}}},
+            'derating': {'level': 'III', 'source': 'req:R-DER'},
             'evidence': [{'id': 'E1', 'path': 'design.txt', 'sha256': sha256(self.root / 'design.txt'), 'locator': 'l1'}],
             'requirements': [
                 {'id': 'R1', 'status': 'design_supported', 'refs': ['Q1'], 'evidence': ['E1'], 'implementation': '反激主开关',
@@ -70,18 +66,10 @@ class DeratingAuditTests(unittest.TestCase):
     def deviate(self, value=600):
         self.check['value'] = value
 
-    def item(self, **fields):
-        row = {'id': 'W-DER', 'stage': 'design', 'requirements': ['R1'], 'evidence': [], 'derating': ['C-VDS'],
-               'owner': 'ASG', 'action': '换 700 V 管或加钳位', 'consequence_class': 'margin', 'occurrence': 'normal'}
-        row.update(fields)
-        self.record['work_items'].append(row)
-        self.record['requirements'][0]['depends_on'] = ['W-DER']
-        return row
-
     def test_a_check_within_the_derated_limit_passes(self):
         result = self.run_audit()
         self.assertEqual('PASS', result['status'], result['errors'])
-        self.assertEqual({'level': 'III', 'source': 'req:R-DER', 'deviations': []}, result['derating'])
+        self.assertEqual({'level': 'III', 'source': 'req:R-DER', 'stress_risks': [], 'hints': []}, result['derating'])
 
     def test_the_level_is_a_requirement_or_a_deferred_clarification(self):
         self.record['derating']['level'] = 'IV'
@@ -113,45 +101,37 @@ class DeratingAuditTests(unittest.TestCase):
         self.check['rating_source'] = '规格书'
         self.assertIn('derating_rating_without_source', self.codes())
 
-    def test_over_the_derated_value_within_the_rating_needs_an_item(self):
+    def test_over_the_derated_value_within_the_rating_is_a_stress_risk(self):
         self.deviate()
-        self.assertIn('derating_without_item', self.codes())
-        self.assertEqual('supported', self.run_audit()['calculation_basis']['C-VDS']['conclusion'])
-
-    def test_an_open_derating_item_leaves_the_calculation_conditional(self):
-        self.deviate()
-        self.item(status='open')
-        self.assertIn('conclusion_not_derived', self.codes())
-        self.record['calculations'][0].update(conclusion='conditional', rests_on='derating')
-        self.record['requirements'][0]['status'] = 'conditional'
-        result = self.run_audit()
-        self.assertEqual([], result['errors'])
-        self.assertEqual('INCOMPLETE', result['status'])
-        self.assertEqual(['降额 漏源电压', '待办 W-DER'], result['calculation_basis']['C-VDS']['reasons'])
-        self.assertEqual(['W-DER'], result['derating']['deviations'][0]['items'])
-
-    def test_the_users_acceptance_closes_the_deviation(self):
-        self.deviate()
-        row = self.item(status='closed', evidence=['E1'])
-        self.assertIn('derating_without_item', self.codes())        # closed without acceptance
-        row['accepted'] = 'user:2026-10-27'
+        self.assertIn('stress_risk_without_improvement', self.codes())
+        self.check['improvement'] = '换 700 V 管或加钳位'
         result = self.run_audit()
         self.assertEqual('PASS', result['status'], result['errors'])
-        self.assertEqual(['W-DER'], result['derating']['deviations'][0]['accepted'])
+        self.assertEqual({'conclusion': 'supported', 'rests_on': None, 'reasons': []}, result['calculation_basis']['C-VDS'])
+        risk = result['derating']['stress_risks'][0]
+        self.assertEqual(('Q1', 'MOS-VDS-S', 600, 585, 650, '换 700 V 管或加钳位'),
+                         (risk['ref'], risk['rule'], risk['value'], risk['limit'], risk['rating'], risk['improvement']))
 
     def test_over_the_rating_fails(self):
         self.deviate(700)
-        self.item(status='open')
+        self.check['improvement'] = '换 800 V 管'
         self.assertEqual('failed', self.run_audit()['calculation_basis']['C-VDS']['conclusion'])
+        self.assertEqual([], self.run_audit()['derating']['stress_risks'])
 
-    def test_key_parts_declare_their_types_and_cover_every_rule(self):
-        parts = self.record['derating']['parts']
-        del parts['Q1']['not_applicable']['MOS-TJ']
-        self.assertIn('derating_not_covered', self.codes())
-        parts['Q1']['types'] = ['MOSFET']
-        self.assertIn('derating_type_unknown', self.codes())
-        del parts['Q1']
-        self.assertIn('derating_part_undeclared', self.codes())
+    def test_only_the_stresses_written_are_checked(self):
+        # A key part with one stress written is not asked for every rule of its type.
+        self.assertEqual([], self.run_audit()['errors'])
+        self.record['derating']['parts'] = {}      # an old declaration is ignored, not required
+        self.assertEqual([], self.run_audit()['errors'])
+
+    def test_a_stress_against_a_rating_without_a_rule_is_a_hint(self):
+        for k in ('derating_rule', 'limit_basis', 'limit_source'):
+            del self.check[k]
+        self.check.update(limit_basis='guaranteed', limit_source='datasheet:Datasheet/09_MOSFET/X - X650N.pdf#p2', limit=650)
+        result = self.run_audit()
+        self.assertNotIn('derating_rule_available', {e['code'] for e in result['errors']})
+        self.assertEqual(1, len(result['derating']['hints']))
+        self.assertTrue(result['derating']['hints'][0].startswith('derating_rule_available C-VDS:漏源电压'))
 
     def test_a_common_part_is_not_checked_one_by_one(self):
         errors = [e['item'] for e in self.run_audit()['errors']]

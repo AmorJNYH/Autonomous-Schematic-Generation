@@ -15,7 +15,7 @@ from collections import Counter, OrderedDict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from audit_design_closure import calculation_basis, derating_items_of, severity_of, vendor_items_of  # noqa: E402
+from audit_design_closure import calculation_basis, severity_of, vendor_items_of  # noqa: E402
 from schematic_layout.citations import check as check_citation, check_source  # noqa: E402
 from schematic_layout import lifecycle, part_classes  # noqa: E402
 from schematic_layout.sexpr import all_nodes, first, parse  # noqa: E402
@@ -49,9 +49,9 @@ STAGES = {'requirement': '用户暂缓的需求', 'design': '设计未完成', '
 REQUIREMENTS = OrderedDict([('design_supported', '有设计依据'), ('conditional', '有条件成立'), ('open', '还没有设计')])
 # parameter_version 2: what a calculation rests on, derived from its inputs.
 TIERS = OrderedDict([('supported', '设计成立'), ('estimate', '依赖工程估计'), ('vendor_data', '依赖厂家资料'),
-                     ('user_deferred', '依赖暂缓的需求'), ('derating', '超过降额值'), ('failed', '不满足')])
+                     ('user_deferred', '依赖暂缓的需求'), ('failed', '不满足')])
 # Tiers shown only when a calculation falls in them.
-OPTIONAL_TIERS = ('user_deferred', 'derating')
+OPTIONAL_TIERS = ('user_deferred',)
 LEVEL_NAMES = {'I': 'I 级', 'II': 'II 级', 'III': 'III 级'}
 DECISIONS = {'DECIDED': '用户给定', 'ADOPTED_PROPOSAL': '采纳建议', 'DEFERRED': '用户暂缓'}
 RESPONSES = OrderedDict([
@@ -729,9 +729,7 @@ def render(root, notes=None, title=None):
             if n > 3:
                 problems.append('%d 个工程估计参数共用同一句理由“%s”：每个估计写它自己的依据（见 design-closure.md）' % (n, reason[:40]))
     vendor_items, deferred_items = vendor_items_of(work), vendor_items_of(work, 'requirement')
-    derating_open = derating_items_of(work)[0] if 'derating_version' in closure else {}
-    basis = {c.get('id'): calculation_basis(c, vendor_items.get(c.get('id'), []), deferred_items.get(c.get('id'), []),
-                                            derating_open.get(c.get('id'), []))
+    basis = {c.get('id'): calculation_basis(c, vendor_items.get(c.get('id'), []), deferred_items.get(c.get('id'), []))
              for c in calculations} if layered else {}
     clarifications = [q for q in closure.get('clarifications') or [] if isinstance(q, dict)]
     unanswered = [q.get('id') for q in clarifications if not q.get('answer')]
@@ -837,13 +835,11 @@ def render(root, notes=None, title=None):
             elif 'user_deferred' in tiers or any(work.get(d, {}).get('stage') == 'requirement' and work[d].get('status') == 'open'
                                                  for d in r.get('depends_on') or []):
                 rests['user_deferred'] += 1
-            elif 'derating' in tiers:
-                rests['derating'] += 1
             elif 'estimate' in tiers:
                 rests['estimate'] += 1
         if rests:
             out[-2] = out[-2][:-1] + '（有条件成立的需求中%s）。' % '、'.join(
-                '%s %d 条' % (TIERS[k], rests[k]) for k in ('vendor_data', 'user_deferred', 'derating', 'estimate') if rests.get(k))
+                '%s %d 条' % (TIERS[k], rests[k]) for k in ('vendor_data', 'user_deferred', 'estimate') if rests.get(k))
     else:
         out.append('- **计算**：共 %d 项，记录是 parameter_version 1，结论没有按依据分层。' % len(calculations))
     old = (['parameter_version 2（检查门槛的出处、每条需求有没有检查没核对）'] if closure.get('parameter_version') == 2 else []) + \
@@ -853,10 +849,11 @@ def render(root, notes=None, title=None):
         out.append('- **记录版本**：%s。新设计按 parameter_version 3、gap_version 2、derating_version 1 写。' % '；'.join(old))
     derating = audit.get('derating') if isinstance(audit.get('derating'), dict) else None
     if derating:
-        devs = derating.get('deviations') or []
-        out.append('- **降额等级**：%s（%s，见 derating-rules.md）。%s' % (
+        risks, hints = derating.get('stress_risks') or [], derating.get('hints') or []
+        out.append('- **降额等级**：%s（%s，见 stress-spec.md）。%s%s' % (
             LEVEL_NAMES.get(derating.get('level'), '未定'), derating.get('source') or '没有写来源',
-            '超过降额值 %d 处，见“降额偏离”。' % len(devs) if devs else '没有超过降额值的应力。'))
+            '合格但有风险（应力）%d 处，见“应力风险”。' % len(risks) if risks else '写出的应力都在降额值以内。',
+            '另有 %d 处应力比较没点名降额规则（提示）。' % len(hints) if hints else ''))
     if clarifications:
         asked = Counter((q.get('answer') or {}).get('decision') for q in clarifications)
         out.append('- **需求澄清**：问过用户 %d 个问题。%s。' % (len(clarifications), '，'.join(
@@ -1099,15 +1096,15 @@ def render(root, notes=None, title=None):
                                             '、'.join(owed)))
         out.append('')
 
-    deviations = (derating or {}).get('deviations') or []
-    if deviations:
-        out += ['## 降额偏离', '',
-                '这些应力在器件额定之内，但超过了本项目降额等级的降额值；改设计，或经用户确认接受（见 derating-rules.md）。', '',
-                '| 计算 | 位号 | 降额规则 | 应力 / 降额值 / 额定 | 处理 |', '|---|---|---|---|---|']
-        for d in deviations:
-            done = ('用户接受（%s）' % '、'.join(d['accepted'])) if d.get('accepted') else ('待办 %s' % '、'.join(d.get('items') or []))
+    risks = (derating or {}).get('stress_risks') or []
+    if risks:
+        out += ['## 应力风险', '',
+                '这些应力在器件额定之内，但超过了本项目降额等级的降额值：合格但有风险（应力），不挡定稿（见 stress-spec.md）。', '',
+                '| 计算 | 位号 | 降额规则 | 应力 / 降额值 / 额定 | 改进 |', '|---|---|---|---|---|']
+        for d in risks:
             out.append('| %s | %s | %s | %s / %s / %s %s | %s |' % (d['calculation'], d.get('ref') or '', d['rule'], num(d.get('value')),
-                                                              num(d.get('limit')), num(d.get('rating')), d.get('unit') or '', done))
+                                                              num(d.get('limit')), num(d.get('rating')), d.get('unit') or '',
+                                                              cell(d.get('improvement') or '')))
         out.append('')
     unspecified = [p for p in closure.get('operating_points') or [] if isinstance(p, dict) and p.get('specified') is False]
     if unspecified:
